@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>W06 年报工作台 · 招商银行 2025 年度经营简报</title>
+<style>
+/* ———— SkillHub 设计 token（与 skill hub 站点同源）———— */
+:root {
+  --bg: #ffffff;
+  --fg: #202020;
+  --fg-hover: #111111;
+  --muted: #737373;
+  --border: rgba(0, 0, 0, .08);
+  --card-border: rgba(0, 0, 0, .06);
+  --surface: #f6f7f9;
+  --surface-2: #eff1f4;
+  --hover: hsl(214 70% 96%);
+  --radius: 10px;
+  --radius-sm: 8px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .04);
+  --success: hsl(160 60% 28%);
+  --success-bg: hsl(160 60% 96%);
+  --warning: hsl(38 90% 32%);
+  --warning-bg: hsl(38 90% 95%);
+  --destructive: hsl(0 55% 48%);
+  --destructive-bg: hsl(0 55% 97%);
+  --info: hsl(217 75% 45%);
+  --info-bg: hsl(217 75% 96%);
+  --sans: Inter, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", SimSun, Georgia, serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: var(--sans);
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ———— 顶栏 ———— */
+.topbar {
+  background: var(--bg);
+  border-bottom: 1px solid var(--card-border);
+  padding: 0 28px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.brand { display: flex; align-items: baseline; gap: 10px; font-size: 15px; font-weight: 600; letter-spacing: .2px; }
+.brand-mark {
+  background: var(--fg); color: #fff; font-family: var(--mono); font-size: 11px; font-weight: 600;
+  padding: 2px 7px; border-radius: 5px; letter-spacing: .5px; align-self: center;
+}
+.brand-en { color: var(--muted); font-size: 12px; font-weight: 400; }
+.top-status { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
+
+/* ———— 选项卡 ———— */
+.tabs {
+  background: var(--bg); border-bottom: 1px solid var(--card-border);
+  padding: 0 28px; display: flex; gap: 4px; position: sticky; top: 56px; z-index: 40;
+}
+.tab {
+  appearance: none; border: none; background: none; cursor: pointer;
+  font: inherit; font-size: 13.5px; color: var(--muted);
+  padding: 11px 14px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: color .15s;
+}
+.tab:hover { color: var(--fg); }
+.tab.active { color: var(--fg); font-weight: 600; border-bottom-color: var(--fg); }
+
+/* ———— 布局 ———— */
+main { max-width: 1160px; margin: 0 auto; padding: 26px 28px 80px; }
+.view { display: none; animation: fadein .2s ease; }
+.view.active { display: block; }
+@keyframes fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+/* ———— 卡片 ———— */
+.card {
+  background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 20px 22px;
+}
+.card + .card { margin-top: 16px; }
+.card h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.card h3 .hint { font-size: 12px; font-weight: 400; color: var(--muted); }
+.grid { display: grid; gap: 12px; }
+.grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+.grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+.grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+
+/* ———— 徽章 / chip ———— */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600;
+  padding: 2px 9px; border-radius: 999px; letter-spacing: .2px; white-space: nowrap;
+}
+.badge.success { color: var(--success); background: var(--success-bg); }
+.badge.warning { color: var(--warning); background: var(--warning-bg); }
+.badge.destructive { color: var(--destructive); background: var(--destructive-bg); }
+.badge.info { color: var(--info); background: var(--info-bg); }
+.badge.neutral { color: var(--fg); background: var(--surface); border: 1px solid var(--border); font-weight: 500; }
+.chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 12px;
+  padding: 1px 8px; border-radius: 5px; background: var(--surface); color: var(--muted);
+  border: 1px solid transparent; font-family: var(--mono);
+}
+a.chip, button.chip { cursor: pointer; transition: all .15s; }
+a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); border-color: hsl(214 70% 88%); }
+
+/* ———— 按钮 ———— */
+.btn {
+  appearance: none; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  border-radius: var(--radius-sm); padding: 7px 16px; transition: all .15s;
+  border: 1px solid var(--border); background: var(--bg); color: var(--fg);
+}
+.btn:hover { background: var(--hover); border-color: hsl(214 70% 85%); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.primary { background: var(--fg); color: #fff; border-color: var(--fg); }
+.btn.primary:hover:not(:disabled) { background: var(--fg-hover); border-color: var(--fg-hover); }
+.btn.danger { color: var(--destructive); border-color: hsl(0 55% 80%); }
+.btn.danger:hover:not(:disabled) { background: var(--destructive-bg); }
+.btn.sm { padding: 4px 11px; font-size: 12px; }
+
+/* ———— 等宽 / digest ———— */
+.mono { font-family: var(--mono); font-size: 12px; }
+.digest { font-family: var(--mono); font-size: 11.5px; color: var(--muted); word-break: break-all; line-height: 1.5; }
+
+/* ———— 概览 ———— */
+.hero-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+.kv { display: flex; gap: 10px; font-size: 13px; padding: 4px 0; }
+.kv b { color: var(--muted); font-weight: 500; min-width: 84px; }
+.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.metric-card {
+  background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 14px 16px;
+}
+.metric-card .m-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.metric-card .m-value { font-size: 21px; font-weight: 650; letter-spacing: -.3px; font-variant-numeric: tabular-nums; }
+.metric-card .m-value small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 2px; }
+.metric-card .m-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; gap: 6px; }
+.m-delta { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.m-delta.up { color: var(--success); }
+.m-delta.down { color: var(--destructive); }
+.m-page { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.pipeline { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.pipe-step { font-size: 13px; color: var(--muted); }
+.pipe-step b { display: block; color: var(--fg); font-size: 13px; margin-bottom: 3px; }
+
+/* ———— 快照视图 ———— */
+.snap-layout { display: grid; grid-template-columns: 230px 1fr; gap: 16px; align-items: start; }
+.page-item {
+  display: block; width: 100%; text-align: left; font: inherit; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+  padding: 11px 14px; margin-bottom: 8px; transition: all .15s;
+}
+.page-item:hover { background: var(--hover); }
+.page-item.active { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+.page-item .p-no { font-size: 13px; font-weight: 600; }
+.page-item .p-src { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.page-text {
+  font-family: var(--serif); font-size: 14.5px; line-height: 2.1; white-space: pre-wrap;
+  color: var(--fg); padding: 4px 2px;
+}
+.page-text mark {
+  background: hsl(160 60% 90%); color: inherit; padding: 0 2px; border-radius: 3px;
+  box-shadow: inset 0 -1.5px 0 hsl(160 60% 55%);
+}
+
+/* ———— 报告（年报级排版）———— */
+.report-shell { display: flex; justify-content: center; }
+.paper {
+  background: #fff; width: 100%; max-width: 830px; border: 1px solid var(--card-border);
+  border-radius: 4px; box-shadow: var(--shadow); padding: 60px 68px 56px;
+}
+.paper-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 44px;
+  font-size: 11.5px; color: var(--muted); letter-spacing: 1px;
+}
+.rp-cover { text-align: center; padding: 30px 0 10px; }
+.rp-cover .c-company { font-size: 30px; font-weight: 700; letter-spacing: 6px; margin-bottom: 14px; }
+.rp-cover .c-title { font-size: 21px; font-weight: 600; letter-spacing: 2px; margin-bottom: 26px; }
+.rp-cover .c-meta { font-size: 12.5px; color: var(--muted); line-height: 2; }
+.rp-notice {
+  text-align: left; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); padding: 18px 22px; margin: 34px 0 8px;
+}
+.rp-notice h4 { font-size: 13px; font-weight: 650; margin-bottom: 10px; letter-spacing: 1px; }
+.rp-notice ol { padding-left: 19px; }
+.rp-notice li { font-size: 12.5px; line-height: 1.9; color: #3d3d3d; }
+.rp-h2 {
+  font-size: 16.5px; font-weight: 650; margin: 38px 0 16px; padding-left: 11px;
+  border-left: 3px solid var(--fg); letter-spacing: 1px;
+}
+.rp-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.rp-table th {
+  font-size: 12px; font-weight: 600; color: var(--muted); text-align: right;
+  padding: 8px 10px; border-bottom: 1.5px solid var(--fg); letter-spacing: .5px;
+}
+.rp-table th:first-child { text-align: left; }
+.rp-table td {
+  font-size: 13.5px; text-align: right; padding: 8.5px 10px;
+  border-bottom: 1px solid var(--card-border); font-variant-numeric: tabular-nums;
+}
+.rp-table td:first-child { text-align: left; font-family: var(--serif); }
+.rp-table .num { font-family: var(--mono); font-size: 12.5px; }
+.rp-table .delta { font-weight: 600; }
+.rp-table .delta.up { color: var(--success); }
+.rp-table .delta.down { color: var(--destructive); }
+.rp-table-note { font-size: 11.5px; color: var(--muted); margin-top: 8px; line-height: 1.8; }
+.rp-body { font-family: var(--serif); font-size: 14.5px; line-height: 2.15; text-align: justify; color: #262626; text-indent: 2em; }
+.rp-refs { margin-top: 12px; text-indent: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rp-refs .ref-label { font-family: var(--sans); font-size: 11.5px; color: var(--muted); margin-right: 2px; }
+.ref-chip {
+  font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--info);
+  background: var(--info-bg); border: 1px solid hsl(217 75% 88%);
+  border-radius: 5px; padding: 1px 7px; cursor: pointer; transition: all .15s;
+}
+.ref-chip:hover { background: hsl(217 75% 92%); }
+.rp-glossary { background: var(--surface); border-radius: var(--radius-sm); padding: 16px 20px; }
+.rp-glossary dl { display: grid; grid-template-columns: 150px 1fr; row-gap: 8px; column-gap: 14px; }
+.rp-glossary dt { font-size: 12.5px; font-weight: 600; }
+.rp-glossary dd { font-size: 12.5px; color: var(--muted); }
+.rp-footnote { border-top: 1px solid var(--border); margin-top: 42px; padding-top: 14px; }
+.rp-footnote p { font-size: 11.5px; color: var(--muted); line-height: 1.9; }
+.report-actions { display: flex; gap: 10px; justify-content: center; margin-bottom: 16px; }
+
+/* ———— 核验视图 ———— */
+.check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.check-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.check-head .cid { font-size: 13px; font-weight: 650; }
+.check-head .cid small { color: var(--muted); font-weight: 400; margin-left: 7px; font-family: var(--mono); }
+.vio-row {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--destructive-bg); margin-bottom: 8px; font-size: 12.5px;
+}
+.vio-row.warn { background: var(--warning-bg); }
+.vio-row .v-rule { font-family: var(--mono); font-weight: 700; font-size: 11.5px; color: var(--destructive); white-space: nowrap; }
+.vio-row.warn .v-rule { color: var(--warning); }
+.vio-row .v-target { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.vio-row .v-detail { color: #3d3d3d; line-height: 1.7; }
+.pass-note { font-size: 12.5px; color: var(--success); background: var(--success-bg); border-radius: var(--radius-sm); padding: 10px 12px; }
+.check-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.seg button { appearance: none; border: none; background: var(--bg); font: inherit; font-size: 12.5px; padding: 7px 16px; cursor: pointer; color: var(--muted); }
+.seg button.active { background: var(--fg); color: #fff; }
+
+/* ———— 演示链 ———— */
+.step {
+  display: grid; grid-template-columns: 44px 1fr; gap: 16px;
+  background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
+  box-shadow: var(--shadow); padding: 18px 20px; margin-bottom: 14px;
+}
+.step .s-no {
+  width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  background: var(--surface); color: var(--muted); font-family: var(--mono); font-weight: 700; font-size: 14px;
+  border: 1.5px solid transparent; margin-top: 2px;
+}
+.step.done .s-no { background: var(--success-bg); color: var(--success); border-color: hsl(160 60% 80%); }
+.step.blocked .s-no { background: var(--destructive-bg); color: var(--destructive); border-color: hsl(0 55% 82%); }
+.step.refused .s-no { background: var(--warning-bg); color: var(--warning); border-color: hsl(38 90% 75%); }
+.step .s-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.step .s-title { font-size: 14px; font-weight: 650; }
+.step .s-desc { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
+.step .s-body { display: flex; flex-direction: column; gap: 10px; }
+.quote {
+  font-family: var(--serif); font-size: 13.5px; line-height: 1.9; padding: 12px 16px;
+  background: var(--surface); border-left: 3px solid var(--border); border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+.quote mark { background: hsl(0 55% 92%); color: var(--destructive); font-weight: 650; padding: 0 2px; border-radius: 3px; }
+.quote .fix { background: hsl(160 60% 90%); color: var(--success); font-weight: 650; padding: 0 2px; border-radius: 3px; }
+.diff-banner {
+  display: flex; gap: 10px; align-items: flex-start; font-size: 12.5px;
+  border: 1px solid hsl(0 55% 85%); background: var(--destructive-bg);
+  border-radius: var(--radius-sm); padding: 11px 14px; color: #3d3d3d;
+}
+.approval-card {
+  border: 1px solid hsl(160 60% 80%); background: var(--success-bg); border-radius: var(--radius-sm);
+  padding: 14px 16px; font-size: 12.5px;
+}
+.approval-card .a-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px 18px; margin-top: 8px; }
+.approval-card .a-grid b { color: var(--muted); font-weight: 500; }
+.refused-card {
+  border: 1px solid hsl(38 90% 72%); background: var(--warning-bg); border-radius: var(--radius-sm);
+  padding: 14px 16px; font-size: 12.5px;
+}
+
+/* ———— 信源视图 ———— */
+.src-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.src-card { background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; }
+.src-card .s-title { font-size: 13.5px; font-weight: 650; margin: 8px 0 10px; line-height: 1.5; }
+.src-card .s-rows { font-size: 12.5px; color: var(--muted); line-height: 1.9; }
+.src-card .s-rows b { color: var(--fg); font-weight: 500; }
+.src-card .s-pages { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ———— 抽屉（引用证据）———— */
+.drawer-mask { position: fixed; inset: 0; background: rgba(20,20,20,.32); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 90; }
+.drawer-mask.open { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; right: 0; height: 100vh; width: 440px; max-width: 92vw;
+  background: var(--bg); border-left: 1px solid var(--border); box-shadow: -8px 0 30px rgba(0,0,0,.08);
+  transform: translateX(100%); transition: transform .22s ease; z-index: 95;
+  padding: 24px 26px; overflow-y: auto;
+}
+.drawer.open { transform: none; }
+.drawer h3 { font-size: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
+.drawer .d-close { appearance: none; border: none; background: none; font-size: 17px; cursor: pointer; color: var(--muted); line-height: 1; }
+.drawer .d-close:hover { color: var(--fg); }
+.d-block { margin-bottom: 16px; }
+.d-block .d-label { font-size: 11.5px; font-weight: 650; color: var(--muted); letter-spacing: 1px; margin-bottom: 5px; }
+.d-block .d-val { font-size: 13px; line-height: 1.7; }
+.d-block .d-quote {
+  font-family: var(--serif); font-size: 13.5px; line-height: 2; background: var(--surface);
+  border-left: 3px solid var(--success); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 10px 14px;
+}
+.d-verify { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--success); }
+
+/* ———— 打印（A4）———— */
+@media print {
+  body { background: #fff; }
+  .topbar, .tabs, .report-actions, .drawer, .drawer-mask, .no-print { display: none !important; }
+  .view { display: none !important; }
+  #view-report { display: block !important; }
+  main { max-width: none; padding: 0; }
+  .paper { border: none; box-shadow: none; max-width: none; padding: 0; border-radius: 0; }
+  .paper-header { position: fixed; top: 0; left: 0; right: 0; margin-bottom: 26px; }
+  .paper { padding-top: 40px; }
+  @page { size: A4; margin: 15mm 13mm; }
+}
+@media (max-width: 1020px) {
+  .grid.cols-4, .metric-grid { grid-template-columns: repeat(2, 1fr); }
+  .hero-grid, .check-grid, .src-grid, .pipeline { grid-template-columns: 1fr; }
+  .snap-layout { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">W06</span>年报工作台<span class="brand-en">Annual Report Workbench</span></div>
+  <div class="top-status">
+    <span id="health-badge" class="badge neutral">连接中…</span>
+    <span class="mono" id="health-ver"></span>
+  </div>
+</header>
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-view="overview">总览</button>
+  <button class="tab" data-view="snapshot">快照</button>
+  <button class="tab" data-view="report">报告</button>
+  <button class="tab" data-view="checks">核验</button>
+  <button class="tab" data-view="demo">演示链</button>
+  <button class="tab" data-view="sources">信源</button>
+</nav>
+<main>
+  <section class="view active" id="view-overview"></section>
+  <section class="view" id="view-snapshot"></section>
+  <section class="view" id="view-report"></section>
+  <section class="view" id="view-checks"></section>
+  <section class="view" id="view-demo"></section>
+  <section class="view" id="view-sources"></section>
+</main>
+<div class="drawer-mask" id="drawer-mask"></div>
+<aside class="drawer" id="drawer"></aside>
+<script>
+"use strict";
+
+/* ———————————————————— 基础工具 ———————————————————— */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+async function jget(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(r.status + " " + url);
+  return r.json();
+}
+async function jpost(url, body) {
+  const r = await fetch(url, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  return { ok: r.ok, status: r.status, data: await r.json().catch(() => null) };
+}
+const short = (d, n = 10) => d ? d.slice(0, n) + "…" : "—";
+const DELTA_LABEL = { PERCENTAGE_POINT: "个百分点", BASIS_POINT: "基点", PERCENT: "%", YUAN: "亿元" };
+const deltaText = m => (m.yoy_delta ?? "") + (DELTA_LABEL[m.delta_unit] ?? "");
+const deltaDir = m => { const d = parseFloat(m.yoy_delta); return d > 0 ? "up" : d < 0 ? "down" : ""; };
+const clone = o => JSON.parse(JSON.stringify(o));
+const STATUS_LABEL = { PASSED: "PASSED", FAILED: "FAILED", WAITING_HUMAN: "待人工复核" };
+const statusBadge = s => {
+  const map = {
+    PASSED: ["success", "通过"], FAILED: ["destructive", "未通过"],
+    WAITING_HUMAN: ["warning", "待人工复核"], NONE: ["neutral", "无批准"],
+    APPROVED: ["success", "已批准"], REFUSED: ["destructive", "已拒绝"]
+  };
+  const [cls, label] = map[s] || ["neutral", s || "—"];
+  return '<span class="badge ' + cls + '">' + esc(label) + "</span>";
+};
+
+/* ———————————————————— 全局状态 ———————————————————— */
+const state = {
+  manifest: null, sources: [], health: null,
+  positive: null,          // 正例工件（只读底稿）
+  artifact: null,          // 当前工作工件（演示链会修改它）
+  y2024: {},               // 2024 对比值（快照 P46 提取）
+  pages: {}, snapPage: 18,
+  approval: null,
+  demo: { done: {} }
+};
+
+/* 2024 对比值：从快照 P46 文本提取（口径与 P46 原文逐字对应） */
+function extract2024(text) {
+  const m = (re) => { const x = text.match(re); return x ? x[1] : null; };
+  return {
+    OPERATING_REVENUE: m(/营业收入([\d,\.]+)亿元/),
+    NET_PROFIT_ATTRIBUTABLE: m(/净利润([\d,\.]+)亿元/),
+    NET_INTEREST_MARGIN: m(/净息差([\d\.]+)%/),
+    COST_INCOME_RATIO: m(/成本收入比([\d\.]+)%/),
+    NPL_BALANCE: m(/不良贷款余额([\d,\.]+)亿元/),
+    NPL_RATIO: m(/不良贷款率([\d\.]+)%/),
+    PROVISION_COVERAGE: m(/拨备覆盖率([\d\.]+)%/),
+    CET1_RATIO: m(/核心一级资本充足率([\d\.]+)%/)
+  };
+}
+
+/* 选项卡切换 */
+$("#tabs").addEventListener("click", e => {
+  const btn = e.target.closest(".tab");
+  if (!btn) return;
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === btn));
+  document.querySelectorAll(".view").forEach(v =>
+    v.classList.toggle("active", v.id === "view-" + btn.dataset.view));
+});
+function switchTab(name) { document.querySelector('.tab[data-view="' + name + '"]').click(); }
+
+/* ———————————————————— 总览 ———————————————————— */
+async function renderOverview() {
+  const m = state.manifest, a = state.artifact;
+  const approval = state.approval;
+  const aprLine = approval && approval.status === "APPROVED"
+    ? '已批准 · ' + esc(approval.approval_id) + '（' + esc(approval.approver) + '）'
+    : "尚无交付批准";
+  const metricCards = a.metrics.map(mt => {
+    const label = (m.metric_index[mt.key] || {}).label || mt.key;
+    return '<div class="metric-card">'
+      + '<div class="m-label">' + esc(label) + "</div>"
+      + '<div class="m-value">' + esc(mt.value) + "<small>" + esc(mt.unit) + "</small></div>"
+      + '<div class="m-foot"><span class="m-delta ' + deltaDir(mt) + '">' + esc(deltaText(mt)) + "</span>"
+      + '<span class="m-page">P' + mt.page + "</span></div></div>";
+  }).join("");
+  $("#view-overview").innerHTML =
+    '<div class="hero-grid">'
+    + '<div class="card"><h3>任务概要<span class="hint">' + esc(a.task_id) + "</span></h3>"
+    + '<div class="kv"><b>公司</b>' + esc(a.company) + "</div>"
+    + '<div class="kv"><b>报告期</b>' + esc(a.report_period) + "</div>"
+    + '<div class="kv"><b>快照版本</b><span class="mono">' + esc(m.snapshot_version) + "</span></div>"
+    + '<div class="kv"><b>信源</b>' + m.sources.length + " 份（均为 PRIMARY_OFFICIAL 落盘快照）</div>"
+    + '<div class="kv"><b>指标</b>' + a.metrics.length + " 项 · 引用 " + a.citations.length + " 条 · 章节 " + a.sections.length + " 节</div>"
+    + '<div class="kv"><b>交付批准</b><span id="ov-approval">' + aprLine + "</span></div>"
+    + "</div>"
+    + '<div class="card"><h3>核验器</h3>'
+    + '<div class="kv"><b>数值核验</b><span class="mono">numeric-checker ' + esc(state.health.numeric_checker_version) + "</span></div>"
+    + '<div class="kv"><b>引用核验</b><span class="mono">citation-checker ' + esc(state.health.citation_checker_version) + "</span></div>"
+    + '<div class="kv"><b>规则集</b>N1 完整性 · N2 单位白名单 · N3 数字来源<br>N4 派生复算 · N6 同比复算 · N7 变动口径</div>'
+    + '<div class="kv"><b>批准链</b>服务端重跑两项检查，内容一改 digest 即变、旧批准失效</div>'
+    + "</div></div>"
+    + '<div class="card" style="margin-top:16px"><h3>关键监管与财务指标</h3>'
+    + '<div class="metric-grid">' + metricCards + "</div></div>"
+    + '<div class="card"><h3>工作链路</h3><div class="pipeline">'
+    + '<div class="pipe-step"><b>① 结构化产出</b>多专业 agent 产出结构化工件：每个数值携带「信源 digest / 页码 / 摘录 digest」三元组。</div>'
+    + '<div class="pipe-step"><b>② 确定性核验</b>数值核验器逐项复算：数字须页内字面出现、派生比率复算、同比口径铁律。</div>'
+    + '<div class="pipe-step"><b>③ 受控交付</b>批准与工件 digest 绑定；篡改内容后旧批准失效，错误草稿无法获得交付批准。</div>'
+    + "</div></div>";
+}
+
+async function refreshApproval() {
+  try {
+    state.approval = await jget("/v1/approvals?task_id=" + encodeURIComponent(state.artifact.task_id));
+  } catch (e) { state.approval = null; }
+  const el = $("#ov-approval");
+  if (el) {
+    el.innerHTML = state.approval && state.approval.status === "APPROVED"
+      ? '已批准 · <span class="mono">' + esc(state.approval.approval_id) + "</span>（" + esc(state.approval.approver) + "）"
+      : "尚无交付批准";
+  }
+}
+
+/* ———————————————————— 快照视图 ———————————————————— */
+async function renderSnapshotShell() {
+  const m = state.manifest;
+  const items = Object.keys(m.page_digests).map(no => {
+    const src = m.sources.find(s => s.pages.map(Number).includes(Number(no)));
+    const title = src ? src.title.replace(/（.*?）/g, "") : "";
+    return '<button class="page-item" data-page="' + no + '">'
+      + '<div class="p-no">第 ' + no + " 页</div>"
+      + '<div class="p-src">' + esc(title) + "</div></button>";
+  }).join("");
+  $("#view-snapshot").innerHTML =
+    '<div class="snap-layout"><div>' + items
+    + '<div class="card" style="padding:14px 16px"><div style="font-size:12px;color:var(--muted);line-height:1.8">'
+    + "快照为公开披露年报的落盘副本，核验过程不实时访问外部网络；页文本与登记的 sha256 一一对应。</div></div>"
+    + "</div>"
+    + '<div class="card"><h3 id="snap-title">快照页</h3>'
+    + '<div class="digest" id="snap-digest" style="margin-bottom:12px"></div>'
+    + '<div class="page-text" id="snap-text"></div>'
+    + '<div style="margin-top:14px;font-size:12px;color:var(--muted)" id="snap-marks"></div>'
+    + "</div></div>";
+  $("#view-snapshot").addEventListener("click", e => {
+    const item = e.target.closest(".page-item");
+    if (item) loadSnapshotPage(Number(item.dataset.page));
+  });
+}
+
+async function loadSnapshotPage(no) {
+  try {
+    if (!state.pages[no]) state.pages[no] = await jget("/v1/snapshot/pages/" + no);
+    const p = state.pages[no];
+    state.snapPage = no;
+    document.querySelectorAll(".page-item").forEach(i =>
+      i.classList.toggle("active", Number(i.dataset.page) === no));
+    $("#snap-title").textContent = "快照第 " + no + " 页";
+    $("#snap-digest").textContent = "sha256(页文本) = " + p.digest;
+    /* 高亮当前工件中引用本页的摘录（N3「数字来源」的可视化） */
+    const cites = state.artifact.citations.filter(c => c.page === no);
+    let html = esc(p.text), n = 0;
+    for (const c of cites) {
+      const ex = c.evidence_excerpt;
+      if (ex && html.includes(esc(ex))) {
+        html = html.split(esc(ex)).join("<mark>" + esc(ex) + "</mark>");
+        n++;
+      }
+    }
+    $("#snap-text").innerHTML = html;
+    $("#snap-marks").innerHTML = n
+      ? "绿色高亮 = 当前工件中引用本页的 " + n + " 条证据摘录（页内字面存在）"
+      : "本页暂未被当前工件的引用覆盖。";
+  } catch (e) {
+    $("#snap-text").innerHTML = '<span style="color:var(--destructive)">快照无第 ' + no + " 页：" + esc(e.message) + "</span>";
+  }
+}
+/* ———————————————————— 报告视图（年报级排版，可 A4 打印）———————————————————— */
+function fmtVal(v, unit) { return esc(v) + (unit === "%" ? "%" : "&#8201;" + esc(unit)); }
+
+function renderReport() {
+  const a = state.artifact, m = state.manifest;
+
+  const rows = a.metrics.map(mt => {
+    const label = (m.metric_index[mt.key] || {}).label || mt.key;
+    const prev = state.y2024[mt.key];
+    return "<tr><td>" + esc(label) + "</td>"
+      + '<td class="num">' + fmtVal(mt.value, mt.unit) + "</td>"
+      + '<td class="num">' + (prev ? fmtVal(prev, mt.unit) : "—") + "</td>"
+      + '<td class="delta ' + deltaDir(mt) + '">' + esc(deltaText(mt)) + "</td></tr>";
+  }).join("");
+
+  const sections = a.sections.map(s => {
+    const refs = (s.claim_ids || []).map(id =>
+      '<button class="ref-chip" onclick="openCitation(\'' + id + '\')">' + esc(id) + "</button>").join("");
+    return '<h2 class="rp-h2">' + esc(s.title) + "</h2>"
+      + '<p class="rp-body">' + esc(s.body) + "</p>"
+      + (refs ? '<div class="rp-refs"><span class="ref-label">本节引用</span>' + refs + "</div>" : "");
+  }).join("");
+
+  const glossary = (m.entities || []).map(e => {
+    const names = e.short_names.join(" / ");
+    return "<dt>" + esc(names) + "</dt><dd>" + esc(e.full_name) + "</dd>";
+  }).join("");
+
+  $("#view-report").innerHTML =
+    '<div class="report-actions no-print">'
+    + '<button class="btn primary" onclick="window.print()">打印 / 导出 PDF（A4）</button>'
+    + '<span style="font-size:12px;color:var(--muted);align-self:center">正文引用 [C-n] 可点击溯源至快照页</span>'
+    + "</div>"
+    + '<div class="report-shell"><article class="paper">'
+    + '<div class="paper-header"><span>' + esc(a.company) + " · " + esc(a.report_period) + "经营简报</span>"
+    + "<span>取自落盘快照 · 经确定性核验</span></div>"
+    + '<div class="rp-cover">'
+    + '<div class="c-company">' + esc(a.company) + "</div>"
+    + '<div class="c-title">' + esc(a.report_period) + "经营简报</div>"
+    + '<div class="c-meta">依据公开披露年度报告落盘快照编制<br>'
+    + "快照版本 <span class=\"mono\">" + esc(m.snapshot_version) + "</span><br>"
+    + "编制与核验：W06 年报多专业 agent 系统</div>"
+    + '<div class="rp-notice"><h4>重要提示</h4><ol>'
+    + "<li>本简报全部财务与监管指标均取自报告期公开披露年度报告的落盘快照，经确定性数值核验器逐项复算、并经引用核验器逐条溯源校验后交付，内容真实、准确、完整。</li>"
+    + "<li>比率类指标变动一律以「个百分点」表述，净息差变动以「基点」表述，金额类变动以「亿元」表述，全文不存在口径混用。</li>"
+    + "<li>本简报不含前景展望章节，不构成任何预测或投资建议。</li>"
+    + "<li>本简报为技术演示用途的节选简报，非法定信息披露文件，不替代公司依法披露的定期报告。</li>"
+    + "</ol></div></div>"
+    + '<h2 class="rp-h2" style="margin-top:46px">关键财务与监管指标</h2>'
+    + '<table class="rp-table"><thead><tr><th>指标</th><th>2025 年度 / 年末</th><th>2024 年度 / 年末</th><th>同比增减</th></tr></thead>'
+    + "<tbody>" + rows + "</tbody></table>"
+    + '<div class="rp-table-note">注：2024 年对比值取自快照第 46 页（2024 年度报告节选）。增减口径与正文一致：'
+    + "比率类为「个百分点」、净息差为「基点」、金额类为「亿元」、增速类为「%」。</div>"
+    + sections
+    + '<h2 class="rp-h2">释义</h2>'
+    + '<div class="rp-glossary"><dl>' + glossary
+    + "<dt>拨备覆盖率</dt><dd>贷款减值准备余额与不良贷款余额之比</dd>"
+    + "<dt>成本收入比</dt><dd>业务及管理费与营业收入之比</dd>"
+    + "<dt>高级法</dt><dd>内部评级高级法，资本充足率的计量口径之一</dd></dl></div>"
+    + '<div class="rp-footnote">'
+    + "<p>〔1〕本简报数值中，业务及管理费与贷款减值准备两项为按披露比率复算的整理值，其余数值均为快照页内原文，逐项经 N3「数字来源」规则校验。</p>"
+    + "<p>〔2〕每条正文引用均登记证据摘录的 sha256 指纹与所在页码，经引用核验器比对「摘录指纹一致」且「摘录页内字面存在」。</p>"
+    + "<p>〔3〕快照版本 " + esc(m.snapshot_version) + "；数值核验器 "
+    + esc(state.health.numeric_checker_version) + "，引用核验器 " + esc(state.health.citation_checker_version)
+    + "。交付批准与工件内容指纹（sha256）绑定，内容一经变更原批准即失效。</p>"
+    + "</div></article></div>";
+}
+
+/* 引用证据抽屉 */
+function openCitation(id) {
+  const c = state.artifact.citations.find(x => x.claim_id === id);
+  if (!c) return;
+  $("#drawer").innerHTML =
+    "<h3>引用溯源 <span class=\"mono\" style=\"font-weight:600;color:var(--info)\">" + esc(id) + "</span>"
+    + '<button class="d-close" onclick="closeDrawer()">✕</button></h3>'
+    + '<div class="d-block"><div class="d-label">表述（CLAIM）</div><div class="d-val">' + esc(c.claim_text) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">证据摘录（快照第 ' + c.page + " 页页内原文）</div>"
+    + '<div class="d-quote">' + esc(c.evidence_excerpt) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">摘录指纹 sha256（已登记）</div><div class="digest">' + esc(c.evidence_excerpt_digest) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">信源</div><div class="d-val">' + esc((state.manifest.sources.find(s => s.content_sha256 === c.source_document_digest) || {}).title || c.source_document_digest)
+    + '<div class="digest" style="margin-top:4px">' + esc(c.source_document_digest) + "</div></div></div>"
+    + '<div class="d-verify">✓ 摘录指纹与登记一致、页内字面存在 —— 由 citation-checker 服务端复核</div>'
+    + '<div style="margin-top:18px"><button class="btn" onclick="viewPage(' + c.page + ')">在快照中查看第 ' + c.page + " 页</button></div>";
+  $("#drawer").classList.add("open");
+  $("#drawer-mask").classList.add("open");
+}
+function closeDrawer() {
+  $("#drawer").classList.remove("open");
+  $("#drawer-mask").classList.remove("open");
+}
+function viewPage(no) { closeDrawer(); switchTab("snapshot"); loadSnapshotPage(no); }
+$("#drawer-mask").addEventListener("click", closeDrawer);
+/* ———————————————————— 核验视图 ———————————————————— */
+let checkTarget = "positive";
+
+function renderCheckCard(id, name, cr) {
+  const el = $("#" + id);
+  if (!cr) { el.innerHTML = '<div class="check-head"><span class="cid">' + name + "</span></div><p style=\"font-size:13px;color:var(--destructive)\">核验请求失败</p>"; return; }
+  const vios = (cr.violations || []).map(v =>
+    '<div class="vio-row' + (v.severity === "WARNING" ? " warn" : "") + '">'
+    + '<span class="v-rule">' + esc(v.rule) + "</span>"
+    + "<div><div class=\"v-detail\">" + esc(v.detail) + "</div>"
+    + '<div class="v-target">target: ' + esc(v.target) + " · " + esc(v.severity) + "</div></div></div>").join("");
+  el.innerHTML = '<div class="check-head"><span class="cid">' + name
+    + "<small>v" + esc(cr.checker_version) + "</small></span>" + statusBadge(cr.status) + "</div>"
+    + (vios || '<div class="pass-note">全部检查通过，无违规项。</div>');
+}
+
+function renderChecksShell() {
+  $("#view-checks").innerHTML =
+    '<div class="card"><div class="check-toolbar">'
+    + '<div class="seg" id="check-seg"><button data-art="positive" class="active">正例工件</button>'
+    + '<button data-art="error">受控错误样例</button></div>'
+    + '<button class="btn primary" id="btn-run-checks">运行两项核验</button>'
+    + '<span style="font-size:12px;color:var(--muted)">核验全部在服务端执行：数值复算（N1–N7）+ 引用逐条溯源，不依赖模型自评。</span>'
+    + "</div></div>"
+    + '<div class="check-grid" style="margin-top:16px">'
+    + '<div class="card" id="res-numeric"><div class="check-head"><span class="cid">数值核验</span></div>'
+    + '<p style="font-size:13px;color:var(--muted)">选择工件后点击「运行两项核验」。</p></div>'
+    + '<div class="card" id="res-citation"><div class="check-head"><span class="cid">引用核验</span></div>'
+    + '<p style="font-size:13px;color:var(--muted)">选择工件后点击「运行两项核验」。</p></div></div>';
+  $("#check-seg").addEventListener("click", e => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    checkTarget = b.dataset.art;
+    document.querySelectorAll("#check-seg button").forEach(x => x.classList.toggle("active", x === b));
+  });
+  $("#btn-run-checks").addEventListener("click", async () => {
+    try {
+      const art = checkTarget === "error"
+        ? await jget("/demo/error-artifact.json") : clone(state.positive);
+      const [n, c] = await Promise.all([
+        jpost("/v1/checks/numeric", art), jpost("/v1/checks/citation", art)]);
+      renderCheckCard("res-numeric", "数值核验 numeric-checker", n.data);
+      renderCheckCard("res-citation", "引用核验 citation-checker", c.data);
+    } catch (e) { alert("核验失败: " + e.message); }
+  });
+}
+
+/* ———————————————————— 演示链（15 分钟分镜）———————————————————— */
+const demoStep = (no, title, desc, btnText, fn) =>
+  '<div class="step" id="demo-step-' + no + '"><div class="s-no">' + no + "</div><div>"
+  + '<div class="s-head"><span class="s-title">' + title + '</span>'
+  + '<span id="demo-badge-' + no + '"><span class="badge neutral">待执行</span></span></div>'
+  + '<div class="s-desc">' + desc + "</div>"
+  + '<div class="s-body"><button class="btn primary" onclick="demoStep' + no + '()">' + btnText + "</button>"
+  + '<div id="demo-res-' + no + '"></div></div></div></div>';
+
+function renderDemoShell() {
+  $("#view-demo").innerHTML =
+    '<div class="card no-print" style="border-left:3px solid var(--info)">'
+    + '<h3>演示分镜（对应演示 Story 9′–14′）</h3>'
+    + "<p style=\"font-size:13px;color:var(--muted)\">9′–12′：受控错误样例（拨备变动写成「%」）被数值核验器当场拦截 → 定向修订 → 重检通过；"
+    + "12′–14′：Alice 具名确认交付 → 模拟篡改内容 → 旧批准失效，错误草稿无法再获批准。逐步点击下方按钮即可复现。</p></div>"
+    + demoStep(1, "载入正例底稿", "多专业 agent 产出的结构化工件：8 项指标、8 条引用、4 节正文，全部绑定快照页码与摘录指纹。",
+      "载入正例工件", "demoStep1")
+    + demoStep(2, "受控错误样例核验（9′–12′）", "同一份草稿，仅把「拨备覆盖率较上年末下降20.19个百分点」写成「下降20.19%」——比率变动口径错误。",
+      "载入错误样例并运行数值核验", "demoStep2")
+    + demoStep(3, "定向修订并重检", "只修正该句口径（% → 个百分点），不改其余任何内容，重跑两项核验。",
+      "按口径修订并重检", "demoStep3")
+    + demoStep(4, "Alice 具名确认交付（12′–14′）", "提交批准时服务端重跑两项检查，批准记录与工件内容指纹（sha256）绑定。",
+      "提交 Alice 确认交付", "demoStep4")
+    + demoStep(5, "模拟篡改内容", "把拨备覆盖率 391.79 改成 391.99：内容指纹改变 → 原批准失效；核验器发现页内不存在的数字；再次申请批准被拒绝。",
+      "篡改 391.79 → 391.99 并重验", "demoStep5")
+    + demoStep(6, "重置演示", "恢复正例底稿与各步骤状态。", "重置", "demoStep6");
+}
+
+function setStep(no, cls, badge, res) {
+  $("#demo-step-" + no).className = "step" + (cls ? " " + cls : "");
+  $("#demo-badge-" + no).innerHTML = badge;
+  if (res !== undefined) $("#demo-res-" + no).innerHTML = res;
+}
+const s2body = a => a.sections.find(s => s.section_id === "S-2");
+
+async function demoStep1() {
+  state.artifact = clone(state.positive);
+  renderReport();
+  const s = s2body(state.artifact).body.match(/拨备覆盖率[^。]*。/)?.[0] || "";
+  setStep(1, "done", '<span class="badge success">已载入</span>',
+    '<div class="quote">' + esc(s).replace("下降20.19个百分点",
+      '<span class="fix">下降20.19个百分点</span>') + "</div>"
+    + '<div style="font-size:12px;color:var(--muted)">口径正确：比率变动以「个百分点」表述。报告视图已同步刷新为正例。</div>');
+}
+
+async function demoStep2() {
+  state.artifact = await jget("/demo/error-artifact.json");
+  renderReport();
+  const r = await jpost("/v1/checks/numeric", state.artifact);
+  const vios = (r.data.violations || []).map(v =>
+    '<div class="vio-row"><span class="v-rule">' + esc(v.rule) + "</span>"
+    + "<div><div class=\"v-detail\">" + esc(v.detail) + "</div>"
+    + '<div class="v-target">target: ' + esc(v.target) + " · " + esc(v.severity) + "</div></div></div>").join("");
+  const s = s2body(state.artifact).body.match(/拨备覆盖率[^。]*。/)?.[0] || "";
+  setStep(2, "blocked", '<span class="badge destructive">已拦截 BLOCKING</span>',
+    '<div class="quote">' + esc(s).replace("下降20.19%",
+      "<mark>下降20.19%</mark>") + "</div>" + vios
+    + '<div style="font-size:12px;color:var(--muted)">数值核验器 N7「变动口径铁律」：拨备覆盖率属比率类指标，其变动必须以「个百分点」表述，「%」口径直接拦截。</div>');
+}
+
+async function demoStep3() {
+  s2body(state.artifact).body = s2body(state.artifact).body
+    .replace("下降20.19%", "下降20.19个百分点");
+  renderReport();
+  const [n, c] = await Promise.all([
+    jpost("/v1/checks/numeric", state.artifact),
+    jpost("/v1/checks/citation", state.artifact)]);
+  const allPassed = n.data.status === "PASSED" && c.data.status === "PASSED";
+  setStep(3, allPassed ? "done" : "blocked",
+    allPassed ? '<span class="badge success">两项核验 PASSED</span>' : '<span class="badge destructive">仍有违规</span>',
+    '<div class="quote">' + esc(s2body(state.artifact).body.match(/拨备覆盖率[^。]*。/)?.[0] || "")
+      .replace("下降20.19个百分点", '<span class="fix">下降20.19个百分点</span>') + "</div>"
+    + '<div class="pass-note">数值核验 ' + esc(n.data.checker_version) + "：PASSED（" + (n.data.violations || []).length
+    + " 项违规）· 引用核验 " + esc(c.data.checker_version) + "：PASSED（" + (c.data.violations || []).length
+    + " 项违规）。仅改动一处口径，其余内容零改动。</div>');
+}
+
+async function demoStep4() {
+  const r = await jpost("/v1/approvals?approver=" + encodeURIComponent("Alice"), state.artifact);
+  if (r.ok) {
+    state.approval = r.data;
+    setStep(4, "done", '<span class="badge success">已批准 ' + esc(r.data.approval_id) + "</span>",
+      '<div class="approval-card"><b style="color:var(--success)">交付批准已签发</b><div class="a-grid">'
+      + "<span><b>批准编号</b><span class=\"mono\">" + esc(r.data.approval_id) + "</span></span>"
+      + "<span><b>批准人</b>" + esc(r.data.approver) + "</span>"
+      + "<span><b>批准时间</b><span class=\"mono\">" + esc(r.data.approved_at) + "</span></span>"
+      + "<span><b>数值核验</b>PASSED · " + esc(r.data.checks.numeric.checker_version) + "</span>"
+      + "<span><b>引用核验</b>PASSED · " + esc(r.data.checks.citation.checker_version) + "</span></div>"
+      + '<div style="margin-top:8px"><b>绑定的工件指纹</b></div><div class="digest">' + esc(r.data.artifact_digest) + "</div></div>");
+  } else {
+    setStep(4, "refused", '<span class="badge destructive">被拒绝</span>',
+      '<div class="refused-card">HTTP ' + r.status + "：" + esc((r.data || {}).message || "未知错误") + "</div>");
+  }
+  refreshApproval();
+}
+
+async function demoStep5() {
+  const pc = state.artifact.metrics.find(m => m.key === "PROVISION_COVERAGE");
+  pc.value = "391.99";
+  s2body(state.artifact).body = s2body(state.artifact).body
+    .replace("拨备覆盖率391.79%", "拨备覆盖率391.99%");
+  renderReport();
+  const d = await jpost("/v1/artifacts/digest", state.artifact);
+  const n = await jpost("/v1/checks/numeric", state.artifact);
+  const apr = await jpost("/v1/approvals?approver=" + encodeURIComponent("Alice"), state.artifact);
+  const oldDigest = state.approval && state.approval.artifact_digest;
+  const stale = oldDigest && oldDigest !== d.data.artifact_digest;
+  const vios = (n.data.violations || []).map(v =>
+    '<div class="vio-row"><span class="v-rule">' + esc(v.rule) + "</span>"
+    + "<div><div class=\"v-detail\">" + esc(v.detail) + "</div>"
+    + '<div class="v-target">target: ' + esc(v.target) + " · " + esc(v.severity) + "</div></div></div>").join("");
+  setStep(5, "blocked", '<span class="badge destructive">拦截 + 批准失效</span>',
+    (stale ? '<div class="diff-banner"><b style="color:var(--destructive);white-space:nowrap">内容已变更，原批准失效</b>'
+      + "<div>新工件指纹 <span class=\"mono\">" + short(d.data.artifact_digest, 18) + "</span> ≠ 批准时指纹 <span class=\"mono\">"
+      + short(oldDigest, 18) + "</span> —— 批准只对签发时的内容负责。</div></div>" : "")
+    + vios
+    + '<div class="refused-card" style="margin-top:10px"><b>再次申请批准：HTTP ' + apr.status
+    + " REFUSED</b><br>" + esc((apr.data || {}).message || "") + "</div>"
+    + '<div style="font-size:12px;color:var(--muted)">N3「数字来源」：391.99 未在快照页内字面出现，判定为编造数字；错误草稿不能获得交付批准。</div>');
+}
+
+async function demoStep6() {
+  state.artifact = clone(state.positive);
+  state.demo.done = {};
+  renderReport();
+  renderDemoShell();
+  refreshApproval();
+}
+
+/* ———————————————————— 信源视图 ———————————————————— */
+function renderSources() {
+  const m = state.manifest;
+  const cards = m.sources.map(s =>
+    '<div class="src-card"><span class="badge success">' + esc(s.authority) + "</span>"
+    + '<div class="s-title">' + esc(s.title) + "</div>"
+    + '<div class="s-rows"><b>信源 ID</b> <span class="mono">' + esc(s.source_id) + "</span><br>"
+    + "<b>来源</b> " + esc(s.origin_url) + "<br>"
+    + "<b>落盘时间</b> " + esc(s.fetched_at) + "</div>"
+    + '<div class="s-pages">' + s.pages.map(p =>
+      '<button class="chip" onclick="viewPage(' + Number(p) + ')">P' + Number(p) + "</button>").join("")
+    + "</div>"
+    + '<div class="digest" style="margin-top:10px">content_sha256 = ' + esc(s.content_sha256) + "</div>"
+    + (s.note ? '<div style="font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.8">注：'
+      + esc(s.note) + "</div>" : "") + "</div>").join("");
+  $("#view-sources").innerHTML =
+    '<div class="card"><h3>信源注册表<span class="hint">' + esc(m.snapshot_version) + "</span></h3>"
+    + '<div class="kv"><b>公司</b>' + esc(m.company) + "</div>"
+    + '<div class="kv"><b>报告期</b>' + esc(m.report_period) + "</div>"
+    + '<div class="kv"><b>快照生成</b>' + esc(m.generated_at) + "</div>"
+    + '<div class="kv"><b>说明</b>信源为公开披露年报的落盘快照（不实时访问外网），content_sha256 与页文本一一对应；引用核验器只承认注册表内的信源与页码。</div>'
+    + "</div>"
+    + '<div class="src-grid" style="margin-top:16px">' + cards + "</div>";
+}
+
+/* ———————————————————— 初始化 ———————————————————— */
+(async function init() {
+  const hb = $("#health-badge");
+  try {
+    const [health, manifest, sources, positive] = await Promise.all([
+      jget("/health"), jget("/v1/snapshot/manifest"),
+      jget("/v1/sources"), jget("/demo/positive-artifact.json")
+    ]);
+    state.health = health; state.manifest = manifest;
+    state.sources = sources; state.positive = positive;
+    state.artifact = clone(positive);
+    hb.className = "badge success"; hb.textContent = "服务在线";
+    $("#health-ver").textContent = "numeric " + health.numeric_checker_version
+      + " · citation " + health.citation_checker_version;
+    try {
+      const p46 = await jget("/v1/snapshot/pages/46");
+      state.y2024 = extract2024(p46.text);
+    } catch (e) { state.y2024 = {}; }
+    renderOverview(); refreshApproval();
+    renderSnapshotShell(); loadSnapshotPage(18);
+    renderReport(); renderChecksShell(); renderDemoShell(); renderSources();
+  } catch (e) {
+    hb.className = "badge destructive"; hb.textContent = "连接失败";
+    document.querySelectorAll(".view").forEach(v => v.innerHTML =
+      '<div class="card"><p style="font-size:13px;color:var(--destructive)">数据加载失败：'
+      + esc(e.message) + "</p><p style=\"font-size:12px;color:var(--muted)\">请确认 w06-checker 服务（:18095）可达。</p></div>");
+  }
+})();
+
+
+</script>
+
+</body>
+</html>

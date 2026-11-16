@@ -1,0 +1,97 @@
+{
+    "answer_version":  "reference-answer@1.0.0",
+    "task_id":  "TASK-2025-AR-001",
+    "company":  "招商银行股份有限公司",
+    "report_period":  "2025年度",
+    "note":  "W01 标准答案：八项关键指标（含同比变动口径），供 MetricsAgent 对照与 wrapper 演示链使用。",
+    "metrics":  [
+                    {
+                        "key":  "OPERATING_REVENUE",
+                        "value":  "3,375.32",
+                        "unit":  "亿元",
+                        "period":  "2025年度",
+                        "source_document_digest":  "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+                        "page":  18,
+                        "evidence_excerpt_digest":  "6677359cdfa3f17bd61ef66fbd4117e4377e167e1ada359c83ae6412e22b66f9",
+                        "yoy_delta":  "+0.01",
+                        "delta_unit":  "PERCENT"
+                    },
+                    {
+                        "key":  "NET_PROFIT_ATTRIBUTABLE",
+                        "value":  "1,501.81",
+                        "unit":  "亿元",
+                        "period":  "2025年度",
+                        "source_document_digest":  "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+                        "page":  18,
+                        "evidence_excerpt_digest":  "5e7f97f3b7d2cac8e3ccd6c7c9c317c86b6f318380a3b69e19ca99a2a4e049d0",
+                        "yoy_delta":  "+1.21",
+                        "delta_unit":  "PERCENT"
+                    },
+                    {
+                        "key":  "NET_INTEREST_MARGIN",
+                        "value":  "1.87",
+                        "unit":  "%",
+                        "period":  "2025年度",
+                        "source_document_digest":  "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+                        "page":  18,
+                        "evidence_excerpt_digest":  "ae67d0eb8ba4abf877c8c8dfc46737c23cf5c793c1a34f69b1cf6cf322dad5d5",
+                        "yoy_delta":  "-11",
+                        "delta_unit":  "BASIS_POINT"
+                    },
+                    {
+                        "key":  "COST_INCOME_RATIO",
+                        "value":  "31.98",
+                        "unit":  "%",
+                        "period":  "2025年度",
+                        "source_document_digest":  "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+                        "page":  18,
+                        "evidence_excerpt_digest":  "dfcc964586fcf516a8f5c3033f62ffd5c950c0bf0fce5f333c3019f8d4d5a135",
+                        "yoy_delta":  "+0.09",
+                        "delta_unit":  "PERCENTAGE_POINT"
+                    },
+                    {
+                        "key":  "NPL_BALANCE",
+                        "value":  "682.06",
+                        "unit":  "亿元",
+                        "period":  "2025年度",
+                        "source_document_digest":  "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+                        "page":  30,
+                        "evidence_excerpt_digest":  "35d7410106a56e7aba15de540e60b6441b8b1d31aaa94382b39878d28b2b4ef0",
+                        "yoy_delta":  "+25.96",
+                        "delta_unit":  "YUAN"
+                    },
+                    {
+                        "key":  "NPL_RATIO",
+                        "value":  "0.94",
+                        "unit":  "%",
+                        "period":  "2025年度",
+                        "source_document_digest":  "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+                        "page":  30,
+                        "evidence_excerpt_digest":  "c65808de97af8c31f6fe09c378a6f78a1e67d06b367511e16f614bdef1e7bb70",
+                        "yoy_delta":  "-0.01",
+                        "delta_unit":  "PERCENTAGE_POINT"
+                    },
+                    {
+                        "key":  "PROVISION_COVERAGE",
+                        "value":  "391.79",
+                        "unit":  "%",
+                        "period":  "2025年度",
+                        "source_document_digest":  "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+                        "page":  30,
+                        "evidence_excerpt_digest":  "a94b079ae0ea33c81367e2b731b344fa681d66e17624c7ab1c37e0b86e5345f8",
+                        "yoy_delta":  "-20.19",
+                        "delta_unit":  "PERCENTAGE_POINT"
+                    },
+                    {
+                        "key":  "CET1_RATIO",
+                        "value":  "14.16",
+                        "unit":  "%",
+                        "period":  "2025年度",
+                        "source_document_digest":  "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+                        "page":  37,
+                        "evidence_excerpt_digest":  "07a9573653494b41c483eec3ee8ed25ad738c6adf616637e86e36938cd11d1b6",
+                        "yoy_delta":  "-0.70",
+                        "delta_unit":  "PERCENTAGE_POINT"
+                    }
+                ]
+}

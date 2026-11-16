@@ -7,6 +7,8 @@
  *  N3 数字来源：value 必须能在 source page 的原文中以字面出现（FABRICATED_NUMBER）
  *  N4 派生复算：可机器复算的口径（不良率=不良余额/贷款总额 等）逐项复算（CALC_MISMATCH）
  *  N5 期间成对：同比类指标须同时有本期与上期，或显式标注（PERIOD_MISMATCH）
+ *  N6 跨期同比：正文同比论断按句归属（营业收入/净利润）后与上年度对比页复算（YOY_MISMATCH）
+ *  N7 变动口径：比率变动用「个百分点/基点」、金额用「亿元」、增长率才用「%」（DELTA_UNIT_MISMATCH）
  *
  * 输入之外不查任何网络 —— 快照 digest 与页码是唯一事实来源。
  */
@@ -18,14 +20,16 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 public final class NumericChecker {
 
     public static final String CHECKER_ID = "numeric-checker";
-    public static final String CHECKER_VERSION = "0.1.0";
+    public static final String CHECKER_VERSION = "0.2.0";
 
     /** 指标 → 约定单位（W01 冻结口径；单位错误即 A07）。 */
     private static final Map<MetricKey, String> EXPECTED_UNITS = Map.of(
@@ -40,6 +44,10 @@ public final class NumericChecker {
 
     /** 原文数字匹配：容忍千分位逗号。 */
     private static final Pattern NUMBER = Pattern.compile("\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?");
+
+    /** N7 变动短语：方向词 + 幅度 + 口径单位词（个百分点/基点/亿元/%）。 */
+    private static final Pattern DELTA_PHRASE = Pattern.compile(
+            "(上升|下降|增加|减少|增减|变动|增长)\\s*(?:约\\s*)?([\\d,]+(?:\\.\\d+)?)\\s*(个百分点|基点|亿元|%|％)");
 
     public CheckResult check(AnnualReportArtifacts draft, SnapshotTextResolver resolver) {
         List<Violation> violations = new ArrayList<>();
@@ -83,6 +91,9 @@ public final class NumericChecker {
         // N6 跨期同比：上期值来自独立信源页（如 page-46），本期同比必须与两期值一致
         yoyCheck(draft, byKey, resolver, violations);
 
+        // N7 变动口径：比率变动误写 % / 金额变动误写个百分点 → 拦截
+        deltaUnitCheck(draft, violations);
+
         boolean waiting = violations.stream().anyMatch(x -> x.severity() == Severity.WARNING)
                 && violations.stream().noneMatch(x -> x.severity() == Severity.BLOCKING);
         return new CheckResult(CHECKER_ID, CHECKER_VERSION,
@@ -93,64 +104,142 @@ public final class NumericChecker {
 
     /**
      * N6 跨期同比复算（指标字典「期间规则」）：
-     * 报告正文含"同比+增速"论断时，用快照中可定位的上期值与本期值复算。
-     * 上期值从上年度信源页正则定位；定位不到时降级 WARNING（PERIOD_BASE_MISSING）。
+     * 报告正文含"同比+增速"论断时，先按句归属（营业收入 / 净利润），
+     * 再用上年度对比页的上期值与本期值复算；定位不到时降级 WARNING（PERIOD_BASE_MISSING）。
      */
     private void yoyCheck(AnnualReportArtifacts draft, Map<MetricKey, MetricValue> byKey,
                           SnapshotTextResolver resolver, List<Violation> out) {
-        // 本期营业收入
         MetricValue rev = byKey.get(MetricKey.OPERATING_REVENUE);
-        if (rev == null || "NOT_FOUND".equals(rev.value())) {
-            return;
+        MetricValue profit = byKey.get(MetricKey.NET_PROFIT_ATTRIBUTABLE);
+        boolean hasRev = rev != null && !"NOT_FOUND".equals(rev.value());
+        boolean hasProfit = profit != null && !"NOT_FOUND".equals(profit.value());
+        if (!hasRev && !hasProfit) {
+            return; // 留给 N1 报告
         }
-        // 上期值：扫描非本期指标页之外的快照页，找"2024年...营业收入<数>亿元"
-        String priorPage = findPriorYearRevenue(resolver, rev.page());
+        // 上期值：扫描本期指标页之外的快照页，找含「2024年」的对比页
+        String priorPage = findPriorYearPage(resolver, rev, profit);
         if (priorPage == null) {
             out.add(v("PERIOD_BASE_MISSING", "OPERATING_REVENUE",
-                    "快照未定位 2024 年营业收入基数，同比复算降级为人工核对", Severity.WARNING));
+                    "快照未定位上年度对比页，同比复算降级为人工核对", Severity.WARNING));
             return;
         }
-        try {
-            var m = java.util.regex.Pattern.compile("营业收入([\\d,]+(?:\\.\\d+)?)亿元").matcher(priorPage);
-            if (!m.find()) {
-                return;
-            }
-            BigDecimal prior = new BigDecimal(m.group(1).replace(",", ""));
-            BigDecimal current = new BigDecimal(rev.value().replace(",", ""));
-            BigDecimal yoy = current.subtract(prior)
-                    .divide(prior, 4, java.math.RoundingMode.HALF_UP)
-                    .multiply(BigDecimal.valueOf(100));
-            // 若正文含"同比"+百分比，校验其与复算值一致（±0.1pp）
-            for (ReportSection sec : draft.sections()) {
-                var pm = java.util.regex.Pattern
-                        .compile("同比(?:增长|下降|减少|增加)?([\\d.]+)%").matcher(sec.body());
-                while (pm.find()) {
+        for (ReportSection sec : draft.sections()) {
+            var pm = java.util.regex.Pattern
+                    .compile("同比(?:增长|下降|减少|增加|上升)?\\s*([\\d.]+)\\s*%").matcher(sec.body());
+            while (pm.find()) {
+                String subject = classifySubject(sec.body(), pm.start());
+                if (subject == null) {
+                    continue; // 论断归属不到指标，交由人工
+                }
+                MetricValue current = "净利润".equals(subject) ? profit : rev;
+                if (current == null || "NOT_FOUND".equals(current.value())) {
+                    continue;
+                }
+                try {
+                    BigDecimal prior = findNumberAfter(priorPage, subject);
+                    if (prior == null || prior.signum() == 0) {
+                        continue;
+                    }
+                    BigDecimal cur = new BigDecimal(current.value().replace(",", ""));
+                    BigDecimal yoy = cur.subtract(prior)
+                            .divide(prior, 4, RoundingMode.HALF_UP)
+                            .multiply(BigDecimal.valueOf(100));
                     BigDecimal claimed = new BigDecimal(pm.group(1));
                     if (yoy.abs().subtract(claimed.abs()).abs()
                             .compareTo(new BigDecimal("0.1")) > 0) {
-                        out.add(v("YOY_MISMATCH", "OPERATING_REVENUE",
-                                "正文同比 " + pm.group(1) + "% vs 复算 " + yoy.setScale(2, java.math.RoundingMode.HALF_UP) + "%",
+                        out.add(v("YOY_MISMATCH", current.key().name(),
+                                "正文" + subject + "同比 " + pm.group(1) + "% vs 复算 "
+                                        + yoy.setScale(2, RoundingMode.HALF_UP) + "%",
                                 Severity.BLOCKING));
                     }
+                } catch (NumberFormatException ignored) {
+                    // 数值不可解析，跳过交由 N2/N3 报告
                 }
             }
-        } catch (NumberFormatException ignored) {
-            // 正文无同比论断则跳过
         }
     }
 
-    /** 定位上年度营收页：从 resolver 可见的所有页里找含 2024 年营业收入的（跳过本期页）。 */
-    private String findPriorYearRevenue(SnapshotTextResolver resolver, int currentPage) {
+    /** 回看 match 前 30 字符窗口，判断同比论断归属（营业收入/净利润）；归属不到返回 null。 */
+    static String classifySubject(String body, int matchStart) {
+        String window = body.substring(Math.max(0, matchStart - 30), matchStart);
+        int revIdx = window.lastIndexOf("营业收入");
+        int profitIdx = window.lastIndexOf("净利润");
+        if (revIdx < 0 && profitIdx < 0) {
+            return null;
+        }
+        return profitIdx > revIdx ? "净利润" : "营业收入";
+    }
+
+    /** 定位上年度对比页：含「2024年」且非本期指标页。 */
+    private String findPriorYearPage(SnapshotTextResolver resolver,
+                                     MetricValue... currentMetrics) {
+        Set<Integer> currentPages = new HashSet<>();
+        for (MetricValue m : currentMetrics) {
+            if (m != null) {
+                currentPages.add(m.page());
+            }
+        }
         for (int pg = 1; pg <= 200; pg++) {
-            if (pg == currentPage) {
+            if (currentPages.contains(pg)) {
                 continue;
             }
             String text = resolver.textOf(null, pg);
-            if (text != null && text.contains("2024年") && text.contains("营业收入")) {
+            if (text != null && text.contains("2024年")) {
                 return text;
             }
         }
         return null;
+    }
+
+    /**
+     * N7 变动口径（年报表述铁律）：
+     * 比率类变化（不良率/拨备覆盖率/成本收入比/CET1）→「个百分点」；净息差 →「基点」；
+     * 金额类（不良余额）→「亿元」；增长率（营收/净利同比）才用「%」。
+     * 工件的 yoy_delta/delta_unit 是归属指标的口径事实，正文短语与口径不符即拦截。
+     */
+    private void deltaUnitCheck(AnnualReportArtifacts draft, List<Violation> out) {
+        Set<BigDecimal> ratioDeltas = new HashSet<>();
+        Set<BigDecimal> percentDeltas = new HashSet<>();
+        Set<BigDecimal> yuanDeltas = new HashSet<>();
+        for (MetricValue m : draft.metrics()) {
+            if (m.yoyDelta() == null || m.deltaUnit() == null) {
+                continue;
+            }
+            BigDecimal d = normalizeDelta(m.yoyDelta());
+            switch (m.deltaUnit()) {
+                case PERCENTAGE_POINT, BASIS_POINT -> ratioDeltas.add(d);
+                case PERCENT -> percentDeltas.add(d);
+                case YUAN -> yuanDeltas.add(d);
+            }
+        }
+        for (ReportSection sec : draft.sections()) {
+            var m = DELTA_PHRASE.matcher(sec.body());
+            while (m.find()) {
+                BigDecimal num = normalizeDelta(m.group(2));
+                String unitWord = m.group(3);
+                if (unitWord.equals("%") || unitWord.equals("％")) {
+                    // 比率指标的变动值却用 % 表述；若另有增长率指标同值则视为合法增速表述
+                    if (ratioDeltas.contains(num) && !percentDeltas.contains(num)) {
+                        out.add(v("DELTA_UNIT_MISMATCH", sec.sectionId(),
+                                "「" + m.group() + "」：比率变动误用 %，应为「个百分点」或「基点」",
+                                Severity.BLOCKING));
+                    }
+                } else if (unitWord.equals("个百分点") || unitWord.equals("基点")) {
+                    // 金额指标的变动值却用比率单位表述
+                    if (yuanDeltas.contains(num) && !ratioDeltas.contains(num)) {
+                        out.add(v("DELTA_UNIT_MISMATCH", sec.sectionId(),
+                                "「" + m.group() + "」：金额变动误用比率单位，应为「亿元」",
+                                Severity.BLOCKING));
+                    }
+                }
+            }
+        }
+    }
+
+    /** 归一化变动幅度（去千分位/符号，0.940 → 0.94，20.0 → 20）用于口径比较。 */
+    private static BigDecimal normalizeDelta(String raw) {
+        BigDecimal d = new BigDecimal(raw.replace(",", "")).abs().stripTrailingZeros();
+        return d.scale() < 0 ? d.setScale(0) : d;
     }
 
     private void derivedCheck(Map<MetricKey, MetricValue> byKey,
