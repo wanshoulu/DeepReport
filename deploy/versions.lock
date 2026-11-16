@@ -15,15 +15,16 @@ python = "3.12"          # checker 的沙箱复算若走 SandboxRail（可选）
 annual-report-snapshot = "sha256:02532e2a493e35256024fe6a762bc4d8965e366a91f27cf41808f6d2e2419c19"   # 招商银行 2025 年报快照 manifest.json（旧布局沿用）
 annual-report-snapshot-cmb = "sha256:e36ad7ebb4dafe393afb3fd4c7eaac9c430613c025778db2472e26384bf887c8"   # 招商银行快照 manifest.json（多银行布局）
 annual-report-snapshot-icbc = "sha256:8cb7468b77baf4d7e187f0b26583a6e466210c3942435f2725161e19cce8cf85"   # 工商银行快照 manifest.json（新增）
-annual-report-snapshot-ccb = "sha256:d6c887e48bd76bc2549feabb562de08dc8301c7cb2cf8251d4499cc906deb46a"   # 建设银行快照 manifest.json（新增）
+annual-report-snapshot-ccb = "sha256:316a08fe4b606adba867d24e6d876cb0c1f4e4f8d522eb51e5577838862be2cd"   # 建设银行快照 manifest.json（0.3.3：真实披露页扩充 + source_note）
 reference-metrics = "sha256:c19e5a7c20c27f36a4f7fba922e305e8c675bec989a9ed15bb28c0601a761181"        # 八指标独立参考答案 reference-answer.json
 
 # 模型（部署侧配置，密钥不进代码/Issue/日志/镜像）
-# 本场景（0.3.2）为无外网纯规则核验：数值/引用核验均确定性，批准由具名人工确认，不依赖 LLM
+# 本场景（0.3.3）为无外网纯规则核验：数值/引用核验均确定性，批准由具名人工确认，不依赖 LLM
 model-deployment = "（本场景不依赖：服务器无外网，核验全确定性 + 具名人工批准）"
 critic-model = "（本场景不依赖：critic 语义核验暂未接入）"
 
 # 本包自身
-w06-annual-report-agent = "0.3.2"
-w06-checker-image = "0.3.2"      # w06-checker:0.3.2（构建期内 19 项 JUnit 全通过；多银行快照 resolver + 工件顶层 charts + CheckResult 绑定 artifact_sha256）
-workbench = "2.2.0"              # deploy/workbench.html 五页签工作台（+图表四类内联 SVG 随稿渲染 / 多银行选择与按银行模板 / 报告库多银行详情）
+w06-annual-report-agent = "0.3.3"
+w06-checker-image = "0.3.3"      # w06-checker:0.3.3（构建期内 19 项 JUnit 全通过；多银行 resolver/charts/CheckResult 绑定 artifact_sha256 + 上游依赖锁定回填真实冻结值）
+workbench = "2.2.0"              # deploy/workbench.html 五页签工作台（+图表四类内联 SVG 随稿渲染 / 多银行选择与按银行模板 / 报告库多银行详情 / 标题中性化）
+ccb-snapshot-pages = "74"        # 建行快照：官网《2025年半年度报告》真实披露页 P2-P75 节选 70 页 + 数值演示页 4 页（manifest.source_note 标注口径）
