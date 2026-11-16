@@ -1,10 +1,11 @@
 # W06 版本锁（开工前一次性冻结 —— v2 §14 口径）
 
-# 上游依赖
+# 上游依赖（回填 2026-11-16 与 pom.xml 实际对齐的真实冻结值）
 agent-solution = "bf702bc95064d3491cf8b374f54d271363d84230"   # openJiuwen 固定快照
-agent-core-java = "0.1.3"
-agent-runtime-java = "0.1.3"
-agent-core-ext-react-rails = "0.1.3"
+agent-core-java = "0.1.17"          # com.openjiuwen core（ReActAgent/Rail/AgentCard/Tool）
+agent-runtime-java = "0.1.4"        # 聚合 pom，真正构件为 agent-service-*
+agent-core-memory-java = "0.1.16"
+agent-core-ext-react-rails = "0.1.3"   # CriteriaReplanBridgeRail / RootCauseRail 扩展轨
 
 # 运行时
 jdk = "21"
