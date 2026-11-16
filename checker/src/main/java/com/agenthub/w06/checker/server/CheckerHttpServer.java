@@ -10,6 +10,9 @@
  *  GET  /v1/snapshot/pages/{n}[?bank=]   按页码读快照页文本（含该页 digest）
  *  POST /v1/checks/numeric               数值纪律检查（N1–N7）
  *  POST /v1/checks/citation              引用核验（含信源注册表与支持度）
+ *  GET  /v1/tools                        MCP 风格联网工具网关：工具注册表（deploy/tools.json 配置驱动）
+ *  POST /v1/tools/call                   统一工具调用 {tool_name, arguments}：
+ *                                       web_search / web_fetch / pdf_extract / snapshot_commit（0.3.5）
  *  GET  /demo/{positive|error}-artifact.json  演示工件（受控样例）
  *  GET  /demo/reference-answer.json      W01 标准答案
  *  POST /v1/artifacts/digest             工件规范化 digest（Jackson 重序列化字节 → sha256）
@@ -216,6 +219,16 @@ public final class CheckerHttpServer {
                 if (pages != null && pages.contains(page)) {
                     return scoped.byPageNumber.get(page);
                 }
+                // 信源级 sha 同样全局唯一：scoped 未命中时跨快照库兜底（live 联网快照可被任意工件引用）
+                for (BankSnap b : banks.values()) {
+                    if (b == scoped) {
+                        continue;
+                    }
+                    Set<Integer> crossPages = b.sourcePages.get(digest);
+                    if (crossPages != null && crossPages.contains(page)) {
+                        return b.byPageNumber.get(page);
+                    }
+                }
                 return null; // digest 给定却未命中 → null，绝不按页码回退
             }
             return scope(bank).byPageNumber.get(page);
@@ -256,9 +269,11 @@ public final class CheckerHttpServer {
         Path snapshotDir = Path.of(System.getenv().getOrDefault("SNAPSHOT_DIR", "/snapshot"));
         Path staticDir = Path.of(System.getenv().getOrDefault("STATIC_DIR", "/app"));
         loadReportStructure(staticDir);               // 骨架配置（节序/标题/静态正文/责任 agent 唯一事实源）
+        ToolGateway.load(staticDir);                  // MCP 工具网关注册表（deploy/tools.json 配置驱动）
 
         SnapshotHttpResolver resolver = new SnapshotHttpResolver(snapshotDir);
-        List<SourceEntry> sources = loadSourceEntries(resolver);
+        // CopyOnWriteArrayList：snapshot_commit 运行时追加信源（并发核验读安全，无需重启）
+        List<SourceEntry> sources = new java.util.concurrent.CopyOnWriteArrayList<>(loadSourceEntries(resolver));
         preloadTasks(staticDir, snapshotDir, resolver, sources);   // 报告库预置 4 条历史任务（三银行）
         seedAgents();                                 // Agent Hub：10 运行时 + 3 市场目录
         seedSkills();                                 // 技能注册表：7 个技能（可绑定给 agent）
@@ -280,7 +295,8 @@ public final class CheckerHttpServer {
         System.out.println("W06 checker server up on :" + port
                 + "  snapshot=" + snapshotDir + "  banks=" + resolver.banks.keySet()
                 + "  sources=" + sources.size()
-                + "  numeric=" + NumericChecker.CHECKER_VERSION);
+                + "  numeric=" + NumericChecker.CHECKER_VERSION
+                + "  tools=" + ToolGateway.REGISTRY.size());
     }
 
     private static void route(HttpExchange ex, Path snapshotDir, Path staticDir,
@@ -391,6 +407,15 @@ public final class CheckerHttpServer {
         }
         if ("/v1/pipeline/run".equals(path) && "POST".equals(method)) {
             handlePipelineRun(ex, resolver, sources);
+            return;
+        }
+        if ("/v1/tools".equals(path) && "GET".equals(method)) {
+            respond(ex, 200, ToolGateway.list());
+            return;
+        }
+        if ("/v1/tools/call".equals(path) && "POST".equals(method)) {
+            JsonNode toolBody = MAPPER.readTree(ex.getRequestBody());
+            respond(ex, 200, ToolGateway.call(toolBody, snapshotDir, resolver, sources));
             return;
         }
         if (path.startsWith("/demo/") && "GET".equals(method)) {
@@ -681,6 +706,12 @@ public final class CheckerHttpServer {
             det1.add(src.path("title").asText("（未命名信源）") + " — " + src.path("pages").size() + " 页");
         }
         det1.add("指标索引 " + art.metrics().size() + " 项，口径与单位以指标字典为准");
+        if (!ToolGateway.REGISTRY.isEmpty()) {
+            d1.put("tools_available", ToolGateway.REGISTRY.size());
+            det1.add("联网工具 " + ToolGateway.REGISTRY.size() + " 个（POST /v1/tools/call）: "
+                    + String.join(" / ", ToolGateway.REGISTRY.keySet())
+                    + " —— 外部素材须 snapshot_commit 落盘注册后方可引用");
+        }
         stages.add(s1);
 
         // 2) 分析：逐指标洞察（值·单位·同比口径），口径文案由 DeltaUnit 承载

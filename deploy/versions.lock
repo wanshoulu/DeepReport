@@ -20,12 +20,15 @@ annual-report-structure = "sha256:bc0dd35c4e5b4e16c4f3c1eeb974f7d5e69ca2ac597e6c
 reference-metrics = "sha256:c19e5a7c20c27f36a4f7fba922e305e8c675bec989a9ed15bb28c0601a761181"        # 八指标独立参考答案 reference-answer.json
 
 # 模型（部署侧配置，密钥不进代码/Issue/日志/镜像）
-# 本场景（0.3.4）为无外网纯规则核验：数值/引用核验均确定性，批准由具名人工确认，不依赖 LLM
-model-deployment = "（本场景不依赖：服务器无外网，核验全确定性 + 具名人工批准）"
+# 0.3.5 起接入 MCP 工具层（联网查询/抓取/快照注册），核验仍全确定性，批准由具名人工确认，不依赖 LLM
+# 服务器运行时外网实测（2026-11-16）：cn.bing.com 可达（主搜索引擎）；html.duckduckgo.com 不通；百度 302 风控；
+#   www.ccb.com 不通（建行官网演示改走可达站点）；www.icbc.com.cn / www.gov.cn / static.cninfo.com.cn（巨潮法定披露平台）可达
+model-deployment = "（本场景不依赖：核验全确定性 + 具名人工批准；联网查询走 MCP 工具层 /v1/tools/call）"
 critic-model = "（本场景不依赖：critic 语义核验暂未接入）"
 
 # 本包自身
-w06-annual-report-agent = "0.3.4"
-w06-checker-image = "0.3.4"      # w06-checker:0.3.4（构建期内 19 项 JUnit 全通过；+/v1/pipeline/run 六工位 trace（查数→分析→图表→写作→核验→主编）全配置驱动 + report-structure.json 进镜像 + chart-agent 注册（团队 9 成员/技能 7 门））
-workbench = "2.3.0"              # deploy/workbench.html 五页签工作台（澄清对象与腐化/修复文案数据驱动取自工件指标 + 生成走 /v1/pipeline/run 逐工位播报 + 图表内联随稿）
+w06-annual-report-agent = "0.3.5"
+w06-checker-image = "0.3.5"      # w06-checker:0.3.5（构建期内 19 项 JUnit 全通过；0.3.4 六工位 pipeline 之上新增 ToolGateway MCP 工具网关：GET /v1/tools + POST /v1/tools/call，四真实联网工具 web_search/web_fetch/pdf_extract(PDFBox 3.0.3)/snapshot_commit，注册表 deploy/tools.json 配置驱动，fail-closed，抓取产物落盘 /snapshot/live + sha256 注册保核验链闭环）
+workbench = "2.4.0"              # deploy/workbench.html 五页签工作台（0.3.5：MCP 资产页改读 GET /v1/tools 服务端注册表渲染（前端零硬编码）+ 工具详情抽屉支持真实调用试运行）
+w06-tool-registry = "deploy/tools.json"   # MCP 工具注册表唯一事实源（清单/参数/默认参数/样例参数配置驱动；新增工具 = tools.json 加条目 + ToolGateway 加执行器）
 ccb-snapshot-pages = "74"        # 建行快照：官网《2025年半年度报告》真实披露页 P2-P75 节选 70 页 + 数值演示页 4 页（manifest.source_note 标注口径）
