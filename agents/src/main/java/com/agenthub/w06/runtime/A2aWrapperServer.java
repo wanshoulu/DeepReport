@@ -184,7 +184,10 @@ public final class A2aWrapperServer {
         if (host == null) {
             return "http://localhost:18083/";
         }
-        return "http://" + (host.endsWith(":18084") ? host.substring(0, host.length() - 5) + ":18083" : host) + "/";
+        if (host.endsWith(":18084")) {
+            return "http://" + host.substring(0, host.length() - ":18084".length()) + ":18083/";
+        }
+        return "http://" + host + "/";
     }
 
     private static JsonNode postJson(String url, byte[] body) throws Exception {
