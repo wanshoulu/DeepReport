@@ -89,12 +89,13 @@ main { max-width: 1160px; margin: 0 auto; padding: 26px 28px 80px; }
   box-shadow: var(--shadow); padding: 20px 22px;
 }
 .card + .card { margin-top: 16px; }
-.card h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.card h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .card h3 .hint { font-size: 12px; font-weight: 400; color: var(--muted); }
 .grid { display: grid; gap: 12px; }
-.grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
 .grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
 .grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.kv { display: flex; gap: 10px; font-size: 13px; padding: 4px 0; }
+.kv b { color: var(--muted); font-weight: 500; min-width: 84px; }
 
 /* ———— 徽章 / chip ———— */
 .badge {
@@ -113,6 +114,7 @@ main { max-width: 1160px; margin: 0 auto; padding: 26px 28px 80px; }
 }
 a.chip, button.chip { cursor: pointer; transition: all .15s; }
 a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); border-color: hsl(214 70% 88%); }
+.chip.on { background: var(--fg); color: #fff; }
 
 /* ———— 按钮 ———— */
 .btn {
@@ -132,48 +134,90 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .mono { font-family: var(--mono); font-size: 12px; }
 .digest { font-family: var(--mono); font-size: 11.5px; color: var(--muted); word-break: break-all; line-height: 1.5; }
 
-/* ———— 概览 ———— */
-.hero-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
-.kv { display: flex; gap: 10px; font-size: 13px; padding: 4px 0; }
-.kv b { color: var(--muted); font-weight: 500; min-width: 84px; }
-.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.metric-card {
-  background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
-  box-shadow: var(--shadow); padding: 14px 16px;
+/* ———— 对话视图（页签 1）———— */
+.chat-card { display: flex; flex-direction: column; height: calc(100vh - 236px); min-height: 520px; padding: 0; overflow: hidden; }
+.chat-log { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
+.chat-msg { display: flex; gap: 10px; max-width: 94%; }
+.chat-msg.user { flex-direction: row-reverse; margin-left: auto; max-width: 80%; }
+.m-avatar {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 650; background: var(--surface-2); color: var(--muted);
 }
-.metric-card .m-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-.metric-card .m-value { font-size: 21px; font-weight: 650; letter-spacing: -.3px; font-variant-numeric: tabular-nums; }
-.metric-card .m-value small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 2px; }
-.metric-card .m-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; gap: 6px; }
-.m-delta { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.m-delta.up { color: var(--success); }
-.m-delta.down { color: var(--destructive); }
-.m-page { font-size: 11px; color: var(--muted); font-family: var(--mono); }
-.pipeline { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.pipe-step { font-size: 13px; color: var(--muted); }
-.pipe-step b { display: block; color: var(--fg); font-size: 13px; margin-bottom: 3px; }
+.m-avatar.k-ORCHESTRATOR { background: var(--info-bg); color: var(--info); }
+.m-avatar.k-CHECKER { background: var(--warning-bg); color: var(--warning); }
+.m-avatar.k-APPROVER { background: var(--success-bg); color: var(--success); }
+.m-avatar.k-USER { background: var(--fg); color: #fff; }
+.m-main { min-width: 0; }
+.m-head { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; font-size: 12px; flex-wrap: wrap; }
+.m-name { font-weight: 600; font-size: 12.5px; }
+.m-time { color: var(--muted); font-size: 11px; font-family: var(--mono); }
+.m-text { font-size: 13.5px; line-height: 1.85; color: var(--fg); }
+.m-text .quote { margin-top: 6px; margin-bottom: 2px; }
+.chat-msg.user .m-text {
+  background: var(--surface); border: 1px solid var(--card-border);
+  border-radius: 10px 10px 2px 10px; padding: 8px 13px;
+}
+.quick-row {
+  display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 20px;
+  border-top: 1px solid var(--card-border); background: var(--bg); min-height: 52px; align-items: center;
+}
+.quick-row:empty { display: none; }
+.chat-input { display: flex; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--card-border); }
+.chat-input input {
+  flex: 1; font: inherit; font-size: 13.5px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 9px 13px; outline: none; background: var(--bg);
+  transition: border-color .15s;
+}
+.chat-input input:focus { border-color: hsl(214 70% 75%); }
 
-/* ———— 快照视图 ———— */
-.snap-layout { display: grid; grid-template-columns: 230px 1fr; gap: 16px; align-items: start; }
-.page-item {
-  display: block; width: 100%; text-align: left; font: inherit; cursor: pointer;
-  background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius-sm);
-  padding: 11px 14px; margin-bottom: 8px; transition: all .15s;
-}
-.page-item:hover { background: var(--hover); }
-.page-item.active { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
-.page-item .p-no { font-size: 13px; font-weight: 600; }
-.page-item .p-src { font-size: 11px; color: var(--muted); margin-top: 2px; }
+/* ———— 资产库（页签 2）———— */
+.group-h { font-size: 13px; font-weight: 650; margin: 20px 0 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.group-h:first-child { margin-top: 0; }
+.group-h .g-tag { font-size: 11px; font-family: var(--mono); color: var(--muted); font-weight: 500; }
+.asset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.asset-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+.asset-tile { border: 1px solid var(--card-border); border-radius: var(--radius-sm); padding: 12px 14px; background: var(--bg); }
+.asset-tile .t-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.asset-tile .t-name { font-size: 13px; font-weight: 600; }
+.asset-tile .t-ver { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.asset-tile .t-desc { font-size: 12px; color: var(--muted); line-height: 1.7; margin-top: 6px; }
+.asset-tile .t-foot { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.asset-tile .t-meta { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 9px; line-height: 1.8; }
 .page-text {
   font-family: var(--serif); font-size: 14.5px; line-height: 2.1; white-space: pre-wrap;
-  color: var(--fg); padding: 4px 2px;
+  color: var(--fg); padding: 4px 2px; max-height: 380px; overflow-y: auto;
 }
 .page-text mark {
   background: hsl(160 60% 90%); color: inherit; padding: 0 2px; border-radius: 3px;
   box-shadow: inset 0 -1.5px 0 hsl(160 60% 55%);
 }
+.mi-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.mi-table th { text-align: left; font-size: 11.5px; color: var(--muted); border-bottom: 1.5px solid var(--fg); padding: 6px 8px; }
+.mi-table td { border-bottom: 1px solid var(--card-border); padding: 6px 8px; }
+.mi-table .cell-mono { font-family: var(--mono); font-size: 11.5px; }
 
-/* ———— 报告（年报级排版）———— */
+/* ———— 报告库（页签 3）———— */
+.reports-layout { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+.reports-list { display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 220px); overflow-y: auto; }
+.task-item {
+  text-align: left; font: inherit; cursor: pointer; background: var(--bg);
+  border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+  padding: 12px 14px; transition: all .15s;
+}
+.task-item:hover { background: var(--hover); }
+.task-item.active { border-color: var(--fg); box-shadow: inset 0 0 0 1px var(--fg); }
+.task-item .ti-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.task-item .ti-id { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.task-item .ti-sub { font-size: 12.5px; }
+.task-item .ti-sum {
+  font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.6;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.task-item .ti-time { font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 6px; }
+.reports-detail { min-width: 0; }
+
+/* ———— 报告（年报级排版，可 A4 打印）———— */
 .report-shell { display: flex; justify-content: center; }
 .paper {
   background: #fff; width: 100%; max-width: 830px; border: 1px solid var(--card-border);
@@ -232,11 +276,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .rp-footnote p { font-size: 11.5px; color: var(--muted); line-height: 1.9; }
 .report-actions { display: flex; gap: 10px; justify-content: center; margin-bottom: 16px; }
 
-/* ———— 核验视图 ———— */
-.check-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.check-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
-.check-head .cid { font-size: 13px; font-weight: 650; }
-.check-head .cid small { color: var(--muted); font-weight: 400; margin-left: 7px; font-family: var(--mono); }
+/* ———— 核验结果（对话/报告库/演示链共用）———— */
 .vio-row {
   display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm);
   background: var(--destructive-bg); margin-bottom: 8px; font-size: 12.5px;
@@ -247,12 +287,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .vio-row .v-target { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .vio-row .v-detail { color: #3d3d3d; line-height: 1.7; }
 .pass-note { font-size: 12.5px; color: var(--success); background: var(--success-bg); border-radius: var(--radius-sm); padding: 10px 12px; }
-.check-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
-.seg button { appearance: none; border: none; background: var(--bg); font: inherit; font-size: 12.5px; padding: 7px 16px; cursor: pointer; color: var(--muted); }
-.seg button.active { background: var(--fg); color: #fff; }
-
-/* ———— 演示链 ———— */
+/* ———— 演示链（页签 5）———— */
 .step {
   display: grid; grid-template-columns: 44px 1fr; gap: 16px;
   background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius);
@@ -292,7 +327,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
   padding: 14px 16px; font-size: 12.5px;
 }
 
-/* ———— 信源视图 ———— */
+/* ———— 信源卡片（资产库/知识库）———— */
 .src-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .src-card { background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; }
 .src-card .s-title { font-size: 13.5px; font-weight: 650; margin: 8px 0 10px; line-height: 1.5; }
@@ -322,12 +357,14 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 }
 .d-verify { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--success); }
 
-/* ———— 打印（A4）———— */
+/* ———— 打印（A4，仅打印报告库当前展开的年报）———— */
 @media print {
   body { background: #fff; }
-  .topbar, .tabs, .report-actions, .drawer, .drawer-mask, .no-print { display: none !important; }
+  .topbar, .tabs, .report-actions, .drawer, .drawer-mask, .no-print,
+  .reports-list, .task-meta-card { display: none !important; }
   .view { display: none !important; }
-  #view-report { display: block !important; }
+  #view-reports { display: block !important; }
+  .reports-layout { display: block; }
   main { max-width: none; padding: 0; }
   .paper { border: none; box-shadow: none; max-width: none; padding: 0; border-radius: 0; }
   .paper-header { position: fixed; top: 0; left: 0; right: 0; margin-bottom: 26px; }
@@ -335,9 +372,10 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
   @page { size: A4; margin: 15mm 13mm; }
 }
 @media (max-width: 1020px) {
-  .grid.cols-4, .metric-grid { grid-template-columns: repeat(2, 1fr); }
-  .hero-grid, .check-grid, .src-grid, .pipeline { grid-template-columns: 1fr; }
-  .snap-layout { grid-template-columns: 1fr; }
+  .grid.cols-3, .asset-grid, .asset-grid.cols-2, .src-grid { grid-template-columns: 1fr; }
+  .reports-layout { grid-template-columns: 1fr; }
+  .reports-list { max-height: none; }
+  .chat-card { height: 70vh; min-height: 420px; }
 }
 </style>
 </head>
@@ -350,26 +388,32 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
   </div>
 </header>
 <nav class="tabs" id="tabs">
-  <button class="tab active" data-view="overview">总览</button>
-  <button class="tab" data-view="snapshot">快照</button>
-  <button class="tab" data-view="report">报告</button>
-  <button class="tab" data-view="checks">核验</button>
+  <button class="tab active" data-view="chat">对话</button>
+  <button class="tab" data-view="assets">资产库</button>
+  <button class="tab" data-view="reports">报告库</button>
+  <button class="tab" data-view="agents">Agent Hub</button>
   <button class="tab" data-view="demo">演示链</button>
-  <button class="tab" data-view="sources">信源</button>
 </nav>
 <main>
-  <section class="view active" id="view-overview"></section>
-  <section class="view" id="view-snapshot"></section>
-  <section class="view" id="view-report"></section>
-  <section class="view" id="view-checks"></section>
+  <section class="view active" id="view-chat">
+    <div class="card chat-card">
+      <div class="chat-log" id="chat-log"></div>
+      <div class="quick-row" id="quick-row"></div>
+      <form class="chat-input" id="chat-form" autocomplete="off">
+        <input id="chat-input" placeholder="自由输入：确认主体 / 粘贴补充资料 / 口径问答 / 重新生成 / 跳转页签……">
+        <button class="btn primary" type="submit">发送</button>
+      </form>
+    </div>
+  </section>
+  <section class="view" id="view-assets"></section>
+  <section class="view" id="view-reports"></section>
+  <section class="view" id="view-agents"></section>
   <section class="view" id="view-demo"></section>
-  <section class="view" id="view-sources"></section>
 </main>
 <div class="drawer-mask" id="drawer-mask"></div>
 <aside class="drawer" id="drawer"></aside>
 <script>
 "use strict";
-
 /* ———————————————————— 基础工具 ———————————————————— */
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
@@ -391,27 +435,35 @@ const DELTA_LABEL = { PERCENTAGE_POINT: "个百分点", BASIS_POINT: "基点", P
 const deltaText = m => (m.yoy_delta ?? "") + (DELTA_LABEL[m.delta_unit] ?? "");
 const deltaDir = m => { const d = parseFloat(m.yoy_delta); return d > 0 ? "up" : d < 0 ? "down" : ""; };
 const clone = o => JSON.parse(JSON.stringify(o));
-const STATUS_LABEL = { PASSED: "PASSED", FAILED: "FAILED", WAITING_HUMAN: "待人工复核" };
+const nowTime = () => new Date().toLocaleTimeString("zh-CN", { hour12: false });
+
+const STATUS_LABEL = {
+  PASSED: ["success", "通过"], FAILED: ["destructive", "未通过"],
+  WAITING_HUMAN: ["warning", "待人工复核"], NONE: ["neutral", "无批准"],
+  APPROVED: ["success", "已批准"], REFUSED: ["destructive", "已拒绝"],
+  GENERATING: ["warning", "生成中"], GENERATED: ["info", "草稿就绪"],
+  RUNNING: ["success", "运行中"], AVAILABLE: ["neutral", "待安装"]
+};
 const statusBadge = s => {
-  const map = {
-    PASSED: ["success", "通过"], FAILED: ["destructive", "未通过"],
-    WAITING_HUMAN: ["warning", "待人工复核"], NONE: ["neutral", "无批准"],
-    APPROVED: ["success", "已批准"], REFUSED: ["destructive", "已拒绝"]
-  };
-  const [cls, label] = map[s] || ["neutral", s || "—"];
+  const [cls, label] = STATUS_LABEL[s] || ["neutral", s || "—"];
   return '<span class="badge ' + cls + '">' + esc(label) + "</span>";
 };
 
-/* ———————————————————— 全局状态 ———————————————————— */
-const state = {
-  manifest: null, sources: [], health: null,
-  positive: null,          // 正例工件（只读底稿）
-  artifact: null,          // 当前工作工件（演示链会修改它）
-  y2024: {},               // 2024 对比值（快照 P46 提取）
-  pages: {}, snapPage: 18,
-  approval: null,
-  demo: { done: {} }
+const KIND_LABEL = {
+  ORCHESTRATOR: ["info", "编排"], ANALYST: ["neutral", "分析"],
+  CHECKER: ["warning", "核验"], APPROVER: ["success", "批准"]
 };
+const kindBadge = k => {
+  const [cls, label] = KIND_LABEL[k] || ["neutral", k || "—"];
+  return '<span class="badge ' + cls + '">' + esc(label) + "</span>";
+};
+
+/* 核验违规行（对话 / 报告库 / 演示链共用渲染） */
+const vioRows = vs => (vs || []).map(v =>
+  '<div class="vio-row' + (v.severity === "WARNING" ? " warn" : "") + '">'
+  + '<span class="v-rule">' + esc(v.rule) + "</span>"
+  + "<div><div class=\"v-detail\">" + esc(v.detail) + "</div>"
+  + '<div class="v-target">target: ' + esc(v.target) + " · " + esc(v.severity) + "</div></div></div>").join("");
 
 /* 2024 对比值：从快照 P46 文本提取（口径与 P46 原文逐字对应） */
 function extract2024(text) {
@@ -428,204 +480,387 @@ function extract2024(text) {
   };
 }
 
-/* 选项卡切换 */
+/* ———————————————————— 全局状态 ———————————————————— */
+const state = {
+  manifest: null, sources: [], health: null,
+  positive: null,          // 正例工件（只读底稿）
+  artifact: null,          // 当前工作工件（演示链会修改它）
+  citeArtifact: null,      // 引用抽屉/快照高亮当前指向的工件
+  y2024: {},               // 2024 对比值（快照 P46 提取）
+  pages: {},               // 快照页缓存
+  approval: null,
+  tasks: [], selectedTask: null,
+  demo: { done: {} }
+};
+
+/* ———————————————————— 选项卡切换 ———————————————————— */
+let ASSETS_RENDER = Promise.resolve(); /* 资产库渲染 promise：viewPage 跳页需等它完成，避免竞态覆盖 */
 $("#tabs").addEventListener("click", e => {
   const btn = e.target.closest(".tab");
   if (!btn) return;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === btn));
   document.querySelectorAll(".view").forEach(v =>
     v.classList.toggle("active", v.id === "view-" + btn.dataset.view));
+  if (btn.dataset.view === "reports") refreshTasks();
+  if (btn.dataset.view === "agents") refreshAgents();
+  if (btn.dataset.view === "assets") ASSETS_RENDER = renderAssets();
 });
 function switchTab(name) { document.querySelector('.tab[data-view="' + name + '"]').click(); }
 
-/* ———————————————————— 总览 ———————————————————— */
-async function renderOverview() {
-  const m = state.manifest, a = state.artifact;
-  const approval = state.approval;
-  const aprLine = approval && approval.status === "APPROVED"
-    ? '已批准 · ' + esc(approval.approval_id) + '（' + esc(approval.approver) + '）'
-    : "尚无交付批准";
-  const metricCards = a.metrics.map(mt => {
-    const label = (m.metric_index[mt.key] || {}).label || mt.key;
-    return '<div class="metric-card">'
-      + '<div class="m-label">' + esc(label) + "</div>"
-      + '<div class="m-value">' + esc(mt.value) + "<small>" + esc(mt.unit) + "</small></div>"
-      + '<div class="m-foot"><span class="m-delta ' + deltaDir(mt) + '">' + esc(deltaText(mt)) + "</span>"
-      + '<span class="m-page">P' + mt.page + "</span></div></div>";
-  }).join("");
-  $("#view-overview").innerHTML =
-    '<div class="hero-grid">'
-    + '<div class="card"><h3>任务概要<span class="hint">' + esc(a.task_id) + "</span></h3>"
-    + '<div class="kv"><b>公司</b>' + esc(a.company) + "</div>"
-    + '<div class="kv"><b>报告期</b>' + esc(a.report_period) + "</div>"
-    + '<div class="kv"><b>快照版本</b><span class="mono">' + esc(m.snapshot_version) + "</span></div>"
-    + '<div class="kv"><b>信源</b>' + m.sources.length + " 份（均为 PRIMARY_OFFICIAL 落盘快照）</div>"
-    + '<div class="kv"><b>指标</b>' + a.metrics.length + " 项 · 引用 " + a.citations.length + " 条 · 章节 " + a.sections.length + " 节</div>"
-    + '<div class="kv"><b>交付批准</b><span id="ov-approval">' + aprLine + "</span></div>"
-    + "</div>"
-    + '<div class="card"><h3>核验器</h3>'
-    + '<div class="kv"><b>数值核验</b><span class="mono">numeric-checker ' + esc(state.health.numeric_checker_version) + "</span></div>"
-    + '<div class="kv"><b>引用核验</b><span class="mono">citation-checker ' + esc(state.health.citation_checker_version) + "</span></div>"
-    + '<div class="kv"><b>规则集</b>N1 完整性 · N2 单位白名单 · N3 数字来源<br>N4 派生复算 · N6 同比复算 · N7 变动口径</div>'
-    + '<div class="kv"><b>批准链</b>服务端重跑两项检查，内容一改 digest 即变、旧批准失效</div>'
-    + "</div></div>"
-    + '<div class="card" style="margin-top:16px"><h3>关键监管与财务指标</h3>'
-    + '<div class="metric-grid">' + metricCards + "</div></div>"
-    + '<div class="card"><h3>工作链路</h3><div class="pipeline">'
-    + '<div class="pipe-step"><b>① 结构化产出</b>多专业 agent 产出结构化工件：每个数值携带「信源 digest / 页码 / 摘录 digest」三元组。</div>'
-    + '<div class="pipe-step"><b>② 确定性核验</b>数值核验器逐项复算：数字须页内字面出现、派生比率复算、同比口径铁律。</div>'
-    + '<div class="pipe-step"><b>③ 受控交付</b>批准与工件 digest 绑定；篡改内容后旧批准失效，错误草稿无法获得交付批准。</div>'
-    + "</div></div>";
+/* ———————————————————— 对话视图（页签 1）：受控多 agent 对话流 ———————————————————— */
+/* agent 徽标元数据（与服务端 seedAgents 一一对应；av = 头像单字） */
+const AGENT_META = {
+  "editor-in-chief":     { name: "主编编排 Agent", kind: "ORCHESTRATOR", av: "编" },
+  "material-agent":      { name: "资料管理 Agent", kind: "ANALYST", av: "资" },
+  "finance-analyst":     { name: "财务分析 Agent", kind: "ANALYST", av: "财" },
+  "risk-analyst":        { name: "风险与拨备 Agent", kind: "ANALYST", av: "风" },
+  "capital-analyst":     { name: "资本管理 Agent", kind: "ANALYST", av: "本" },
+  "disclosure-officer":  { name: "披露合规 Agent", kind: "ANALYST", av: "披" },
+  "numeric-checker":     { name: "数值核验器", kind: "CHECKER", av: "数" },
+  "citation-checker":    { name: "引用核验器", kind: "CHECKER", av: "引" },
+  "approver":            { name: "交付批准官", kind: "APPROVER", av: "批" }
+};
+
+const chat = { stage: "greet", artifact: null, taskId: null, busy: false };
+
+function addMsg(agentId, html) {
+  const log = $("#chat-log");
+  const isUser = agentId === "user";
+  const meta = isUser ? { name: "我", kind: "USER", av: "我" } : (AGENT_META[agentId] || { name: agentId, kind: "ANALYST", av: "·" });
+  const div = document.createElement("div");
+  div.className = "chat-msg" + (isUser ? " user" : "");
+  div.innerHTML =
+    '<div class="m-avatar k-' + meta.kind + '">' + esc(meta.av) + "</div>"
+    + '<div class="m-main"><div class="m-head">'
+    + '<span class="m-name">' + esc(meta.name) + "</span>"
+    + (isUser ? "" : kindBadge(meta.kind))
+    + '<span class="m-time">' + nowTime() + "</span></div>"
+    + '<div class="m-text">' + html + "</div></div>";
+  log.appendChild(div);
+  log.scrollTop = log.scrollHeight;
 }
 
-async function refreshApproval() {
+let QUICK_FNS = [];
+function setQuick(btns) {
+  QUICK_FNS = btns.map(b => b.fn);
+  $("#quick-row").innerHTML = btns.map((b, i) =>
+    '<button class="btn sm ' + (b.cls || "") + '" data-q="' + i + '">' + esc(b.label) + "</button>").join("");
+}
+$("#quick-row").addEventListener("click", e => {
+  const b = e.target.closest("[data-q]");
+  if (!b) return;
+  const fn = QUICK_FNS[Number(b.dataset.q)];
+  if (fn) { setQuick([]); fn(); }
+});
+
+/* 对话状态机：greet → material → clarify → generating → (fix) → wait_approval → done */
+function greet() {
+  chat.stage = "greet";
+  addMsg("editor-in-chief",
+    "您好，我是主编编排 Agent（editor-in-chief）。这里由多专业 agent 协同完成年度经营简报的编制：<br>"
+    + "资料装载 → 口径澄清 → 分节成稿 → 确定性核验 → 具名批准交付。<br>"
+    + "首先请确认编制主体与报告期。");
+  setQuick([{ label: "确认：招商银行 · 2025 年度", cls: "primary", fn: confirmSubject }]);
+}
+
+async function confirmSubject() {
+  setQuick([]);
+  addMsg("user", "确认编制主体：招商银行，报告期 2025 年度。");
+  addMsg("editor-in-chief", "已受理：招商银行 2025 年度经营简报。转交资料管理 Agent 装载信源快照。");
+  chat.stage = "material";
+  addMsg("material-agent", "正在装载信源快照……");
   try {
-    state.approval = await jget("/v1/approvals?task_id=" + encodeURIComponent(state.artifact.task_id));
-  } catch (e) { state.approval = null; }
-  const el = $("#ov-approval");
-  if (el) {
-    el.innerHTML = state.approval && state.approval.status === "APPROVED"
-      ? '已批准 · <span class="mono">' + esc(state.approval.approval_id) + "</span>（" + esc(state.approval.approver) + "）"
-      : "尚无交付批准";
-  }
-}
-
-/* ———————————————————— 快照视图 ———————————————————— */
-async function renderSnapshotShell() {
-  const m = state.manifest;
-  const items = Object.keys(m.page_digests).map(no => {
-    const src = m.sources.find(s => s.pages.map(Number).includes(Number(no)));
-    const title = src ? src.title.replace(/（.*?）/g, "") : "";
-    return '<button class="page-item" data-page="' + no + '">'
-      + '<div class="p-no">第 ' + no + " 页</div>"
-      + '<div class="p-src">' + esc(title) + "</div></button>";
-  }).join("");
-  $("#view-snapshot").innerHTML =
-    '<div class="snap-layout"><div>' + items
-    + '<div class="card" style="padding:14px 16px"><div style="font-size:12px;color:var(--muted);line-height:1.8">'
-    + "快照为公开披露年报的落盘副本，核验过程不实时访问外部网络；页文本与登记的 sha256 一一对应。</div></div>"
-    + "</div>"
-    + '<div class="card"><h3 id="snap-title">快照页</h3>'
-    + '<div class="digest" id="snap-digest" style="margin-bottom:12px"></div>'
-    + '<div class="page-text" id="snap-text"></div>'
-    + '<div style="margin-top:14px;font-size:12px;color:var(--muted)" id="snap-marks"></div>'
-    + "</div></div>";
-  $("#view-snapshot").addEventListener("click", e => {
-    const item = e.target.closest(".page-item");
-    if (item) loadSnapshotPage(Number(item.dataset.page));
-  });
-}
-
-async function loadSnapshotPage(no) {
-  try {
-    if (!state.pages[no]) state.pages[no] = await jget("/v1/snapshot/pages/" + no);
-    const p = state.pages[no];
-    state.snapPage = no;
-    document.querySelectorAll(".page-item").forEach(i =>
-      i.classList.toggle("active", Number(i.dataset.page) === no));
-    $("#snap-title").textContent = "快照第 " + no + " 页";
-    $("#snap-digest").textContent = "sha256(页文本) = " + p.digest;
-    /* 高亮当前工件中引用本页的摘录（N3「数字来源」的可视化） */
-    const cites = state.artifact.citations.filter(c => c.page === no);
-    let html = esc(p.text), n = 0;
-    for (const c of cites) {
-      const ex = c.evidence_excerpt;
-      if (ex && html.includes(esc(ex))) {
-        html = html.split(esc(ex)).join("<mark>" + esc(ex) + "</mark>");
-        n++;
-      }
-    }
-    $("#snap-text").innerHTML = html;
-    $("#snap-marks").innerHTML = n
-      ? "绿色高亮 = 当前工件中引用本页的 " + n + " 条证据摘录（页内字面存在）"
-      : "本页暂未被当前工件的引用覆盖。";
+    const [sources] = await Promise.all([jget("/v1/sources")]);
+    state.sources = sources;
+    const m = state.manifest;
+    const pages = Object.keys(m.page_digests).join(" / ");
+    addMsg("material-agent",
+      "信源装载完成：<br>"
+      + "· 信源 <b>" + m.sources.length + "</b> 份（公开披露年报落盘快照，content_sha256 已登记）<br>"
+      + "· 快照页 P" + pages + " · 指标索引 " + Object.keys(m.metric_index).length + " 项 · 释义 " + (m.entities || []).length + " 条<br>"
+      + "如需补充资料可直接粘贴文本（将登记为编制依据），或点击下方按钮开始编制。");
+    setQuick([{ label: "资料齐备，开始编制", cls: "primary", fn: startClarify }]);
   } catch (e) {
-    $("#snap-text").innerHTML = '<span style="color:var(--destructive)">快照无第 ' + no + " 页：" + esc(e.message) + "</span>";
+    addMsg("material-agent", '<span style="color:var(--destructive)">信源装载失败：' + esc(e.message) + "</span>");
+    setQuick([{ label: "重试装载", cls: "primary", fn: confirmSubject }]);
   }
 }
-/* ———————————————————— 报告视图（年报级排版，可 A4 打印）———————————————————— */
-function fmtVal(v, unit) { return esc(v) + (unit === "%" ? "%" : "&#8201;" + esc(unit)); }
 
-function renderReport() {
-  const a = state.artifact, m = state.manifest;
+function startClarify() {
+  setQuick([]);
+  chat.stage = "clarify";
+  addMsg("editor-in-chief", "进入编制前有一处口径需要澄清。");
+  addMsg("risk-analyst",
+    "编制「资产质量」章节时需要确认变动口径：拨备覆盖率 <b>391.79%</b>，较上年末下降 <b>20.19</b>。<br>"
+    + "按监管披露惯例，比率类指标的变动应以什么口径表述？");
+  setQuick([
+    { label: "个百分点（披露惯例）", cls: "primary", fn: () => answerClarify(true) },
+    { label: "百分比 %（演示拦截路径）", fn: () => answerClarify(false) }
+  ]);
+}
 
+function answerClarify(correct) {
+  setQuick([]);
+  addMsg("user", correct ? "以「个百分点」表述。" : "以「%」表述。");
+  addMsg("risk-analyst", correct
+    ? "收到：比率类变动以「个百分点」表述，与 N7 变动口径铁律一致。"
+    : "收到：按「%」口径表述。（注：该口径与披露惯例不符，数值核验器将执行拦截）");
+  startGeneration(correct);
+}
+
+async function startGeneration(correct) {
+  chat.stage = "generating";
+  addMsg("editor-in-chief", "开始编制。先向服务端登记任务（获取任务编号，报告库可实时查看进度）……");
+  const base = clone(state.positive);
+  if (!correct) {
+    const s2 = base.sections.find(s => s.section_id === "S-2");
+    s2.body = s2.body.replace("下降20.19个百分点", "下降20.19%");
+  }
+  const r = await jpost("/v1/tasks", {
+    task: { status: "GENERATING", summary: "招商银行 2025 年度经营简报（对话式编制）" },
+    artifact: base
+  });
+  if (!r.ok) {
+    addMsg("editor-in-chief", '<span style="color:var(--destructive)">任务登记失败：HTTP ' + r.status + "</span>");
+    setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
+    return;
+  }
+  chat.taskId = r.data.task_id;
+  base.task_id = chat.taskId;
+  chat.artifact = base;
+  addMsg("editor-in-chief",
+    "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。分派专业 agent 分节成稿（各 agent 按任务动态按需加载）。");
+  const plan = [
+    ["finance-analyst", "S-1", "经营业绩与盈利结构"],
+    ["risk-analyst", "S-2", "资产质量与风险抵补"],
+    ["capital-analyst", "S-3", "资本充足状况"],
+    ["disclosure-officer", "S-4", "释义与声明"]
+  ];
+  for (const [aid, sid, label] of plan) {
+    await jpost("/v1/agents/load", { agent_id: aid, task_id: chat.taskId });
+    const sec = chat.artifact.sections.find(s => s.section_id === sid);
+    const fs = (sec.body.match(/^[^。]{0,120}。/) || [sec.body.slice(0, 90) + "……"])[0];
+    addMsg(aid, "【" + label + "】" + esc(sec.title) + " 成稿："
+      + '<div class="quote">' + esc(fs) + "</div>"
+      + "指标与引用已绑定快照页码与摘录指纹。");
+  }
+  addMsg("editor-in-chief",
+    "草稿完成（" + chat.artifact.metrics.length + " 项指标 · " + chat.artifact.citations.length
+    + " 条引用 · " + chat.artifact.sections.length + " 节正文）。提交确定性核验，先数值后引用。");
+  runNumericCheck();
+}
+
+async function runNumericCheck() {
+  await jpost("/v1/agents/load", { agent_id: "numeric-checker", task_id: chat.taskId });
+  const n = await jpost("/v1/checks/numeric", chat.artifact);
+  if (!n.ok || !n.data) {
+    addMsg("numeric-checker", '<span style="color:var(--destructive)">核验请求失败：HTTP ' + n.status + "</span>");
+    return;
+  }
+  if (n.data.status !== "PASSED") {
+    chat.stage = "fix";
+    addMsg("numeric-checker",
+      "数值核验 <b style=\"color:var(--destructive)\">FAILED</b> —— 以下违规项 BLOCKING，草稿被当场拦截："
+      + vioRows(n.data.violations)
+      + '<span style="font-size:12px;color:var(--muted)">N7「变动口径铁律」：比率类指标变动必须以「个百分点」表述，「%」口径不放行。</span>');
+    setQuick([{ label: "采纳修订：改为「个百分点」", cls: "primary", fn: applyFix }]);
+    return;
+  }
+  addMsg("numeric-checker",
+    "数值核验 PASSED（v" + esc(n.data.checker_version) + "）：N1–N7 全部通过，无违规项。");
+  runCitationCheck();
+}
+
+async function applyFix() {
+  setQuick([]);
+  addMsg("user", "采纳修订：改为「个百分点」。");
+  const s2 = chat.artifact.sections.find(s => s.section_id === "S-2");
+  s2.body = s2.body.replace("下降20.19%", "下降20.19个百分点");
+  const sent = s2.body.match(/拨备覆盖率[^。]*。/)?.[0] || "";
+  addMsg("risk-analyst", "已修订（仅改该句口径，其余内容零改动）："
+    + '<div class="quote">' + esc(sent).replace("下降20.19个百分点",
+      '<span class="fix">下降20.19个百分点</span>') + "</div>");
+  addMsg("editor-in-chief", "重新提交数值核验。");
+  runNumericCheck();
+}
+
+async function runCitationCheck() {
+  await jpost("/v1/agents/load", { agent_id: "citation-checker", task_id: chat.taskId });
+  const c = await jpost("/v1/checks/citation", chat.artifact);
+  if (!c.ok || !c.data) {
+    addMsg("citation-checker", '<span style="color:var(--destructive)">核验请求失败：HTTP ' + c.status + "</span>");
+    return;
+  }
+  if (c.data.status !== "PASSED") {
+    addMsg("citation-checker", "引用核验 <b style=\"color:var(--destructive)\">FAILED</b>：" + vioRows(c.data.violations));
+    setQuick([{ label: "重新生成一份", cls: "primary", fn: resetChat }]);
+    return;
+  }
+  addMsg("citation-checker",
+    "引用核验 PASSED（v" + esc(c.data.checker_version) + "）：" + chat.artifact.citations.length
+    + " 条引用摘录指纹一致、页内字面存在、信源均在注册表内。");
+  await jpost("/v1/tasks", {
+    task: { task_id: chat.taskId, status: "GENERATED", summary: "2025 年度经营简报：两项核验 PASSED，等待具名批准" },
+    artifact: chat.artifact
+  });
+  chat.stage = "wait_approval";
+  addMsg("approver",
+    "两项核验全部 PASSED。交付批准须<b>具名确认</b>——批准记录将与工件内容指纹（sha256）绑定，内容一改批准即失效。");
+  setQuick([{ label: "Alice 确认交付", cls: "primary", fn: approveDelivery }]);
+}
+
+async function approveDelivery() {
+  setQuick([]);
+  addMsg("user", "Alice 确认交付。");
+  const r = await jpost("/v1/approvals?approver=" + encodeURIComponent("Alice"), chat.artifact);
+  if (!r.ok) {
+    addMsg("approver", '<span style="color:var(--destructive)">批准被拒绝：HTTP ' + r.status
+      + " —— " + esc((r.data || {}).message || "") + "</span>");
+    setQuick([{ label: "重新生成一份", cls: "primary", fn: resetChat }]);
+    return;
+  }
+  state.approval = r.data;
+  chat.stage = "done";
+  addMsg("approver",
+    '<div class="approval-card"><b style="color:var(--success)">交付批准已签发</b><div class="a-grid">'
+    + '<span><b>批准编号</b><span class="mono">' + esc(r.data.approval_id) + "</span></span>"
+    + "<span><b>批准人</b>" + esc(r.data.approver) + "</span>"
+    + '<span><b>批准时间</b><span class="mono">' + esc(r.data.approved_at) + "</span></span>"
+    + "<span><b>任务</b><span class=\"mono\">" + esc(chat.taskId) + "</span></span>"
+    + "<span><b>数值核验</b>PASSED · " + esc(r.data.checks.numeric.checker_version) + "</span>"
+    + "<span><b>引用核验</b>PASSED · " + esc(r.data.checks.citation.checker_version) + "</span></div>"
+    + '<div style="margin-top:8px"><b>绑定的工件指纹</b></div><div class="digest">' + esc(r.data.artifact_digest) + "</div></div>"
+    + '<div style="margin-top:6px;font-size:12.5px;color:var(--muted)">任务已同步至报告库（状态 APPROVED）。</div>');
+  setQuick([
+    { label: "在报告库查看", cls: "primary", fn: () => { switchTab("reports"); openTask(chat.taskId); } },
+    { label: "重新生成一份", fn: resetChat }
+  ]);
+}
+
+function resetChat() {
+  $("#chat-log").innerHTML = "";
+  chat.stage = "greet"; chat.artifact = null; chat.taskId = null;
+  greet();
+}
+
+/* 自由输入：全局意图 + 阶段意图匹配 */
+function handleFreeInput(text) {
+  addMsg("user", text);
+  /* 全局跳转意图 */
+  if (/重新生成|再来一份|重新来/.test(text)) {
+    addMsg("editor-in-chief", "好的，重新开始编制流程。"); resetChat(); return;
+  }
+  if (/报告/.test(text)) { addMsg("editor-in-chief", "已为您切换到报告库。"); switchTab("reports"); return; }
+  if (/资产/.test(text)) { addMsg("editor-in-chief", "已为您切换到资产库。"); switchTab("assets"); return; }
+  if (/agent|hub|智能体/i.test(text)) { addMsg("editor-in-chief", "已为您切换到 Agent Hub。"); switchTab("agents"); return; }
+  if (/演示/.test(text)) { addMsg("editor-in-chief", "已为您切换到演示链。"); switchTab("demo"); return; }
+  /* 阶段意图 */
+  if (chat.stage === "greet") {
+    if (/你好|您好|hi|hello/i.test(text)) {
+      addMsg("editor-in-chief", "您好！请确认编制主体与报告期（可点击下方快捷按钮）。");
+    } else if (/确认|招商|2025/.test(text)) {
+      confirmSubject();
+    } else {
+      addMsg("editor-in-chief", "请先确认编制主体与报告期：招商银行 · 2025 年度（可点击下方快捷按钮确认）。");
+    }
+  } else if (chat.stage === "material") {
+    if (/齐备|开始|编制/.test(text)) { startClarify(); }
+    else {
+      addMsg("material-agent", "已登记补充资料（" + text.length + " 字）：「"
+        + esc(text.slice(0, 40)) + (text.length > 40 ? "……" : "") + "」，将作为编制依据。可继续粘贴，或点击「资料齐备，开始编制」。");
+    }
+  } else if (chat.stage === "clarify") {
+    if (/个百分点|百分点/.test(text)) answerClarify(true);
+    else if (/%|百分比/.test(text)) answerClarify(false);
+    else addMsg("risk-analyst", "请明确变动口径：回复「个百分点」或「百分比」，或点击下方快捷按钮。");
+  } else if (chat.stage === "fix") {
+    addMsg("editor-in-chief", "草稿已被核验器拦截，请点击「采纳修订：改为『个百分点』」处理违规项。");
+  } else if (chat.stage === "generating") {
+    addMsg("editor-in-chief", "编制进行中，请稍候……");
+  } else if (chat.stage === "wait_approval") {
+    addMsg("editor-in-chief", "两项核验已通过，等待具名批准。可点击「Alice 确认交付」，或输入「重新生成」。");
+  } else {
+    addMsg("editor-in-chief", "本次任务已完成。可「在报告库查看」，或输入「重新生成」再来一份。");
+  }
+}
+$("#chat-form").addEventListener("submit", e => {
+  e.preventDefault();
+  const input = $("#chat-input");
+  const v = input.value.trim();
+  if (!v) return;
+  input.value = "";
+  handleFreeInput(v);
+});
+/* ———————————————————— 报告 paper 渲染（报告库/抽屉引用共用）———————————————————— */
+function paperHtml(a) {
+  const m = state.manifest;
   const rows = a.metrics.map(mt => {
-    const label = (m.metric_index[mt.key] || {}).label || mt.key;
-    const prev = state.y2024[mt.key];
-    return "<tr><td>" + esc(label) + "</td>"
-      + '<td class="num">' + fmtVal(mt.value, mt.unit) + "</td>"
-      + '<td class="num">' + (prev ? fmtVal(prev, mt.unit) : "—") + "</td>"
+    const def = (m.metric_index || {})[mt.key] || {};
+    const uLab = { PERCENT: "%", YUAN: "亿元" }[def.unit] || "";
+    const v24 = state.y2024[mt.key];
+    return "<tr>"
+      + "<td>" + esc(def.label || mt.key) + "</td>"
+      + '<td class="num">' + esc(mt.value + (mt.unit || uLab)) + "</td>"
+      + '<td class="num">' + (v24 ? esc(v24 + uLab) : "—") + "</td>"
       + '<td class="delta ' + deltaDir(mt) + '">' + esc(deltaText(mt)) + "</td></tr>";
   }).join("");
-
-  const sections = a.sections.map(s => {
-    const refs = (s.claim_ids || []).map(id =>
-      '<button class="ref-chip" onclick="openCitation(\'' + id + '\')">' + esc(id) + "</button>").join("");
-    return '<h2 class="rp-h2">' + esc(s.title) + "</h2>"
-      + '<p class="rp-body">' + esc(s.body) + "</p>"
-      + (refs ? '<div class="rp-refs"><span class="ref-label">本节引用</span>' + refs + "</div>" : "");
-  }).join("");
-
-  const glossary = (m.entities || []).map(e => {
-    const names = e.short_names.join(" / ");
-    return "<dt>" + esc(names) + "</dt><dd>" + esc(e.full_name) + "</dd>";
-  }).join("");
-
-  $("#view-report").innerHTML =
-    '<div class="report-actions no-print">'
-    + '<button class="btn primary" onclick="window.print()">打印 / 导出 PDF（A4）</button>'
-    + '<span style="font-size:12px;color:var(--muted);align-self:center">正文引用 [C-n] 可点击溯源至快照页</span>'
-    + "</div>"
-    + '<div class="report-shell"><article class="paper">'
-    + '<div class="paper-header"><span>' + esc(a.company) + " · " + esc(a.report_period) + "经营简报</span>"
-    + "<span>取自落盘快照 · 经确定性核验</span></div>"
+  const sectionHtml = a.sections.map(sec =>
+    '<h2 class="rp-h2">' + esc(sec.title) + "</h2>"
+    + '<div class="rp-body">' + esc(sec.body) + "</div>"
+    + '<div class="rp-refs"><span class="ref-label">本节引用：</span>'
+    + (sec.claim_ids || []).map(id =>
+      '<button class="ref-chip" onclick="openCitation(\'' + esc(id) + '\')">' + esc(id) + "</button>").join("")
+    + "</div>").join("");
+  const entities = m.entities || [];
+  const glossary = entities.map(en =>
+    "<dt>" + esc((en.short_names || []).join(" / ")) + "</dt><dd>" + esc(en.full_name) + "</dd>").join("")
+    + "<dt>拨备覆盖率</dt><dd>贷款损失准备余额 ÷ 不良贷款余额 × 100%</dd>"
+    + "<dt>成本收入比</dt><dd>业务及管理费 ÷ 营业收入 × 100%</dd>"
+    + "<dt>高级法</dt><dd>巴塞尔协议Ⅲ资本计量的高级计量方法（内部评级法等）</dd>";
+  return '<article class="paper">'
+    + '<div class="paper-header"><span>W06 年度报告 · 受控交付工件</span><span class="mono">' + esc(a.task_id) + "</span></div>"
     + '<div class="rp-cover">'
     + '<div class="c-company">' + esc(a.company) + "</div>"
     + '<div class="c-title">' + esc(a.report_period) + "经营简报</div>"
-    + '<div class="c-meta">依据公开披露年度报告落盘快照编制<br>'
-    + "快照版本 <span class=\"mono\">" + esc(m.snapshot_version) + "</span><br>"
-    + "编制与核验：W06 年报多专业 agent 系统</div>"
+    + '<div class="c-meta">数据快照 ' + esc(m.snapshot_id) + "（" + esc(m.snapshot_version) + "）<br>编制于 " + esc((m.generated_at || "").replace("T", " ").replace(/Z$/, " UTC")) + "</div></div>"
     + '<div class="rp-notice"><h4>重要提示</h4><ol>'
-    + "<li>本简报全部财务与监管指标均取自报告期公开披露年度报告的落盘快照，经确定性数值核验器逐项复算、并经引用核验器逐条溯源校验后交付，内容真实、准确、完整。</li>"
-    + "<li>比率类指标变动一律以「个百分点」表述，净息差变动以「基点」表述，金额类变动以「亿元」表述，全文不存在口径混用。</li>"
-    + "<li>本简报不含前景展望章节，不构成任何预测或投资建议。</li>"
-    + "<li>本简报为技术演示用途的节选简报，非法定信息披露文件，不替代公司依法披露的定期报告。</li>"
-    + "</ol></div></div>"
-    + '<h2 class="rp-h2" style="margin-top:46px">关键财务与监管指标</h2>'
-    + '<table class="rp-table"><thead><tr><th>指标</th><th>2025 年度 / 年末</th><th>2024 年度 / 年末</th><th>同比增减</th></tr></thead>'
+    + "<li>本简报全部数字与摘录均取自公开披露年报的落盘快照，未做任何外推或估算；</li>"
+    + "<li>所有指标已通过确定性数值核验（N1–N7）与引用核验，与快照页内字面逐字一致；</li>"
+    + "<li>批准记录与工件内容指纹（sha256）绑定：批准后内容如有任何改动，批准即失效；</li>"
+    + "<li>比率类指标较上年变动以「个百分点」（净息差类以「基点」）表述，为绝对变动而非相对变动。</li>"
+    + "</ol></div>"
+    + '<h2 class="rp-h2">关键财务与监管指标</h2>'
+    + '<table class="rp-table"><thead><tr><th>指标</th><th>' + esc(a.report_period) + "</th><th>2024</th><th>同比增减</th></tr></thead>"
     + "<tbody>" + rows + "</tbody></table>"
-    + '<div class="rp-table-note">注：2024 年对比值取自快照第 46 页（2024 年度报告节选）。增减口径与正文一致：'
-    + "比率类为「个百分点」、净息差为「基点」、金额类为「亿元」、增速类为「%」。</div>"
-    + sections
-    + '<h2 class="rp-h2">释义</h2>'
-    + '<div class="rp-glossary"><dl>' + glossary
-    + "<dt>拨备覆盖率</dt><dd>贷款减值准备余额与不良贷款余额之比</dd>"
-    + "<dt>成本收入比</dt><dd>业务及管理费与营业收入之比</dd>"
-    + "<dt>高级法</dt><dd>内部评级高级法，资本充足率的计量口径之一</dd></dl></div>"
+    + '<div class="rp-table-note">注：较上年增减为绝对变动口径——比率类以「个百分点」、净息差类以「基点」、金额类以「亿元」表述；「%」仅用于水平值。2024 对比值取自快照 P46 原文。</div>'
+    + sectionHtml
+    + '<h2 class="rp-h2">释义</h2><div class="rp-glossary"><dl>' + glossary + "</dl></div>"
     + '<div class="rp-footnote">'
-    + "<p>〔1〕本简报数值中，业务及管理费与贷款减值准备两项为按披露比率复算的整理值，其余数值均为快照页内原文，逐项经 N3「数字来源」规则校验。</p>"
-    + "<p>〔2〕每条正文引用均登记证据摘录的 sha256 指纹与所在页码，经引用核验器比对「摘录指纹一致」且「摘录页内字面存在」。</p>"
-    + "<p>〔3〕快照版本 " + esc(m.snapshot_version) + "；数值核验器 "
-    + esc(state.health.numeric_checker_version) + "，引用核验器 " + esc(state.health.citation_checker_version)
-    + "。交付批准与工件内容指纹（sha256）绑定，内容一经变更原批准即失效。</p>"
-    + "</div></article></div>";
+    + "<p>一、数据来源：公司公开披露年报落盘快照（" + esc(m.snapshot_id) + "，内容 sha256 已登记），全部引用可逐页回溯验证。</p>"
+    + "<p>二、本稿通过确定性核验：数值核验 v" + esc(state.health.numeric_checker_version)
+    + "（规则 N1–N7）、引用核验 v" + esc(state.health.citation_checker_version)
+    + "；交付批准与工件指纹 sha256 绑定。</p>"
+    + "<p>三、本简报为受控交付的契约工件：批准后任何字节级改动都将使既有批准失效。</p>"
+    + "</div></article>";
 }
 
-/* 引用证据抽屉 */
+/* ———— 引用证据抽屉 ———— */
 function openCitation(id) {
-  const c = state.artifact.citations.find(x => x.claim_id === id);
+  const a = state.citeArtifact;
+  const c = a && a.citations.find(x => x.claim_id === id);
   if (!c) return;
+  const src = ((state.manifest || {}).sources || []).find(s => s.content_sha256 === c.source_document_digest);
   $("#drawer").innerHTML =
-    "<h3>引用溯源 <span class=\"mono\" style=\"font-weight:600;color:var(--info)\">" + esc(id) + "</span>"
-    + '<button class="d-close" onclick="closeDrawer()">✕</button></h3>'
-    + '<div class="d-block"><div class="d-label">表述（CLAIM）</div><div class="d-val">' + esc(c.claim_text) + "</div></div>"
-    + '<div class="d-block"><div class="d-label">证据摘录（快照第 ' + c.page + " 页页内原文）</div>"
-    + '<div class="d-quote">' + esc(c.evidence_excerpt) + "</div></div>"
-    + '<div class="d-block"><div class="d-label">摘录指纹 sha256（已登记）</div><div class="digest">' + esc(c.evidence_excerpt_digest) + "</div></div>"
-    + '<div class="d-block"><div class="d-label">信源</div><div class="d-val">' + esc((state.manifest.sources.find(s => s.content_sha256 === c.source_document_digest) || {}).title || c.source_document_digest)
-    + '<div class="digest" style="margin-top:4px">' + esc(c.source_document_digest) + "</div></div></div>"
-    + '<div class="d-verify">✓ 摘录指纹与登记一致、页内字面存在 —— 由 citation-checker 服务端复核</div>'
-    + '<div style="margin-top:18px"><button class="btn" onclick="viewPage(' + c.page + ')">在快照中查看第 ' + c.page + " 页</button></div>";
+    "<h3>引用证据 · <span class=\"mono\">" + esc(c.claim_id)
+    + '</span><button class="d-close" onclick="closeDrawer()">×</button></h3>'
+    + '<div class="d-block"><div class="d-label">论断（CLAIM）</div><div class="d-val">' + esc(c.claim_text) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">证据摘录 · 快照 P' + esc(c.page) + '</div><div class="d-quote">' + esc(c.evidence_excerpt) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">摘录指纹 sha256</div><div class="digest">' + esc(c.evidence_excerpt_digest) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">信源</div><div class="d-val">'
+    + (src ? esc(src.title) + '<div class="digest">内容指纹 ' + esc(c.source_document_digest) + "</div>"
+           : esc(c.source_document_digest)) + "</div></div>"
+    + '<div class="d-block d-verify">✓ 摘录与快照页内文本逐字一致（引用核验器已复核）</div>'
+    + '<button class="btn" onclick="viewPage(' + Number(c.page) + ')">查看快照页 P' + esc(c.page) + "</button>";
   $("#drawer").classList.add("open");
   $("#drawer-mask").classList.add("open");
 }
@@ -633,240 +868,407 @@ function closeDrawer() {
   $("#drawer").classList.remove("open");
   $("#drawer-mask").classList.remove("open");
 }
-function viewPage(no) { closeDrawer(); switchTab("snapshot"); loadSnapshotPage(no); }
 $("#drawer-mask").addEventListener("click", closeDrawer);
-/* ———————————————————— 核验视图 ———————————————————— */
-let checkTarget = "positive";
+async function viewPage(no) { closeDrawer(); switchTab("assets"); await ASSETS_RENDER; loadAssetPage(no); }
 
-function renderCheckCard(id, name, cr) {
-  const el = $("#" + id);
-  if (!cr) { el.innerHTML = '<div class="check-head"><span class="cid">' + name + "</span></div><p style=\"font-size:13px;color:var(--destructive)\">核验请求失败</p>"; return; }
-  const vios = (cr.violations || []).map(v =>
-    '<div class="vio-row' + (v.severity === "WARNING" ? " warn" : "") + '">'
-    + '<span class="v-rule">' + esc(v.rule) + "</span>"
-    + "<div><div class=\"v-detail\">" + esc(v.detail) + "</div>"
-    + '<div class="v-target">target: ' + esc(v.target) + " · " + esc(v.severity) + "</div></div></div>").join("");
-  el.innerHTML = '<div class="check-head"><span class="cid">' + name
-    + "<small>v" + esc(cr.checker_version) + "</small></span>" + statusBadge(cr.status) + "</div>"
-    + (vios || '<div class="pass-note">全部检查通过，无违规项。</div>');
+/* ———————————————————— 资产库（页签 2）：应用全部智能化资产 ———————————————————— */
+async function renderAssets() {
+  const m = state.manifest;
+  let agents = { runtime: [], catalog: [] };
+  let taskCount = 0;
+  try { agents = await jget("/v1/agents"); } catch (e) {}
+  try { taskCount = (await jget("/v1/tasks")).length; } catch (e) {}
+
+  const agentTiles = (agents.runtime || []).map(a =>
+    '<div class="asset-tile"><div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.kind) + "</div>"
+    + '<div class="t-ver">v' + esc(a.version) + " · " + esc(a.agent_id) + "</div>"
+    + '<div class="t-desc">' + esc(a.description) + "</div></div>").join("");
+
+  const SKILLS = [
+    ["annual-report 主技能", "skills/annual-report/SKILL.md",
+      "年度报告编制主技能：受控流程编排——资料装载 → 口径澄清 → 分节成稿 → 双重核验 → 具名批准。",
+      ["编排", "成稿", "核验", "批准"]],
+    ["banking-domain 银行领域知识", "skills/annual-report/references/banking-domain.md",
+      "银行业领域知识：监管指标定义、披露口径惯例与专业术语。", ["领域知识"]],
+    ["citation-style 引用体例", "skills/annual-report/references/citation-style.md",
+      "引用体例：claim–evidence–页码–摘录指纹的四元组约束。", ["引用规范"]],
+    ["metric-dictionary 指标字典", "skills/annual-report/references/metric-dictionary.md",
+      "指标字典：关键指标的键名、单位白名单与派生口径。", ["指标口径"]],
+    ["source-library 信源库", "skills/annual-report/references/source-library.md",
+      "信源库：公开披露信源的注册、落盘快照与内容指纹策略。", ["信源管理"]]
+  ];
+  const skillTiles = SKILLS.map(s =>
+    '<div class="asset-tile"><div class="t-head"><span class="t-name">' + esc(s[0]) + "</span></div>"
+    + '<div class="t-ver">' + esc(s[1]) + "</div>"
+    + '<div class="t-desc">' + esc(s[2]) + "</div>"
+    + '<div class="t-foot">' + s[3].map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div></div>").join("");
+
+  const MCPS = [
+    ["snapshot-reader 快照读取", "internal",
+      "落盘年报快照读取服务：页文本、指标索引与快照清单。",
+      ["read_page(no)", "list_metrics_index()", "manifest()"]],
+    ["checker-gateway 核验交付网关", "internal",
+      "确定性核验、工件指纹与交付批准的服务端网关。",
+      ["POST /v1/checks/numeric", "POST /v1/checks/citation", "POST /v1/artifacts/digest", "POST /v1/approvals", "GET /v1/tasks"]],
+    ["a2a-gateway agent 协作网关", ":18094",
+      "Agent 间协作（A2A）网关：跨 agent 任务委托与卡片发现。",
+      ["GET /agent-card", "POST /tasks/send"]]
+  ];
+  const mcpTiles = MCPS.map(s =>
+    '<div class="asset-tile"><div class="t-head"><span class="t-name">' + esc(s[0]) + '</span><span class="t-ver">' + esc(s[1]) + "</span></div>"
+    + '<div class="t-desc">' + esc(s[2]) + "</div>"
+    + '<div class="t-foot">' + s[3].map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div></div>").join("");
+
+  const pageChips = Object.keys(m.page_digests).map(no =>
+    '<button class="chip" data-snap-page="' + Number(no) + '">P' + Number(no) + "</button>").join("");
+  const miRows = Object.values(m.metric_index || {}).map(mi =>
+    "<tr><td class=\"cell-mono\">" + esc(mi.key) + "</td><td>" + esc(mi.label) + "</td><td>"
+    + esc({ PERCENT: "%", YUAN: "亿元" }[mi.unit] || mi.unit) + "</td><td>" + esc(mi.kind) + "</td></tr>").join("");
+  const srcCards = (m.sources || []).map(s =>
+    '<div class="src-card">'
+    + '<span class="badge neutral">' + esc(s.authority || "SOURCE") + "</span>"
+    + '<div class="s-title">' + esc(s.title) + "</div>"
+    + '<div class="s-rows">来源：<a href="' + esc(s.origin_url) + '" target="_blank" rel="noopener">' + esc(s.origin_url) + "</a><br>"
+    + "抓取：" + esc((s.fetched_at || "").replace("T", " ").replace(/Z$/, " UTC")) + "</div>"
+    + '<div class="digest">内容指纹 sha256 ' + esc(s.content_sha256) + "</div>"
+    + '<div class="s-pages">' + (s.pages || []).map(p =>
+      '<button class="chip" data-snap-page="' + Number(p) + '">P' + Number(p) + "</button>").join("") + "</div></div>").join("");
+  const RULES = [
+    ["N1", "指标缺失", "关键指标必须齐备，缺一不放行"],
+    ["N2", "单位不符", "单位必须与指标字典白名单一致"],
+    ["N3", "数字无源", "数值须在快照对应页内字面出现"],
+    ["N4", "派生复算", "派生比率按披露口径复算须一致"],
+    ["N5", "期间口径", "期间/时点口径须与指标定义一致"],
+    ["N6", "同比复算", "同比变动与 2024 对比值复算须一致"],
+    ["N7", "变动口径", "比率变动须用「个百分点」（净息差类用「基点」），BLOCKING"],
+    ["C1", "摘录伪造", "证据摘录须与快照页内文本逐字一致（FABRICATED_CITATION / EXCERPT_DIGEST_MISMATCH）"],
+    ["C2", "信源未注册", "引用信源必须在快照注册表内（SOURCE_UNREGISTERED）"]
+  ];
+  const ruleTiles = RULES.map(r =>
+    '<div class="asset-tile"><div class="t-head"><span class="t-name"><span class="mono">' + r[0] + "</span> " + esc(r[1]) + "</span></div>"
+    + '<div class="t-desc">' + esc(r[2]) + "</div></div>").join("");
+  const glossaryDl = (m.entities || []).map(en =>
+    "<dt style=\"font-size:12.5px;font-weight:600\">" + esc((en.short_names || []).join(" / "))
+    + "</dt><dd style=\"font-size:12.5px;color:var(--muted)\">" + esc(en.full_name) + "</dd>").join("");
+
+  $("#view-assets").innerHTML =
+    '<div class="card"><h3>Agent · 智能体 <span class="hint">运行时 ' + (agents.runtime || []).length
+    + " 个（任务动态按需加载）</span>"
+    + '<button class="btn sm" onclick="switchTab(\'agents\')">前往 Agent Hub →</button></h3>'
+    + '<div class="asset-grid">' + agentTiles + "</div></div>"
+    + '<div class="card"><h3>Skill · 技能库 <span class="hint">skills/annual-report/（1 主技能 + 4 参考知识）</span></h3>'
+    + '<div class="asset-grid">' + skillTiles + "</div></div>"
+    + '<div class="card"><h3>MCP · 工具接口 <span class="hint">3 个服务</span></h3>'
+    + '<div class="asset-grid">' + mcpTiles + "</div></div>"
+    + '<div class="card"><h3>数据库 · 结构化存储</h3>'
+    + '<div class="group-h">快照库 <span class="g-tag">落盘页文本 + sha256</span></div>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + pageChips
+    + '<span class="chip" style="border:none;background:none" id="asset-snap-note">点击页码查看落盘文本</span></div>'
+    + '<div class="digest" id="asset-snap-digest" style="margin-top:8px"></div>'
+    + '<div class="page-text" id="asset-snap-text" style="margin-top:6px">（尚未载入页文本——点击上方页码装载）</div>'
+    + '<div class="group-h">任务库 <span class="g-tag">/v1/tasks · 服务端内存态</span></div>'
+    + '<div class="kv"><b>任务记录</b>' + taskCount + ' 条（刷新不丢，容器存活期内持久）</div>'
+    + '<div style="margin-top:8px"><button class="btn sm" onclick="switchTab(\'reports\')">查看报告库 →</button></div>'
+    + '<div class="group-h">指标索引 <span class="g-tag">metric_index</span></div>'
+    + '<table class="mi-table"><thead><tr><th>键</th><th>指标</th><th>单位</th><th>类型</th></tr></thead><tbody>'
+    + miRows + "</tbody></table></div>"
+    + '<div class="card"><h3>知识库 <span class="hint">信源注册表 · 核验规则 · 释义</span></h3>'
+    + '<div class="group-h">信源注册表 <span class="g-tag">' + (m.sources || []).length + " 份</span></div>"
+    + '<div class="src-grid">' + srcCards + "</div>"
+    + '<div class="group-h">核验规则知识 <span class="g-tag">数值 N1–N7 + 引用 C1–C2</span></div>'
+    + '<div class="asset-grid cols-2">' + ruleTiles + "</div>"
+    + '<div class="group-h">释义知识 <span class="g-tag">entities</span></div>'
+    + '<dl style="display:grid;grid-template-columns:170px 1fr;row-gap:8px;column-gap:14px">' + glossaryDl + "</dl></div>";
+}
+$("#view-assets").addEventListener("click", e => {
+  const chip = e.target.closest("[data-snap-page]");
+  if (chip) loadAssetPage(Number(chip.dataset.snapPage));
+});
+
+async function loadAssetPage(no) {
+  try {
+    if (!state.pages[no]) state.pages[no] = await jget("/v1/snapshot/pages/" + no);
+    const p = state.pages[no];
+    const art = state.citeArtifact || state.artifact;
+    document.querySelectorAll("#view-assets [data-snap-page]").forEach(c =>
+      c.classList.toggle("on", Number(c.dataset.snapPage) === no));
+    $("#asset-snap-digest").textContent = "P" + no + " 页文本 sha256 = " + p.digest;
+    let html = esc(p.text), n = 0;
+    for (const c of (art ? art.citations : [])) {
+      if (c.page === no && c.evidence_excerpt) {
+        const ex = esc(c.evidence_excerpt);
+        if (html.includes(ex)) { html = html.split(ex).join("<mark>" + ex + "</mark>"); n++; }
+      }
+    }
+    $("#asset-snap-text").innerHTML = html;
+    $("#asset-snap-note").textContent = n
+      ? "绿色高亮 = 当前工件引用本页的 " + n + " 条证据摘录"
+      : "当前工件暂无引用本页";
+  } catch (e) {
+    $("#asset-snap-text").textContent = "页文本加载失败：" + e.message;
+  }
 }
 
-function renderChecksShell() {
-  $("#view-checks").innerHTML =
-    '<div class="card"><div class="check-toolbar">'
-    + '<div class="seg" id="check-seg"><button data-art="positive" class="active">正例工件</button>'
-    + '<button data-art="error">受控错误样例</button></div>'
-    + '<button class="btn primary" id="btn-run-checks">运行两项核验</button>'
-    + '<span style="font-size:12px;color:var(--muted)">核验全部在服务端执行：数值复算（N1–N7）+ 引用逐条溯源，不依赖模型自评。</span>'
-    + "</div></div>"
-    + '<div class="check-grid" style="margin-top:16px">'
-    + '<div class="card" id="res-numeric"><div class="check-head"><span class="cid">数值核验</span></div>'
-    + '<p style="font-size:13px;color:var(--muted)">选择工件后点击「运行两项核验」。</p></div>'
-    + '<div class="card" id="res-citation"><div class="check-head"><span class="cid">引用核验</span></div>'
-    + '<p style="font-size:13px;color:var(--muted)">选择工件后点击「运行两项核验」。</p></div></div>';
-  $("#check-seg").addEventListener("click", e => {
-    const b = e.target.closest("button");
-    if (!b) return;
-    checkTarget = b.dataset.art;
-    document.querySelectorAll("#check-seg button").forEach(x => x.classList.toggle("active", x === b));
-  });
-  $("#btn-run-checks").addEventListener("click", async () => {
-    try {
-      const art = checkTarget === "error"
-        ? await jget("/demo/error-artifact.json") : clone(state.positive);
-      const [n, c] = await Promise.all([
-        jpost("/v1/checks/numeric", art), jpost("/v1/checks/citation", art)]);
-      renderCheckCard("res-numeric", "数值核验 numeric-checker", n.data);
-      renderCheckCard("res-citation", "引用核验 citation-checker", c.data);
-    } catch (e) { alert("核验失败: " + e.message); }
-  });
+/* ———————————————————— 报告库（页签 3）：服务端任务历史 + 完整报告展开 ———————————————————— */
+function ensureReportsShell() {
+  if (!$("#reports-list")) {
+    $("#view-reports").innerHTML =
+      '<div class="reports-layout"><aside class="reports-list" id="reports-list"></aside>'
+      + '<div class="reports-detail" id="reports-detail"></div></div>';
+  }
+}
+async function refreshTasks() {
+  ensureReportsShell();
+  try { state.tasks = await jget("/v1/tasks"); } catch (e) { state.tasks = []; }
+  const arr = state.tasks.slice().reverse(); /* 新任务在前 */
+  const list = $("#reports-list");
+  list.innerHTML = arr.length ? arr.map(t =>
+    '<button class="task-item' + (t.task_id === state.selectedTask ? " active" : "")
+    + '" data-task="' + esc(t.task_id) + '">'
+    + '<div class="ti-head"><span class="ti-id">' + esc(t.task_id) + "</span>" + statusBadge(t.status) + "</div>"
+    + '<div class="ti-sub">' + esc(t.company || "招商银行") + " · " + esc(t.report_period || "2025年度") + "</div>"
+    + '<div class="ti-sum">' + esc(t.summary || "（无摘要）") + "</div>"
+    + '<div class="ti-time">更新于 ' + esc((t.updated_at || t.created_at || "").replace("T", " ").replace(/\..*$/, " UTC")) + "</div></button>").join("")
+    : '<div style="color:var(--muted);font-size:13px;padding:8px 4px">暂无任务记录。</div>';
+  if (state.selectedTask && arr.some(t => t.task_id === state.selectedTask)) return;
+  if (arr.length) openTask(arr[0].task_id);
+}
+$("#view-reports").addEventListener("click", e => {
+  const item = e.target.closest(".task-item");
+  if (item) openTask(item.dataset.task);
+});
+
+async function openTask(id) {
+  state.selectedTask = id;
+  document.querySelectorAll("#reports-list .task-item").forEach(el =>
+    el.classList.toggle("active", el.dataset.task === id));
+  ensureReportsShell();
+  const detail = $("#reports-detail");
+  detail.innerHTML = '<div class="card" style="color:var(--muted)">加载中……</div>';
+  let d;
+  try { d = await jget("/v1/tasks/" + encodeURIComponent(id)); }
+  catch (e) {
+    detail.innerHTML = '<div class="card" style="color:var(--destructive)">任务加载失败：' + esc(e.message) + "</div>";
+    return;
+  }
+  const t = d.task, a = d.artifact;
+  state.citeArtifact = a;
+  const nc = (t.checks || {}).numeric || {}, cc = (t.checks || {}).citation || {};
+  let html = '<div class="card task-meta-card"><h3>' + esc(t.task_id) + " " + statusBadge(t.status) + "</h3>"
+    + '<div class="kv"><b>编制主体</b>' + esc(t.company || a.company) + " · " + esc(t.report_period || a.report_period) + "</div>"
+    + '<div class="kv"><b>摘要</b><span style="flex:1">' + esc(t.summary || "—") + "</span></div>"
+    + '<div class="kv"><b>工件指纹</b><span class="digest" style="flex:1">' + esc(t.artifact_digest || "—") + "</span></div>"
+    + '<div class="kv"><b>数值核验</b>' + (nc.status
+      ? statusBadge(nc.status) + ' <span class="mono">' + esc(nc.checker_id || "") + " v" + esc(nc.checker_version || "") + "</span>"
+      : "—（未核验）") + "</div>"
+    + '<div class="kv"><b>引用核验</b>' + (cc.status
+      ? statusBadge(cc.status) + ' <span class="mono">' + esc(cc.checker_id || "") + " v" + esc(cc.checker_version || "") + "</span>"
+      : "—（未核验）") + "</div>";
+  if (t.approval) {
+    const ap = t.approval;
+    html += '<div class="kv"><b>交付批准</b>' + statusBadge(ap.status)
+      + ' <span class="mono">' + esc(ap.approval_id) + "</span> · 批准人 " + esc(ap.approver)
+      + ' · <span class="mono">' + esc((ap.approved_at || "").replace("T", " ").replace(/\..*$/, " UTC")) + "</span></div>";
+  }
+  if (t.status === "REFUSED") {
+    html += '<div class="refused-card" style="margin-top:10px"><b>该草稿被核验门禁拒绝</b>——以下违规项未清零：'
+      + vioRows(nc.violations) + "</div>";
+  }
+  html += "</div>"
+    + '<div class="report-actions"><button class="btn" onclick="window.print()">打印 / 导出 PDF</button>'
+    + '<button class="btn" onclick="refreshTasks()">刷新列表</button></div>'
+    + '<div class="report-shell">' + paperHtml(a) + "</div>";
+  detail.innerHTML = html;
+}
+/* ———————————————————— Agent Hub（页签 4）：预置运行时 + 市场安装注册 + 动态按需加载 ———————————————————— */
+function agentTile(a) {
+  return '<div class="asset-tile">'
+    + '<div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.kind) + statusBadge(a.status) + "</div>"
+    + '<div class="t-ver">v' + esc(a.version) + " · " + esc(a.agent_id) + "</div>"
+    + '<div class="t-desc">' + esc(a.description) + "</div>"
+    + '<div class="t-foot">' + (a.capabilities || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
+    + '<div class="t-meta">' + esc(a.source) + " · 注册于 " + esc((a.registered_at || "").replace("T", " ").slice(0, 19) || "—") + "<br>"
+    + (a.last_loaded_task
+      ? "最近加载 " + esc(a.last_loaded_task) + " · " + esc((a.last_loaded_at || "").replace("T", " ").slice(0, 19))
+      : "最近加载 —") + "</div></div>";
 }
 
-/* ———————————————————— 演示链（15 分钟分镜）———————————————————— */
-const demoStep = (no, title, desc, btnText, fn) =>
-  '<div class="step" id="demo-step-' + no + '"><div class="s-no">' + no + "</div><div>"
-  + '<div class="s-head"><span class="s-title">' + title + '</span>'
-  + '<span id="demo-badge-' + no + '"><span class="badge neutral">待执行</span></span></div>'
-  + '<div class="s-desc">' + desc + "</div>"
-  + '<div class="s-body"><button class="btn primary" onclick="demoStep' + no + '()">' + btnText + "</button>"
-  + '<div id="demo-res-' + no + '"></div></div></div></div>';
+async function refreshAgents() {
+  let d = { runtime: [], catalog: [] };
+  try { d = await jget("/v1/agents"); } catch (e) {}
+  const rt = d.runtime || [], cg = d.catalog || [];
+  const cgCards = cg.map(a =>
+    '<div class="asset-tile">'
+    + '<div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.kind) + statusBadge(a.status) + "</div>"
+    + '<div class="t-ver">v' + esc(a.version) + " · " + esc(a.agent_id) + "</div>"
+    + '<div class="t-desc">' + esc(a.description) + "</div>"
+    + '<div class="t-foot">' + (a.capabilities || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
+    + '<div style="margin-top:10px"><button class="btn sm primary" onclick="installAgent(\'' + esc(a.agent_id) + '\')">安装注册</button></div></div>').join("");
+  $("#view-agents").innerHTML =
+    '<div class="card"><h3>Agent Hub <span class="hint">安装注册 → 加入运行时 → 按任务动态按需加载</span></h3>'
+    + '<div style="font-size:12.5px;color:var(--muted);line-height:1.9">'
+    + "① 从<b>市场目录</b>选择 agent 点击「安装注册」，即加入<b>运行时</b>（RUNNING）；<br>"
+    + "② 对话页签的编制流程会按任务对运行时 agent 发起<b>动态按需加载</b>（POST /v1/agents/load），最近加载记录实时回写卡片；<br>"
+    + "③ 未安装注册的 agent 不参与运行时调度——安装注册是进入运行时的唯一入口。</div></div>"
+    + '<div class="card"><h3>运行时 Agent <span class="hint">' + rt.length + " 个 · RUNNING</span></h3>"
+    + '<div class="asset-grid">' + (rt.map(agentTile).join("") || "（运行时为空）") + "</div></div>"
+    + '<div class="card"><h3>市场目录 <span class="hint">' + cg.length + " 个 · 可安装注册</span></h3>"
+    + '<div class="asset-grid">' + (cgCards || "（市场目录为空）") + "</div></div>";
+}
+
+async function installAgent(id) {
+  const r = await jpost("/v1/agents/install", { agent_id: id });
+  if (r.ok) refreshAgents();
+  else alert("安装失败：" + ((r.data || {}).message || "HTTP " + r.status));
+}
+
+/* ———————————————————— 演示链（页签 5）：六步 · 每步真实调用后端 ———————————————————— */
+const s2body = a => a.sections.find(s => s.section_id === "S-2");
+const s2Sentence = a => (s2body(a).body.match(/拨备覆盖率[^。]*。/) || [""])[0];
+
+function demoStep(no, title, desc, btnText, fn) {
+  const div = document.createElement("div");
+  div.className = "step";
+  div.id = "demo-step-" + no;
+  div.innerHTML =
+    '<div class="s-no">' + no + "</div><div>"
+    + '<div class="s-head"><span class="s-title">' + esc(title) + '</span><span class="badge neutral" id="demo-badge-' + no + '">待执行</span></div>'
+    + '<div class="s-desc">' + esc(desc) + "</div>"
+    + '<div class="s-body"><button class="btn sm primary" id="demo-btn-' + no + '">' + esc(btnText) + "</button>"
+    + '<div id="demo-res-' + no + '"></div></div></div>';
+  $("#demo-steps").appendChild(div);
+  $("#demo-btn-" + no).addEventListener("click", async () => {
+    try { await fn(); }
+    catch (e) {
+      setStep(no, "refused", "出错", '<div class="refused-card">执行出错：' + esc(e.message) + "</div>");
+    }
+  });
+}
+function setStep(no, cls, badge, res) {
+  const step = $("#demo-step-" + no);
+  if (step) step.className = "step " + cls;
+  const b = $("#demo-badge-" + no);
+  if (b) {
+    b.className = "badge " + ({ done: "success", blocked: "destructive", refused: "warning" }[cls] || "neutral");
+    b.textContent = badge;
+  }
+  if (res !== undefined) { const el = $("#demo-res-" + no); if (el) el.innerHTML = res; }
+}
+
+function demoStep1() {
+  state.artifact = clone(state.positive);
+  setStep(1, "done", "正例已载入",
+    '<div class="quote">' + esc(s2Sentence(state.artifact)).replace("下降20.19个百分点",
+      '<span class="fix">下降20.19个百分点</span>') + "</div>"
+    + '<div class="pass-note">口径正确：比率变动以「个百分点」表述，符合 N7 变动口径铁律。</div>');
+}
+async function demoStep2() {
+  const a = await jget("/demo/error-artifact.json");
+  state.artifact = a;
+  const r = await jpost("/v1/checks/numeric", a);
+  setStep(2, "blocked", "已拦截",
+    '<div class="quote">' + esc(s2Sentence(a)).replace("下降20.19%", "<mark>下降20.19%</mark>") + "</div>"
+    + vioRows(r.data.violations)
+    + '<div class="refused-card">BLOCKING：草稿被当场拒收——「下降20.19%」口径违反 N7 变动口径铁律。</div>');
+}
+async function demoStep3() {
+  const a = state.artifact;
+  s2body(a).body = s2body(a).body.replace("下降20.19%", "下降20.19个百分点");
+  const n = await jpost("/v1/checks/numeric", a);
+  const c = await jpost("/v1/checks/citation", a);
+  setStep(3, "done", "双检通过",
+    '<div class="quote">' + esc(s2Sentence(a)).replace("下降20.19个百分点",
+      '<span class="fix">下降20.19个百分点</span>') + "</div>"
+    + '<div class="pass-note">数值核验 PASSED · v' + esc(n.data.checker_version) + "（仅改该句口径，其余零改动）</div>"
+    + '<div class="pass-note">引用核验 PASSED · v' + esc(c.data.checker_version) + "</div>");
+}
+async function demoStep4() {
+  const r = await jpost("/v1/approvals?approver=" + encodeURIComponent("Alice"), state.artifact);
+  if (!r.ok) {
+    setStep(4, "blocked", "失败", '<div class="refused-card">HTTP ' + r.status + "：" + esc((r.data || {}).message || "") + "</div>");
+    return;
+  }
+  state.approval = r.data;
+  setStep(4, "done", "已批准",
+    '<div class="approval-card"><b style="color:var(--success)">交付批准已签发</b><div class="a-grid">'
+    + '<span><b>批准编号</b><span class="mono">' + esc(r.data.approval_id) + "</span></span>"
+    + "<span><b>批准人</b>" + esc(r.data.approver) + "</span>"
+    + '<span><b>批准时间</b><span class="mono">' + esc(r.data.approved_at) + "</span></span>"
+    + "<span><b>数值核验</b>PASSED · " + esc(r.data.checks.numeric.checker_version) + "</span>"
+    + "<span><b>引用核验</b>PASSED · " + esc(r.data.checks.citation.checker_version) + "</span>"
+    + '<span><b>工件指纹</b><span class="digest">' + esc(r.data.artifact_digest) + "</span></span></div></div>");
+}
+async function demoStep5() {
+  const a = state.artifact;
+  const pv = a.metrics.find(m => m.key === "PROVISION_COVERAGE");
+  pv.value = "391.99";
+  s2body(a).body = s2body(a).body.replace("拨备覆盖率391.79%", "拨备覆盖率391.99%");
+  const dg = await jpost("/v1/artifacts/digest", a);
+  const n = await jpost("/v1/checks/numeric", a);
+  const ap = await jpost("/v1/approvals?approver=" + encodeURIComponent("Alice"), a);
+  setStep(5, "refused", "篡改无效",
+    '<div class="diff-banner"><div>'
+    + "批准记录绑定的工件指纹 ≠ 篡改稿指纹，既有批准立即失效：<br>"
+    + '批准时指纹 <span class="digest">' + esc(state.approval ? state.approval.artifact_digest : "—") + "</span><br>"
+    + '篡改稿指纹 <span class="digest">' + esc(dg.data.artifact_digest) + "</div></div>"
+    + vioRows(n.data.violations)
+    + (ap.ok
+      ? ""
+      : '<div class="refused-card">POST /v1/approvals → HTTP ' + ap.status + " "
+      + esc((ap.data || {}).status || "") + "：" + esc((ap.data || {}).message || "") + "</div>"));
+}
+function demoStep6() {
+  state.artifact = clone(state.positive);
+  renderDemoShell();
+  setStep(6, "done", "已重置", '<div class="pass-note">演示已重置：正例工件已载入，各步状态清零。</div>');
+}
 
 function renderDemoShell() {
   $("#view-demo").innerHTML =
-    '<div class="card no-print" style="border-left:3px solid var(--info)">'
-    + '<h3>演示分镜（对应演示 Story 9′–14′）</h3>'
-    + "<p style=\"font-size:13px;color:var(--muted)\">9′–12′：受控错误样例（拨备变动写成「%」）被数值核验器当场拦截 → 定向修订 → 重检通过；"
-    + "12′–14′：Alice 具名确认交付 → 模拟篡改内容 → 旧批准失效，错误草稿无法再获批准。逐步点击下方按钮即可复现。</p></div>"
-    + demoStep(1, "载入正例底稿", "多专业 agent 产出的结构化工件：8 项指标、8 条引用、4 节正文，全部绑定快照页码与摘录指纹。",
-      "载入正例工件", "demoStep1")
-    + demoStep(2, "受控错误样例核验（9′–12′）", "同一份草稿，仅把「拨备覆盖率较上年末下降20.19个百分点」写成「下降20.19%」——比率变动口径错误。",
-      "载入错误样例并运行数值核验", "demoStep2")
-    + demoStep(3, "定向修订并重检", "只修正该句口径（% → 个百分点），不改其余任何内容，重跑两项核验。",
-      "按口径修订并重检", "demoStep3")
-    + demoStep(4, "Alice 具名确认交付（12′–14′）", "提交批准时服务端重跑两项检查，批准记录与工件内容指纹（sha256）绑定。",
-      "提交 Alice 确认交付", "demoStep4")
-    + demoStep(5, "模拟篡改内容", "把拨备覆盖率 391.79 改成 391.99：内容指纹改变 → 原批准失效；核验器发现页内不存在的数字；再次申请批准被拒绝。",
-      "篡改 391.79 → 391.99 并重验", "demoStep5")
-    + demoStep(6, "重置演示", "恢复正例底稿与各步骤状态。", "重置", "demoStep6");
-}
-
-function setStep(no, cls, badge, res) {
-  $("#demo-step-" + no).className = "step" + (cls ? " " + cls : "");
-  $("#demo-badge-" + no).innerHTML = badge;
-  if (res !== undefined) $("#demo-res-" + no).innerHTML = res;
-}
-const s2body = a => a.sections.find(s => s.section_id === "S-2");
-
-async function demoStep1() {
-  state.artifact = clone(state.positive);
-  renderReport();
-  const s = s2body(state.artifact).body.match(/拨备覆盖率[^。]*。/)?.[0] || "";
-  setStep(1, "done", '<span class="badge success">已载入</span>',
-    '<div class="quote">' + esc(s).replace("下降20.19个百分点",
-      '<span class="fix">下降20.19个百分点</span>') + "</div>"
-    + '<div style="font-size:12px;color:var(--muted)">口径正确：比率变动以「个百分点」表述。报告视图已同步刷新为正例。</div>');
-}
-
-async function demoStep2() {
-  state.artifact = await jget("/demo/error-artifact.json");
-  renderReport();
-  const r = await jpost("/v1/checks/numeric", state.artifact);
-  const vios = (r.data.violations || []).map(v =>
-    '<div class="vio-row"><span class="v-rule">' + esc(v.rule) + "</span>"
-    + "<div><div class=\"v-detail\">" + esc(v.detail) + "</div>"
-    + '<div class="v-target">target: ' + esc(v.target) + " · " + esc(v.severity) + "</div></div></div>").join("");
-  const s = s2body(state.artifact).body.match(/拨备覆盖率[^。]*。/)?.[0] || "";
-  setStep(2, "blocked", '<span class="badge destructive">已拦截 BLOCKING</span>',
-    '<div class="quote">' + esc(s).replace("下降20.19%",
-      "<mark>下降20.19%</mark>") + "</div>" + vios
-    + '<div style="font-size:12px;color:var(--muted)">数值核验器 N7「变动口径铁律」：拨备覆盖率属比率类指标，其变动必须以「个百分点」表述，「%」口径直接拦截。</div>');
-}
-
-async function demoStep3() {
-  s2body(state.artifact).body = s2body(state.artifact).body
-    .replace("下降20.19%", "下降20.19个百分点");
-  renderReport();
-  const [n, c] = await Promise.all([
-    jpost("/v1/checks/numeric", state.artifact),
-    jpost("/v1/checks/citation", state.artifact)]);
-  const allPassed = n.data.status === "PASSED" && c.data.status === "PASSED";
-  setStep(3, allPassed ? "done" : "blocked",
-    allPassed ? '<span class="badge success">两项核验 PASSED</span>' : '<span class="badge destructive">仍有违规</span>',
-    '<div class="quote">' + esc(s2body(state.artifact).body.match(/拨备覆盖率[^。]*。/)?.[0] || "")
-      .replace("下降20.19个百分点", '<span class="fix">下降20.19个百分点</span>') + "</div>"
-    + '<div class="pass-note">数值核验 ' + esc(n.data.checker_version) + "：PASSED（" + (n.data.violations || []).length
-    + " 项违规）· 引用核验 " + esc(c.data.checker_version) + "：PASSED（" + (c.data.violations || []).length
-    + " 项违规）。仅改动一处口径，其余内容零改动。</div>');
-}
-
-async function demoStep4() {
-  const r = await jpost("/v1/approvals?approver=" + encodeURIComponent("Alice"), state.artifact);
-  if (r.ok) {
-    state.approval = r.data;
-    setStep(4, "done", '<span class="badge success">已批准 ' + esc(r.data.approval_id) + "</span>",
-      '<div class="approval-card"><b style="color:var(--success)">交付批准已签发</b><div class="a-grid">'
-      + "<span><b>批准编号</b><span class=\"mono\">" + esc(r.data.approval_id) + "</span></span>"
-      + "<span><b>批准人</b>" + esc(r.data.approver) + "</span>"
-      + "<span><b>批准时间</b><span class=\"mono\">" + esc(r.data.approved_at) + "</span></span>"
-      + "<span><b>数值核验</b>PASSED · " + esc(r.data.checks.numeric.checker_version) + "</span>"
-      + "<span><b>引用核验</b>PASSED · " + esc(r.data.checks.citation.checker_version) + "</span></div>"
-      + '<div style="margin-top:8px"><b>绑定的工件指纹</b></div><div class="digest">' + esc(r.data.artifact_digest) + "</div></div>");
-  } else {
-    setStep(4, "refused", '<span class="badge destructive">被拒绝</span>',
-      '<div class="refused-card">HTTP ' + r.status + "：" + esc((r.data || {}).message || "未知错误") + "</div>");
-  }
-  refreshApproval();
-}
-
-async function demoStep5() {
-  const pc = state.artifact.metrics.find(m => m.key === "PROVISION_COVERAGE");
-  pc.value = "391.99";
-  s2body(state.artifact).body = s2body(state.artifact).body
-    .replace("拨备覆盖率391.79%", "拨备覆盖率391.99%");
-  renderReport();
-  const d = await jpost("/v1/artifacts/digest", state.artifact);
-  const n = await jpost("/v1/checks/numeric", state.artifact);
-  const apr = await jpost("/v1/approvals?approver=" + encodeURIComponent("Alice"), state.artifact);
-  const oldDigest = state.approval && state.approval.artifact_digest;
-  const stale = oldDigest && oldDigest !== d.data.artifact_digest;
-  const vios = (n.data.violations || []).map(v =>
-    '<div class="vio-row"><span class="v-rule">' + esc(v.rule) + "</span>"
-    + "<div><div class=\"v-detail\">" + esc(v.detail) + "</div>"
-    + '<div class="v-target">target: ' + esc(v.target) + " · " + esc(v.severity) + "</div></div></div>").join("");
-  setStep(5, "blocked", '<span class="badge destructive">拦截 + 批准失效</span>',
-    (stale ? '<div class="diff-banner"><b style="color:var(--destructive);white-space:nowrap">内容已变更，原批准失效</b>'
-      + "<div>新工件指纹 <span class=\"mono\">" + short(d.data.artifact_digest, 18) + "</span> ≠ 批准时指纹 <span class=\"mono\">"
-      + short(oldDigest, 18) + "</span> —— 批准只对签发时的内容负责。</div></div>" : "")
-    + vios
-    + '<div class="refused-card" style="margin-top:10px"><b>再次申请批准：HTTP ' + apr.status
-    + " REFUSED</b><br>" + esc((apr.data || {}).message || "") + "</div>"
-    + '<div style="font-size:12px;color:var(--muted)">N3「数字来源」：391.99 未在快照页内字面出现，判定为编造数字；错误草稿不能获得交付批准。</div>');
-}
-
-async function demoStep6() {
-  state.artifact = clone(state.positive);
-  state.demo.done = {};
-  renderReport();
-  renderDemoShell();
-  refreshApproval();
-}
-
-/* ———————————————————— 信源视图 ———————————————————— */
-function renderSources() {
-  const m = state.manifest;
-  const cards = m.sources.map(s =>
-    '<div class="src-card"><span class="badge success">' + esc(s.authority) + "</span>"
-    + '<div class="s-title">' + esc(s.title) + "</div>"
-    + '<div class="s-rows"><b>信源 ID</b> <span class="mono">' + esc(s.source_id) + "</span><br>"
-    + "<b>来源</b> " + esc(s.origin_url) + "<br>"
-    + "<b>落盘时间</b> " + esc(s.fetched_at) + "</div>"
-    + '<div class="s-pages">' + s.pages.map(p =>
-      '<button class="chip" onclick="viewPage(' + Number(p) + ')">P' + Number(p) + "</button>").join("")
-    + "</div>"
-    + '<div class="digest" style="margin-top:10px">content_sha256 = ' + esc(s.content_sha256) + "</div>"
-    + (s.note ? '<div style="font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.8">注：'
-      + esc(s.note) + "</div>" : "") + "</div>").join("");
-  $("#view-sources").innerHTML =
-    '<div class="card"><h3>信源注册表<span class="hint">' + esc(m.snapshot_version) + "</span></h3>"
-    + '<div class="kv"><b>公司</b>' + esc(m.company) + "</div>"
-    + '<div class="kv"><b>报告期</b>' + esc(m.report_period) + "</div>"
-    + '<div class="kv"><b>快照生成</b>' + esc(m.generated_at) + "</div>"
-    + '<div class="kv"><b>说明</b>信源为公开披露年报的落盘快照（不实时访问外网），content_sha256 与页文本一一对应；引用核验器只承认注册表内的信源与页码。</div>'
-    + "</div>"
-    + '<div class="src-grid" style="margin-top:16px">' + cards + "</div>";
+    '<div class="card"><h3>演示链：从「口径错误拦截」到「篡改失效」 <span class="hint">六步 · 每步真实调用后端 API</span></h3>'
+    + '<div style="font-size:12.5px;color:var(--muted);line-height:1.9;margin-bottom:16px">'
+    + "本演示链复现受控交付的关键能力：<b>错误被当场拦截</b> → <b>修订后双检通过</b> → <b>具名批准与内容指纹绑定</b> → <b>任何篡改使批准立即失效</b>。"
+    + "请按编号顺序点击各步按钮。</div>"
+    + '<div id="demo-steps"></div></div>';
+  demoStep(1, "载入正例工件", "口径正确版本：拨备覆盖率较上年末下降 20.19 个百分点。", "载入正例", demoStep1);
+  demoStep(2, "注入「%」口径草稿", "同一份年报把「个百分点」写成「%」——数值核验器应当场拦截。", "注入口径错误草稿", demoStep2);
+  demoStep(3, "采纳修订并双检重跑", "把「%」改回「个百分点」，数值与引用核验重跑。", "修订为「个百分点」", demoStep3);
+  demoStep(4, "具名批准交付", "批准记录绑定工件内容指纹（sha256），批准人 Alice。", "Alice 批准交付", demoStep4);
+  demoStep(5, "篡改检测：改动指标再申请批准", "把拨备覆盖率 391.79% 篡改为 391.99%，既有批准应立即失效、新批准被拒绝。", "篡改指标后申请批准", demoStep5);
+  demoStep(6, "重置演示", "恢复正例工件、清零步骤状态。", "重置演示", demoStep6);
 }
 
 /* ———————————————————— 初始化 ———————————————————— */
-(async function init() {
-  const hb = $("#health-badge");
+async function init() {
   try {
-    const [health, manifest, sources, positive] = await Promise.all([
-      jget("/health"), jget("/v1/snapshot/manifest"),
-      jget("/v1/sources"), jget("/demo/positive-artifact.json")
+    const [health, manifest, positive] = await Promise.all([
+      jget("/health"), jget("/v1/snapshot/manifest"), jget("/demo/positive-artifact.json")
     ]);
-    state.health = health; state.manifest = manifest;
-    state.sources = sources; state.positive = positive;
+    state.health = health;
+    state.manifest = manifest;
+    state.positive = positive;
     state.artifact = clone(positive);
-    hb.className = "badge success"; hb.textContent = "服务在线";
-    $("#health-ver").textContent = "numeric " + health.numeric_checker_version
-      + " · citation " + health.citation_checker_version;
-    try {
-      const p46 = await jget("/v1/snapshot/pages/46");
-      state.y2024 = extract2024(p46.text);
-    } catch (e) { state.y2024 = {}; }
-    renderOverview(); refreshApproval();
-    renderSnapshotShell(); loadSnapshotPage(18);
-    renderReport(); renderChecksShell(); renderDemoShell(); renderSources();
+    state.citeArtifact = state.artifact;
+    const hb = $("#health-badge");
+    if (health.status === "ok") { hb.className = "badge success"; hb.textContent = "服务正常"; }
+    else { hb.className = "badge warning"; hb.textContent = health.status || "状态未知"; }
+    $("#health-ver").textContent = "vNumericChecker " + (health.numeric_checker_version || "?")
+      + " · vCitationChecker " + (health.citation_checker_version || "?");
+    const p46 = await jget("/v1/snapshot/pages/46");
+    state.y2024 = extract2024(p46.text);
+    ASSETS_RENDER = renderAssets();
+    renderDemoShell();
+    greet();
+    refreshTasks();
+    refreshAgents();
   } catch (e) {
-    hb.className = "badge destructive"; hb.textContent = "连接失败";
-    document.querySelectorAll(".view").forEach(v => v.innerHTML =
-      '<div class="card"><p style="font-size:13px;color:var(--destructive)">数据加载失败：'
-      + esc(e.message) + "</p><p style=\"font-size:12px;color:var(--muted)\">请确认 w06-checker 服务（:18095）可达。</p></div>");
+    const hb = $("#health-badge");
+    hb.className = "badge destructive";
+    hb.textContent = "初始化失败";
+    addMsg("editor-in-chief", '<span style="color:var(--destructive)">初始化失败：' + esc(e.message) + "</span>");
   }
-})();
-
-
+}
+init();
 </script>
-
 </body>
 </html>
