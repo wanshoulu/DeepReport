@@ -35,16 +35,27 @@ final class AgentChatClient {
             .build();
 
     /**
-     * 调用 skill-app-agent chat 端点，返回生成的章节正文。
-     *
-     * @param message 发送给 agent 的完整 prompt（含上下文）
-     * @return agent 生成的正文文本；连接失败/超时 → null（调用方降级到模板）
+     * 调用 skill-app-agent chat 端点（独立一次性会话）。
      */
     static String chat(String message) {
+        return chat(message, "w06-pipeline-" + System.currentTimeMillis());
+    }
+
+    /**
+     * 调用 skill-app-agent chat 端点，返回 agent 生成的文本。
+     * 框架记忆支撑：openjiuwen 按 sessionId 维护会话上下文，同一生成流程内的
+     * 任务书分派 / 缺节续写 / 违规反思修订复用同一 sessionId，agent 即可看到
+     * 此前的任务书与自己已产出的成稿。
+     *
+     * @param message   发送给 agent 的完整消息（任务书 / 续写指令 / 违规反馈）
+     * @param sessionId 会话 id（同一生成流程内复用）
+     * @return agent 生成的文本；连接失败/超时 → null（调用方降级）
+     */
+    static String chat(String message, String sessionId) {
         try {
             ObjectNode body = MAPPER.createObjectNode();
             body.put("message", message);
-            body.put("session_id", "w06-pipeline-" + System.currentTimeMillis());
+            body.put("session_id", sessionId);
 
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(AGENT_URL))

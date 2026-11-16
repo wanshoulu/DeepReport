@@ -46,6 +46,7 @@ import com.agenthub.w06.contract.CheckResult;
 import com.agenthub.w06.contract.MetricValue;
 import com.agenthub.w06.contract.ReportSection;
 import com.agenthub.w06.contract.SourceEntry;
+import com.agenthub.w06.contract.Violation;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -62,6 +63,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
@@ -70,6 +72,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.TreeMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -276,8 +279,8 @@ public final class CheckerHttpServer {
         // CopyOnWriteArrayList：snapshot_commit 运行时追加信源（并发核验读安全，无需重启）
         List<SourceEntry> sources = new java.util.concurrent.CopyOnWriteArrayList<>(loadSourceEntries(resolver));
         preloadTasks(staticDir, snapshotDir, resolver, sources);   // 报告库预置 4 条历史任务（三银行）
-        seedAgents();                                 // Agent Hub：10 运行时 + 3 市场目录
-        seedSkills();                                 // 技能注册表：7 个技能（可绑定给 agent）
+        seedAgents();                                 // Agent Hub：11 运行时 + 3 市场目录
+        seedSkills();                                 // 技能注册表：8 个技能（可绑定给 agent）
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
@@ -694,26 +697,14 @@ public final class CheckerHttpServer {
             }
         }
 
-        // long_form 模式：analysis 章节调 openjiuwen agent chat 生成正文（框架合规，不硬接 LLM）
+        // long_form 模式（0.3.7 架构分工）：Java 只做确定性编排——组装任务书（纯数据）、
+        // 解析 [S-n] 成稿、调度核验与反思回路；任务分解与成稿由 openjiuwen deep agent
+        // （writer-agent）依据 annual-report 技能方法论自主完成；框架按 sessionId 维护
+        // 会话记忆，续写与反思修订轮在同一会话内进行。
+        LongFormOutcome lf = null;
         if ("long_form".equals(mode)) {
-            List<ReportSection> generated = new java.util.ArrayList<>();
-            for (ReportSection sec : art.sections()) {
-                String role = sectionRole.getOrDefault(sec.sectionId(), "analysis");
-                if ("analysis".equals(role)) {
-                    String prompt = buildSectionPrompt(art, sec, snap);
-                    String newBody = AgentChatClient.chat(prompt);
-                    if (newBody != null && newBody.length() >= 50) {
-                        generated.add(new ReportSection(sec.sectionId(), sec.title(),
-                                newBody, sec.claimIds()));
-                    } else {
-                        generated.add(sec); // 降级：agent 不可达或返回过短时保留原正文
-                    }
-                } else {
-                    generated.add(sec); // static 节不变
-                }
-            }
-            art = new AnnualReportArtifacts(art.taskId(), art.company(), art.reportPeriod(),
-                    art.generatedAt(), art.metrics(), art.citations(), generated, art.charts());
+            lf = runLongForm(art, snap, sectionRole, sectionAgent, resolver, sources);
+            art = lf.artifacts();
         }
 
         ArrayNode stages = MAPPER.createArrayNode();
@@ -762,19 +753,25 @@ public final class CheckerHttpServer {
         }
         stages.add(s3);
 
-        // 4) 写作：long_form 模式下 analysis 章节已由 LLM 生成，此处统计成稿字数
+        // 4) 写作：成稿执行统一归 writer-agent（openjiuwen deep agent）；骨架 sectionAgent
+        //    表示各节分析洞察的责任 agent（Stage 2 分析工位），两者职责互补不冲突。
         String s4Headline = "long_form".equals(mode)
-                ? "LLM 生成分析章节（openjiuwen agent）+ 模板填充静态章节"
+                ? "任务书分派 → writer-agent 自主分解成稿 → 核验违规反思修订（openjiuwen）"
                 : "按骨架配置逐节成稿（名称保留 / 深度收缩）";
-        ObjectNode s4 = stageNode("writing", "写作", "editor-in-chief", s4Headline);
+        ObjectNode s4 = stageNode("writing", "写作", "writer-agent", s4Headline);
         s4.put("mode", mode);
         ArrayNode det4 = s4.withArray("details");
+        if (lf != null) {
+            for (String r : lf.rounds()) {
+                det4.add(r);
+            }
+        }
         for (ReportSection sec : art.sections()) {
             String role = sectionRole.getOrDefault(sec.sectionId(), "analysis");
             String source = "long_form".equals(mode) && "analysis".equals(role)
-                    ? "LLM 生成" : "模板填充";
+                    ? "writer-agent 生成" : "模板填充";
             det4.add(sec.sectionId() + " " + sec.title()
-                    + " · 责任 " + sectionAgent.getOrDefault(sec.sectionId(), "editor-in-chief")
+                    + " · 分析责任 " + sectionAgent.getOrDefault(sec.sectionId(), "editor-in-chief")
                     + " · " + source
                     + " · 正文 " + sec.body().length() + " 字 · 引用 " + sec.claimIds().size() + " 条");
         }
@@ -807,21 +804,137 @@ public final class CheckerHttpServer {
         respond(ex, 200, out);
     }
 
-    /**
-     * 构造发送给 openjiuwen agent 的章节写作 prompt。
-     * Java 只组装上下文（章节信息 + 指标 + 引用 + 快照页原文）；
-     * 写作方法论由 agent 侧 skill_tool 加载 annual-report 技能自动获取。
-     */
-    private static String buildSectionPrompt(AnnualReportArtifacts art, ReportSection sec, BankSnap snap) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("请加载 annual-report 技能，按技能方法论为以下银行年报撰写章节正文。\n\n");
-        sb.append("银行：").append(art.company()).append("\n");
-        sb.append("报告期：").append(art.reportPeriod()).append("\n");
-        sb.append("章节编号：").append(sec.sectionId()).append("\n");
-        sb.append("章节标题：").append(sec.title()).append("\n\n");
+    // ------------------------------------------------------------------
+    // long_form 写作（0.3.7 架构分工）：
+    //   skill  承载方法与流程（写作方法/口径句式/引用纪律/修订流程，见 annual-report 技能）；
+    //   agent  负责任务分解、成稿与反思优化（openjiuwen deep agent：task planning + 会话记忆）；
+    //   Java   只做确定性编排：任务书组装（纯运行时数据）、[S-n] 解析、核验与反思回路调度。
+    // Java 侧不含任何写作方法论——「怎么写」由 agent 侧技能决定。
+    // ------------------------------------------------------------------
 
-        // 指标数据
-        sb.append("可用指标数据（必须原样引用值与单位，不得修改）：\n");
+    /** agent 输出的章节块首行格式：整行仅 [S-n]（容许前置 # 标记与括号内空白，接受后统一规范化）。 */
+    private static final java.util.regex.Pattern SECTION_HEAD =
+            java.util.regex.Pattern.compile("^\\s*(?:#+\\s*)?\\[\\s*(S-\\d{1,2})\\s*\\]\\s*$");
+
+    /** 采纳成稿的最小正文字数（低于此值视为异常响应，不采纳）。 */
+    private static final int MIN_BODY_CHARS = 50;
+
+    /** long_form 生成结果：最终工件 + agent 协作轮次记录（供 Stage 4 展示）。 */
+    private record LongFormOutcome(AnnualReportArtifacts artifacts, List<String> rounds) {}
+
+    /**
+     * long_form 主流程：任务书分派 → 缺节续写 → 核验违规反思修订。
+     * 所有轮次复用同一 openjiuwen 会话（框架按 sessionId 维护上下文与记忆）。
+     */
+    private static LongFormOutcome runLongForm(AnnualReportArtifacts art, BankSnap snap,
+            Map<String, String> sectionRole, Map<String, String> sectionAgent,
+            SnapshotHttpResolver resolver, List<SourceEntry> sources) {
+        List<String> rounds = new ArrayList<>();
+        List<String> analysisIds = new ArrayList<>();
+        for (ReportSection sec : art.sections()) {
+            if ("analysis".equals(sectionRole.getOrDefault(sec.sectionId(), "analysis"))) {
+                analysisIds.add(sec.sectionId());
+            }
+        }
+        if (analysisIds.isEmpty()) {
+            return new LongFormOutcome(art, rounds);
+        }
+
+        // 会话仅限单次生成流程内复用（任务书→续写→反思共享上下文）；跨 run 必须隔离，
+        // 否则框架记忆残留上次产出，agent 会复述旧稿而不按新任务书重新成稿。
+        String sessionId = "w06-lf-" + art.taskId() + "-" + System.currentTimeMillis();
+
+        // 1) 任务书分派：agent 自主分解章节写作任务并成稿（框架 task planning + 会话记忆）
+        String draft = AgentChatClient.chat(
+                buildTaskBook(art, snap, sectionRole, sectionAgent, analysisIds), sessionId);
+        if (draft == null) {
+            rounds.add("agent 不可达，本次回退模板正文（可稍后重试）");
+            return new LongFormOutcome(art, rounds);
+        }
+        Map<String, String> bodies = parseSectionBodies(draft, analysisIds);
+        rounds.add("写作轮：任务书分派（会话 " + sessionId + "），agent 产出 "
+                + bodies.size() + "/" + analysisIds.size() + " 节");
+
+        // 2) 缺节续写：输出截断或漏节时由同一会话续写（框架记忆支撑），最多 2 轮
+        for (int round = 1; round <= 2; round++) {
+            List<String> missing = new ArrayList<>();
+            for (String id : analysisIds) {
+                if (!bodies.containsKey(id)) missing.add(id);
+            }
+            if (missing.isEmpty()) break;
+            String cont = AgentChatClient.chat(buildContinueDirective(missing), sessionId);
+            if (cont == null) break;
+            bodies.putAll(parseSectionBodies(cont, missing));
+            rounds.add("续写轮 " + round + "：补写 " + String.join("、", missing)
+                    + "，累计 " + bodies.size() + "/" + analysisIds.size() + " 节");
+        }
+
+        // 3) 应用成稿并核验
+        AnnualReportArtifacts best = applyBodies(art, bodies);
+        CheckResult num = NUMERIC.check(best, resolver.scopedFor(best));
+        CheckResult cit = CITATION.check(best, resolver.scopedFor(best), sources);
+        int violations = num.violations().size() + cit.violations().size();
+
+        // 4) 反思修订回路：违规清单回灌同一会话，agent 按技能修订流程自纠，最多 2 轮；不劣化原则
+        if (violations > 0) {
+            rounds.add("核验：数值 " + num.status() + " / 引用 " + cit.status()
+                    + "，违规 " + violations + " 条，进入反思修订");
+        }
+        for (int round = 1; round <= 2 && violations > 0; round++) {
+            String revised = AgentChatClient.chat(buildRevisionFeedback(num, cit), sessionId);
+            if (revised == null) break;
+            Map<String, String> patches = parseSectionBodies(revised, analysisIds);
+            if (patches.isEmpty()) break;
+            AnnualReportArtifacts cand = applyBodies(best, patches);
+            CheckResult n2 = NUMERIC.check(cand, resolver.scopedFor(cand));
+            CheckResult c2 = CITATION.check(cand, resolver.scopedFor(cand), sources);
+            int v2 = n2.violations().size() + c2.violations().size();
+            if (v2 < violations) {
+                rounds.add("反思轮 " + round + "：修订 " + patches.size() + " 节，违规 "
+                        + violations + " → " + v2);
+                best = cand;
+                num = n2;
+                cit = c2;
+                violations = v2;
+            } else {
+                rounds.add("反思轮 " + round + "：复核违规 " + v2 + " 条未改善，保留上一版");
+                break;
+            }
+        }
+        return new LongFormOutcome(best, rounds);
+    }
+
+    /**
+     * 构造长文写作任务书（Java → writer-agent 的分派契约，纯运行时数据，不含写作方法论）。
+     * 方法与流程由 agent 侧 annual-report 技能承载（任务书首句指令 agent 先经 skill_tool
+     * 加载技能与 references/long-form-writing.md）；任务书只注入骨架派生的节清单、
+     * 指标表、引用清单、快照页原文，以及 Java 解析所需的输出协议。
+     */
+    private static String buildTaskBook(AnnualReportArtifacts art, BankSnap snap,
+            Map<String, String> sectionRole, Map<String, String> sectionAgent, List<String> analysisIds) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("【长文写作任务书】\n");
+        sb.append("请先用 skill_tool 加载 annual-report 技能及 references/long-form-writing.md，");
+        sb.append("按技能方法自主分解本任务书的章节写作计划，并逐节成稿。\n\n");
+        sb.append("任务目标：为以下银行撰写年报各分析章节正文。\n");
+        sb.append("银行：").append(art.company()).append("\n");
+        sb.append("报告期：").append(art.reportPeriod()).append("\n\n");
+
+        // 章节清单（骨架派生，只含 analysis 节；分析洞察责任 agent 用于写作侧重参考）
+        sb.append("章节清单（每节对应一个输出块）：\n");
+        for (ReportSection sec : art.sections()) {
+            if (!analysisIds.contains(sec.sectionId())) continue;
+            sb.append("- ").append(sec.sectionId()).append(" ").append(sec.title())
+                    .append("（分析洞察责任：")
+                    .append(sectionAgent.getOrDefault(sec.sectionId(), "editor-in-chief"))
+                    .append("；关联引用：");
+            sb.append(sec.claimIds().isEmpty() ? "无" : String.join("、", sec.claimIds()));
+            sb.append("）\n");
+        }
+        sb.append("\n");
+
+        // 指标数据表
+        sb.append("指标数据表（值与单位为准，不得修改）：\n");
         for (MetricValue m : art.metrics()) {
             sb.append("- ").append(m.key().getDisplayName())
                     .append("：").append(m.value()).append(m.unit());
@@ -834,35 +947,27 @@ public final class CheckerHttpServer {
         }
         sb.append("\n");
 
-        // 引用清单
-        if (!sec.claimIds().isEmpty()) {
-            sb.append("可用引用（正文数据陈述须标注对应 [C-n]）：\n");
-            for (String claimId : sec.claimIds()) {
-                for (var cit : art.citations()) {
-                    if (cit.claimId().equals(claimId)) {
-                        String excerpt = cit.evidenceExcerpt();
-                        if (excerpt.length() > 200) excerpt = excerpt.substring(0, 200) + "…";
-                        sb.append("- [").append(claimId).append("] 第")
-                                .append(cit.page()).append("页：")
-                                .append(excerpt).append("\n");
-                        break;
-                    }
-                }
-            }
-            sb.append("\n");
+        // 引用清单（全部分析节的 claims）
+        Set<String> wantedClaims = new LinkedHashSet<>();
+        for (ReportSection sec : art.sections()) {
+            if (analysisIds.contains(sec.sectionId())) wantedClaims.addAll(sec.claimIds());
         }
+        sb.append("引用清单：\n");
+        for (var c : art.citations()) {
+            if (!wantedClaims.contains(c.claimId())) continue;
+            String excerpt = c.evidenceExcerpt();
+            if (excerpt.length() > 200) excerpt = excerpt.substring(0, 200) + "…";
+            sb.append("- [").append(c.claimId()).append("] 第").append(c.page()).append("页：")
+                    .append(excerpt).append("\n");
+        }
+        sb.append("\n");
 
         // 快照页原文
-        sb.append("快照页原文（数据来源，仅供引用不得编造）：\n");
-        Set<Integer> citedPages = new HashSet<>();
-        for (String claimId : sec.claimIds()) {
-            for (var cit : art.citations()) {
-                if (cit.claimId().equals(claimId)) {
-                    citedPages.add(cit.page());
-                    break;
-                }
-            }
+        Set<Integer> citedPages = new TreeSet<>();
+        for (var c : art.citations()) {
+            if (wantedClaims.contains(c.claimId())) citedPages.add(c.page());
         }
+        sb.append("快照页原文（数据来源，仅供引用）：\n");
         for (int pageNum : citedPages) {
             String pageText = snap.byPageNumber.get(pageNum);
             if (pageText != null) {
@@ -872,15 +977,90 @@ public final class CheckerHttpServer {
         }
         sb.append("\n");
 
-        sb.append("写作要求：\n");
-        sb.append("- 正文 400-800 字\n");
-        sb.append("- 每个数据陈述标注引用编号 [C-n]\n");
-        sb.append("- 简体中文\n");
-        sb.append("- 不编造快照页外的数据\n");
-        sb.append("- 派生值须标注「基于 [C-k] 计算」+算式\n");
-        sb.append("- 同比变动不要用「同比增长/下降XX%」句式，改用「同比变动-XX%」或「较上年同期变动-XX%」\n");
-
+        // 输出协议（Java 解析契约；写作口径/句式等验收标准见技能）
+        sb.append("输出协议（服务端按此解析，须严格遵守）：\n");
+        sb.append("1. 只输出章节清单所列各节的正文，不输出任务书解读、开场白或收尾总结；\n");
+        sb.append("2. 每节一个块，块首行只写 [S-n]（n 为章节编号，如 [S-1]），正文从下一行开始；\n");
+        sb.append("3. 数据陈述标注对应引用编号 [C-n]；派生值标注「基于 [C-k] 计算」并给出算式；\n");
+        sb.append("4. 不编造快照页原文之外的数据。\n");
         return sb.toString();
+    }
+
+    /** 缺节续写指令（输出协议不变；同一会话内 agent 可见此前任务书与成稿）。 */
+    private static String buildContinueDirective(List<String> missing) {
+        return "上一轮输出不完整，缺少章节：" + String.join("、", missing) + "\n"
+                + "请按任务书继续完成缺失章节的写作，只输出缺失章节的块，"
+                + "输出协议不变（块首行只写 [S-n]，正文从下一行开始）。";
+    }
+
+    /** 核验违规反馈（反思修订轮输入）：违规清单 + 修订契约。 */
+    private static String buildRevisionFeedback(CheckResult num, CheckResult cit) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("核验未通过，违规清单如下。请按 annual-report 技能的修订流程反思并修订正文。\n\n");
+        sb.append("## 数值核验（").append(num.status()).append("）\n");
+        for (Violation v : num.violations()) {
+            sb.append("- [").append(v.rule()).append("] ");
+            if (v.target() != null && !v.target().isEmpty()) sb.append(v.target()).append("：");
+            sb.append(v.detail()).append("\n");
+        }
+        sb.append("\n## 引用核验（").append(cit.status()).append("）\n");
+        for (Violation v : cit.violations()) {
+            sb.append("- [").append(v.rule()).append("] ");
+            if (v.target() != null && !v.target().isEmpty()) sb.append(v.target()).append("：");
+            sb.append(v.detail()).append("\n");
+        }
+        sb.append("\n修订要求：只修订与违规相关的章节；未修订的章节不要输出。")
+                .append("输出协议：仅输出被修订章节的块，块首行只写 [S-n]，正文从下一行开始，")
+                .append("数据陈述标注 [C-n]。");
+        return sb.toString();
+    }
+
+    /**
+     * 解析 agent 输出的 [S-n] 块。块首行整行仅 [S-n]，块体为正文；
+     * 只收章节清单内的节，正文不足 MIN_BODY_CHARS 视为异常响应不采纳。
+     */
+    private static Map<String, String> parseSectionBodies(String text, List<String> wantedIds) {
+        Map<String, String> out = new LinkedHashMap<>();
+        if (text == null || text.isBlank()) return out;
+        String currentId = null;
+        StringBuilder body = new StringBuilder();
+        for (String line : text.split("\\R", -1)) {
+            var m = SECTION_HEAD.matcher(line);
+            if (m.matches()) {
+                acceptSection(out, currentId, body, wantedIds);
+                currentId = m.group(1);
+                body.setLength(0);
+            } else if (currentId != null) {
+                body.append(line).append('\n');
+            }
+        }
+        acceptSection(out, currentId, body, wantedIds);
+        return out;
+    }
+
+    /** 输出协议 token 解码容差：[ S-7 ]/[ C-22 ] 统一规范化为 [S-7]/[C-22]（仅去括号内空白）。 */
+    private static final java.util.regex.Pattern BRACKET_TOKEN =
+            java.util.regex.Pattern.compile("\\[\\s*(S-\\d{1,2}|C-\\d{1,3})\\s*\\]");
+
+    private static void acceptSection(Map<String, String> out, String id,
+            StringBuilder body, List<String> wantedIds) {
+        if (id == null || !wantedIds.contains(id)) return;
+        String b = BRACKET_TOKEN.matcher(body.toString().trim()).replaceAll("[$1]");
+        if (b.length() >= MIN_BODY_CHARS) out.put(id, b);
+    }
+
+    /** 将 agent 成稿应用到工件：仅替换出现的节，其余节保留原正文。 */
+    private static AnnualReportArtifacts applyBodies(AnnualReportArtifacts art, Map<String, String> bodies) {
+        if (bodies.isEmpty()) return art;
+        List<ReportSection> out = new ArrayList<>();
+        for (ReportSection sec : art.sections()) {
+            String b = bodies.get(sec.sectionId());
+            out.add(b != null
+                    ? new ReportSection(sec.sectionId(), sec.title(), b, sec.claimIds())
+                    : sec);
+        }
+        return new AnnualReportArtifacts(art.taskId(), art.company(), art.reportPeriod(),
+                art.generatedAt(), art.metrics(), art.citations(), out, art.charts());
     }
 
     private static ObjectNode stageNode(String id, String name, String agent, String headline) {
@@ -1074,7 +1254,7 @@ public final class CheckerHttpServer {
         return node;
     }
 
-    /** Agent Hub 种子：10 个内置运行时 agent（含默认 skill 绑定与主编团队）+ 3 个市场目录可安装 agent。 */
+    /** Agent Hub 种子：11 个内置运行时 agent（含默认 skill 绑定与主编团队）+ 3 个市场目录可安装 agent。 */
     private static void seedAgents() {
         String boot = Instant.now().toString();
         putAgent(AGENT_RUNTIME, "editor-in-chief", "主编编排 Agent", "ORCHESTRATOR", "1.0.0",
@@ -1101,7 +1281,12 @@ public final class CheckerHttpServer {
                 "披露规范审查：口径铁律、释义与脚注体例（证监会 2 号准则对齐）",
                 new String[]{"披露口径审查", "释义脚注"},
                 new String[]{"annual-report", "citation-style"}, boot);
-        putAgent(AGENT_RUNTIME, "chart-agent", "图表绘制 Agent", "ANALYST", "1.0.0",
+        putAgent(AGENT_RUNTIME, "writer-agent", "长文写作 Agent", "WRITER", "1.0.0",
+                "受理长文写作任务书，经 openjiuwen deep agent 自主分解章节写作任务并逐节成稿；"
+                        + "写作方法与流程来自 annual-report 技能，核验违规在同一会话内反思修订",
+                new String[]{"任务分解", "章节成稿", "反思修订"},
+                new String[]{"annual-report", "long-form-writing"}, boot);
+        putAgent(AGENT_RUNTIME, "chart-agent", "图表绘制 Agent", "RENDERER", "1.0.0",
                 "受控图表绘制：按图表数据文件与骨架配置挂载节位渲染内联 SVG，只渲染不改数、不发明图表",
                 new String[]{"图表绘制", "挂载校验"},
                 new String[]{"annual-report", "report-skeleton", "agent-division"}, boot);
@@ -1118,10 +1303,11 @@ public final class CheckerHttpServer {
                 new String[]{"具名批准", "digest 绑定"},
                 new String[]{"annual-report"}, boot);
 
-        // 主编团队：内置 9 个专业 agent 默认注册给主编编排 Agent
+        // 主编团队：内置 9 个专业执行 agent 默认注册给主编编排 Agent。
+        // approver 治理独立：批准权不经主编分派（分派链不得覆盖治理链）。
         ArrayNode team = AGENT_RUNTIME.get("editor-in-chief").putArray("team");
         for (String member : new String[]{"material-agent", "finance-analyst", "risk-analyst", "capital-analyst",
-                "disclosure-officer", "chart-agent", "numeric-checker", "citation-checker", "approver"}) {
+                "disclosure-officer", "writer-agent", "chart-agent", "numeric-checker", "citation-checker"}) {
             team.add(member);
         }
 
@@ -1139,11 +1325,14 @@ public final class CheckerHttpServer {
                 new String[]{}, null);
     }
 
-    /** 技能注册表种子：7 个技能（与 skills/annual-report 目录一致），可绑定给任意运行时 agent。 */
+    /** 技能注册表种子：8 个技能（与 skills/annual-report 目录一致），可绑定给任意运行时 agent。 */
     private static void seedSkills() {
         putSkill("annual-report", "annual-report 主技能", "skills/annual-report/SKILL.md",
-                "年报编制主技能：受控流程编排——资料装载 → 口径澄清 → 分节成稿 → 双重核验 → 具名批准，内含四份 reference（领域/引用/口径/信源）。",
+                "年报编制主技能：受控流程编排——资料装载 → 口径澄清 → 分节成稿 → 双重核验 → 具名批准，内含五份 reference（领域/引用/口径/信源/长文写作方法）。",
                 new String[]{"编排", "成稿", "核验", "批准"});
+        putSkill("long-form-writing", "长文写作方法", "skills/annual-report/references/long-form-writing.md",
+                "长文流水线写作方法与流程：任务书解读与分解、分节成稿法、引用标注法、口径句式规范、跨节一致性要求、核验违规修订流程。",
+                new String[]{"长文写作", "任务分解", "修订流程"});
         putSkill("report-skeleton", "年报骨架方法", "skills/annual-report/references/report-skeleton.md",
                 "真实年报骨架方法（名称保留/深度收缩）：report-structure.json 是节序/标题/静态正文/责任 agent 的唯一事实源，新增银行零代码。",
                 new String[]{"骨架配置"});
@@ -1435,8 +1624,9 @@ public final class CheckerHttpServer {
             return;
         }
         String kind = body.path("kind").asText("ANALYST");
-        if (!List.of("ORCHESTRATOR", "ANALYST", "CHECKER", "APPROVER").contains(kind)) {
-            respond(ex, 400, errorNode("bad_request", "kind 须为 ORCHESTRATOR|ANALYST|CHECKER|APPROVER"));
+        if (!List.of("ORCHESTRATOR", "ANALYST", "WRITER", "RENDERER", "CHECKER", "APPROVER").contains(kind)) {
+            respond(ex, 400, errorNode("bad_request",
+                    "kind 须为 ORCHESTRATOR|ANALYST|WRITER|RENDERER|CHECKER|APPROVER"));
             return;
         }
         String desc = body.path("description").asText("");
