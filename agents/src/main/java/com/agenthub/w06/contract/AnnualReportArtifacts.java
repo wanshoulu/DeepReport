@@ -15,7 +15,8 @@ public record AnnualReportArtifacts(
         @JsonProperty("generated_at") String generatedAt,   // 工件生成时间（ISO-8601，可缺省）
         @JsonProperty("metrics") List<MetricValue> metrics,          // 8 条，缺一 FAIL（完整性）
         @JsonProperty("citations") List<Citation> citations,         // 每条论断至少一条
-        @JsonProperty("sections") List<ReportSection> sections       // 正文分节
+        @JsonProperty("sections") List<ReportSection> sections,      // 正文分节
+        @JsonProperty("charts") List<java.util.Map<String, Object>> charts // 图表（bar/line/pie/flow），前端内联 SVG 渲染；核验器不校验
 ) {}
 
 /** 报告正文章节。 */

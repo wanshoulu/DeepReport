@@ -1,0 +1,98 @@
+{
+  "snapshot_version": "cmb-ar-2025-w01@1.0.0",
+  "company": "招商银行股份有限公司",
+  "report_period": "2025年度",
+  "generated_at": "2026-11-16",
+  "sources": [
+    {
+      "source_id": "cmb-ar-2025-primary",
+      "title": "招商银行股份有限公司2025年度报告（本期节选）",
+      "authority": "PRIMARY_OFFICIAL",
+      "origin_url": "snapshot:local/cmb-ar-2025-primary（公开披露年报落盘快照，不实时访问）",
+      "fetched_at": "2026-11-16",
+      "content_sha256": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "pages": [
+        18,
+        30,
+        37
+      ],
+      "note": "本期年报节选：总体经营（P18）、贷款质量（P30）、资本充足（P37）。业务及管理费1,079.43亿元与贷款减值准备2,672.24亿元为按披露比率复算的整理值（成本收入比/拨备覆盖率的分母分子），其余数值均为页内原文。"
+    },
+    {
+      "source_id": "cmb-ar-2024-comparison",
+      "title": "招商银行股份有限公司2024年度报告（对比基数节选）",
+      "authority": "PRIMARY_OFFICIAL",
+      "origin_url": "snapshot:local/cmb-ar-2024-comparison（公开披露年报落盘快照，不实时访问）",
+      "fetched_at": "2026-11-16",
+      "content_sha256": "69c6096504be57484a32ea1afb02499891286066ea1179dcb30f54212bec3366",
+      "pages": [
+        46
+      ],
+      "note": "上年度对比基数页：营收/净利/净息差/成本收入比/不良余额/不良率/拨备覆盖率/CET1。"
+    }
+  ],
+  "page_digests": {
+    "18": "0637825d9c9a90511caf358e05686a64fdc086cd98eb38150f0be9aee173acce",
+    "30": "f066fe7f5cd0278130e9afd7e23f82ce37cd55fc4a1d9eb7f881e6e00b565065",
+    "37": "fadb64dd4b4eae13d7e34f430c58da5844a5e4e577cd5bb4e5546db83b14284d",
+    "46": "69c6096504be57484a32ea1afb02499891286066ea1179dcb30f54212bec3366"
+  },
+  "entities": [
+    {
+      "full_name": "招商银行股份有限公司",
+      "short_names": [
+        "本集团",
+        "本行"
+      ]
+    },
+    {
+      "full_name": "国家金融监督管理总局",
+      "short_names": [
+        "监管机构"
+      ]
+    }
+  ],
+  "metric_index": {
+    "OPERATING_REVENUE": {
+      "label": "营业收入",
+      "page": 18,
+      "source_id": "cmb-ar-2025-primary"
+    },
+    "NET_PROFIT_ATTRIBUTABLE": {
+      "label": "归属于本行股东的净利润",
+      "page": 18,
+      "source_id": "cmb-ar-2025-primary"
+    },
+    "NET_INTEREST_MARGIN": {
+      "label": "净息差",
+      "page": 18,
+      "source_id": "cmb-ar-2025-primary"
+    },
+    "COST_INCOME_RATIO": {
+      "label": "成本收入比",
+      "page": 18,
+      "source_id": "cmb-ar-2025-primary"
+    },
+    "NPL_BALANCE": {
+      "label": "不良贷款余额",
+      "page": 30,
+      "source_id": "cmb-ar-2025-primary"
+    },
+    "NPL_RATIO": {
+      "label": "不良贷款率",
+      "page": 30,
+      "source_id": "cmb-ar-2025-primary"
+    },
+    "PROVISION_COVERAGE": {
+      "label": "拨备覆盖率",
+      "page": 30,
+      "source_id": "cmb-ar-2025-primary"
+    },
+    "CET1_RATIO": {
+      "label": "核心一级资本充足率（高级法）",
+      "page": 37,
+      "source_id": "cmb-ar-2025-primary"
+    }
+  },
+  "bank": "cmb"
+}

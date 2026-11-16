@@ -16,8 +16,7 @@ RUN mkdir -p out/main out/test \
     && java -cp '/src/libs/*:/src/out/main:/src/out/test' com.agenthub.w06.checker.TestMain
 
 COPY deploy/snapshot /snapshot
-COPY deploy/positive-artifact.json /app/demo/positive-artifact.json
-COPY deploy/error-artifact.json /app/demo/error-artifact.json
+COPY deploy/demo /app/demo
 COPY deploy/reference-answer.json /app/demo/reference-answer.json
 COPY deploy/workbench.html /app/workbench.html
 

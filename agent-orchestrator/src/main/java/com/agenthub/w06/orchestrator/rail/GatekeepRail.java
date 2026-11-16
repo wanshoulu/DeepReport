@@ -32,6 +32,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -189,10 +190,30 @@ public final class GatekeepRail extends com.openjiuwen.memory.harness.rails.Memo
 
     private static CheckResult merge(List<CheckResult> checks) {
         // 合并为单一 verdict 记录（保留各 checker 明细于 violations）
-        var allViolations = checks.stream()
+        var allViolations = new ArrayList<>(checks.stream()
                 .flatMap(c -> c.violations().stream())
-                .toList();
-        return new CheckResult("gatekeep-merged", "0.1.0", worstStatus(checks), allViolations);
+                .toList());
+        // G3：verdict 必须绑定被检工件摘要；digest 缺失或与其他 checker 不一致 → 过期结论，拒绝放行
+        String expected = checks.stream()
+                .map(CheckResult::artifactSha256)
+                .filter(d -> d != null && !d.isBlank())
+                .findFirst().orElse(null);
+        boolean stale = false;
+        if (expected != null) {
+            for (CheckResult c : checks) {
+                if (c.artifactSha256() == null || c.artifactSha256().isBlank()
+                        || !c.artifactSha256().equals(expected)) {
+                    allViolations.add(new Violation("STALE_VERDICT", c.checkerId(),
+                            "verdict 未绑定当前工件摘要（G3），拒绝采纳", Severity.BLOCKING));
+                    stale = true;
+                }
+            }
+        }
+        CheckStatus status = worstStatus(checks);
+        if (stale) {
+            status = CheckStatus.FAILED;
+        }
+        return new CheckResult("gatekeep-merged", "0.2.0", status, allViolations, expected);
     }
 
     private static CheckStatus worstStatus(List<CheckResult> checks) {
@@ -227,6 +248,6 @@ public final class GatekeepRail extends com.openjiuwen.memory.harness.rails.Memo
 
     private static CheckResult singleCheckResult(String id, String v, CheckStatus s,
                                            List<com.agenthub.w06.contract.Violation> vs) {
-        return new CheckResult(id, v, s, vs);
+        return new CheckResult(id, v, s, vs, null); // 结构化失败无合法工件，无摘要可绑定
     }
 }

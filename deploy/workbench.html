@@ -259,6 +259,12 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .rp-table .delta.up { color: var(--success); }
 .rp-table .delta.down { color: var(--destructive); }
 .rp-table-note { font-size: 11.5px; color: var(--muted); margin-top: 8px; line-height: 1.8; }
+/* 图表（工件 charts 内联 SVG）：报告正文与对话流共用 */
+.rp-chart { margin: 14px 0 6px; background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius-sm); padding: 16px 14px 10px; }
+.rp-chart figcaption { font-size: 11.5px; color: var(--muted); text-align: center; margin-top: 8px; line-height: 1.7; }
+.rp-chart figcaption b { color: var(--info); font-weight: 600; }
+.m-chart { background: var(--surface); border: 1px solid var(--card-border); border-radius: var(--radius-sm); padding: 10px 8px 6px; margin: 8px 0; }
+.m-chart svg { max-width: 100%; }
 .rp-body { font-family: var(--serif); font-size: 14.5px; line-height: 2.15; text-align: justify; color: #262626; text-indent: 2em; }
 .rp-refs { margin-top: 12px; text-indent: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .rp-refs .ref-label { font-family: var(--sans); font-size: 11.5px; color: var(--muted); margin-right: 2px; }
@@ -513,11 +519,13 @@ function extract2024(text) {
 
 /* ———————————————————— 全局状态 ———————————————————— */
 const state = {
-  manifest: null, sources: [], health: null,
-  positive: null,          // 正例工件（只读底稿）
+  manifest: null, manifests: {},  // 各银行快照 manifest（key=银行目录名）；manifest 为默认（cmb）
+  banks: [],               // 银行清单（/v1/banks）
+  sources: [], health: null,
+  positive: null,          // 正例工件（只读底稿，招行演示链用）
   artifact: null,          // 当前工作工件（演示链会修改它）
   citeArtifact: null,      // 引用抽屉/快照高亮当前指向的工件
-  y2024: {},               // 2024 对比值（快照 P46 提取）
+  y2024: {}, y2024s: {},   // 2024 对比值（快照 P46 提取，按银行缓存；y2024 兼容指向招行）
   pages: {},               // 快照页缓存
   approval: null,
   tasks: [], selectedTask: null,
@@ -552,7 +560,7 @@ const AGENT_META = {
   "approver":            { name: "交付批准官", kind: "APPROVER", av: "批" }
 };
 
-const chat = { stage: "greet", artifact: null, taskId: null, busy: false };
+const chat = { stage: "greet", bank: "cmb", artifact: null, taskId: null, busy: false };
 
 function addMsg(agentId, html) {
   const log = $("#chat-log");
@@ -584,36 +592,43 @@ $("#quick-row").addEventListener("click", e => {
   if (fn) { setQuick([]); fn(); }
 });
 
-/* 对话状态机：greet → material → clarify → generating → (fix) → wait_approval → done */
+/* 对话状态机：greet → bank → material → clarify → generating → (fix) → wait_approval → done */
 function greet() {
   chat.stage = "greet";
   addMsg("editor-in-chief",
     "您好，我是主编编排 Agent（editor-in-chief）。这里由多专业 agent 协同完成年度经营简报的编制：<br>"
     + "资料装载 → 口径澄清 → 分节成稿 → 确定性核验 → 具名批准交付。<br>"
-    + "首先请确认编制主体与报告期。");
-  setQuick([{ label: "确认：招商银行 · 2025 年度", cls: "primary", fn: confirmSubject }]);
+    + "首先请选择编制主体（支持多家银行的年报快照）。");
+  const opts = (state.banks.length ? state.banks : [{ bank: "cmb", company: "招商银行" }])
+    .map(b => ({ label: b.company + " · 2025 年度", cls: b.bank === "cmb" ? "primary" : "", fn: () => pickBank(b) }));
+  setQuick(opts);
 }
 
-async function confirmSubject() {
+async function pickBank(b) {
   setQuick([]);
-  addMsg("user", "确认编制主体：招商银行，报告期 2025 年度。");
-  addMsg("editor-in-chief", "已受理：招商银行 2025 年度经营简报。转交资料管理 Agent 装载信源快照。");
+  chat.bank = b.bank;
+  addMsg("user", "选择编制主体：" + b.company + "，报告期 2025 年度。");
+  addMsg("editor-in-chief", "已受理：" + b.company + " 2025 年度经营简报。转交资料管理 Agent 装载信源快照。");
   chat.stage = "material";
   addMsg("material-agent", "正在装载信源快照……");
   try {
+    if (!state.y2024s[b.bank]) {
+      const p46 = await jget("/v1/snapshot/pages/46?bank=" + b.bank);
+      state.y2024s[b.bank] = extract2024(p46.text);
+    }
     const [sources] = await Promise.all([jget("/v1/sources")]);
     state.sources = sources;
-    const m = state.manifest;
+    const m = state.manifests[b.bank];
     const pages = Object.keys(m.page_digests).join(" / ");
     addMsg("material-agent",
       "信源装载完成：<br>"
-      + "· 信源 <b>" + m.sources.length + "</b> 份（公开披露年报落盘快照，content_sha256 已登记）<br>"
+      + "· 信源 <b>" + m.sources.length + "</b> 份（" + esc(b.company) + "公开披露年报落盘快照，content_sha256 已登记）<br>"
       + "· 快照页 P" + pages + " · 指标索引 " + Object.keys(m.metric_index).length + " 项 · 释义 " + (m.entities || []).length + " 条<br>"
       + "如需补充资料可直接粘贴文本（将登记为编制依据），或点击下方按钮开始编制。");
     setQuick([{ label: "资料齐备，开始编制", cls: "primary", fn: startClarify }]);
   } catch (e) {
     addMsg("material-agent", '<span style="color:var(--destructive)">信源装载失败：' + esc(e.message) + "</span>");
-    setQuick([{ label: "重试装载", cls: "primary", fn: confirmSubject }]);
+    setQuick([{ label: "重试装载", cls: "primary", fn: () => pickBank(b) }]);
   }
 }
 
@@ -641,14 +656,23 @@ function answerClarify(correct) {
 
 async function startGeneration(correct) {
   chat.stage = "generating";
-  addMsg("editor-in-chief", "开始编制。先向服务端登记任务（获取任务编号，报告库可实时查看进度）……");
-  const base = clone(state.positive);
+  const bank = state.banks.find(x => x.bank === chat.bank) || { bank: "cmb", company: "招商银行" };
+  addMsg("editor-in-chief", "开始编制（" + esc(bank.company) + "）。先向服务端登记任务（获取任务编号，报告库可实时查看进度）……");
+  let base;
+  try {
+    base = chat.bank === "cmb" ? clone(state.positive)
+      : await jget("/v1/artifacts/template?bank=" + encodeURIComponent(chat.bank));
+  } catch (e) {
+    addMsg("editor-in-chief", '<span style="color:var(--destructive)">模板工件加载失败：' + esc(e.message) + "</span>");
+    setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
+    return;
+  }
   if (!correct) {
     const s2 = base.sections.find(s => s.section_id === "S-2");
     s2.body = s2.body.replace("下降20.19个百分点", "下降20.19%");
   }
   const r = await jpost("/v1/tasks", {
-    task: { status: "GENERATING", summary: "招商银行 2025 年度经营简报（对话式编制）" },
+    task: { status: "GENERATING", summary: bank.company + " 2025 年度经营简报（对话式编制）" },
     artifact: base
   });
   if (!r.ok) {
@@ -660,7 +684,7 @@ async function startGeneration(correct) {
   base.task_id = chat.taskId;
   chat.artifact = base;
   addMsg("editor-in-chief",
-    "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。分派专业 agent 分节成稿（各 agent 按任务动态按需加载）。");
+    "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。分派专业 agent 分节成稿（各 agent 按任务动态按需加载，图表随稿生成）。");
   const plan = [
     ["finance-analyst", "S-1", "经营业绩概要"],
     ["risk-analyst", "S-2", "贷款质量"],
@@ -677,13 +701,18 @@ async function startGeneration(correct) {
     await jpost("/v1/agents/load", { agent_id: aid, task_id: chat.taskId });
     const sec = chat.artifact.sections.find(s => s.section_id === sid);
     const fs = (sec.body.match(/^[^。]{0,120}。/) || [sec.body.slice(0, 90) + "……"])[0];
+    const ch = (chat.artifact.charts || []).find(c => c.section_id === sid);
     addMsg(aid, "【" + label + "】" + esc(sec.title) + " 成稿："
       + '<div class="quote">' + esc(fs) + "</div>"
-      + "指标与引用已绑定快照页码与摘录指纹。");
+      + (ch ? '<div class="m-chart">' + chartSvg(ch, false) + "</div>" : "")
+      + "指标与引用已绑定快照页码与摘录指纹"
+      + (ch ? "，图表（" + esc(ch.id) + "）已随稿生成" : "") + "。");
   }
+  const nCharts = (chat.artifact.charts || []).length;
   addMsg("editor-in-chief",
     "草稿完成（" + chat.artifact.metrics.length + " 项指标 · " + chat.artifact.citations.length
-    + " 条引用 · " + chat.artifact.sections.length + " 节正文）。提交确定性核验，先数值后引用。");
+    + " 条引用 · " + chat.artifact.sections.length + " 节正文"
+    + (nCharts ? " · " + nCharts + " 幅图表" : "") + "）。提交确定性核验，先数值后引用。");
   runNumericCheck();
 }
 
@@ -776,7 +805,7 @@ async function approveDelivery() {
 
 function resetChat() {
   $("#chat-log").innerHTML = "";
-  chat.stage = "greet"; chat.artifact = null; chat.taskId = null;
+  chat.stage = "greet"; chat.bank = "cmb"; chat.artifact = null; chat.taskId = null;
   greet();
 }
 
@@ -794,11 +823,15 @@ function handleFreeInput(text) {
   /* 阶段意图 */
   if (chat.stage === "greet") {
     if (/你好|您好|hi|hello/i.test(text)) {
-      addMsg("editor-in-chief", "您好！请确认编制主体与报告期（可点击下方快捷按钮）。");
+      addMsg("editor-in-chief", "您好！请选择编制主体（可点击下方快捷按钮）。");
+    } else if (/工商/.test(text)) {
+      pickBank(state.banks.find(x => x.bank === "icbc") || { bank: "icbc", company: "中国工商银行" });
+    } else if (/建设/.test(text)) {
+      pickBank(state.banks.find(x => x.bank === "ccb") || { bank: "ccb", company: "中国建设银行" });
     } else if (/确认|招商|2025/.test(text)) {
-      confirmSubject();
+      pickBank(state.banks.find(x => x.bank === "cmb") || { bank: "cmb", company: "招商银行" });
     } else {
-      addMsg("editor-in-chief", "请先确认编制主体与报告期：招商银行 · 2025 年度（可点击下方快捷按钮确认）。");
+      addMsg("editor-in-chief", "请先选择编制主体：招商银行 / 中国工商银行 / 中国建设银行 · 2025 年度（可点击下方快捷按钮）。");
     }
   } else if (chat.stage === "material") {
     if (/齐备|开始|编制/.test(text)) { startClarify(); }
@@ -828,21 +861,196 @@ $("#chat-form").addEventListener("submit", e => {
   input.value = "";
   handleFreeInput(v);
 });
+/* ———————————————————— 图表内联 SVG（bar/line/pie/flow，工件 charts 数据驱动，无外部库）———————————————————— */
+function fmtNum(v) {
+  const n = Number(v);
+  return Number.isInteger(n) ? String(n)
+    : n.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+const CHART_C1 = "hsl(217, 75%, 45%)";   /* 系列一（蓝） */
+const CHART_C2 = "hsl(160, 55%, 38%)";   /* 系列二（绿） */
+function chartSvg(ch, wide) {
+  if (!ch) return "";
+  const W = wide ? 620 : 300;
+  if (ch.type === "bar") return barSvg(ch, W, wide ? 300 : 220);
+  if (ch.type === "line") return lineSvg(ch, W, wide ? 300 : 220);
+  if (ch.type === "pie") return pieSvg(ch, wide ? 420 : 300, wide ? 260 : 210);
+  if (ch.type === "flow") return flowSvg(ch, W);
+  return "";
+}
+function svgOpen(w, h) {
+  return '<svg viewBox="0 0 ' + w + " " + h + '" width="100%" style="max-width:' + w
+    + 'px;display:block;margin:0 auto" font-family="var(--sans)" role="img">';
+}
+function legend(items, W, y) {
+  let x = W / 2 - items.length * 62;
+  let s = "";
+  for (const [name, color] of items) {
+    s += '<rect x="' + x + '" y="' + (y - 9) + '" width="11" height="11" rx="2.5" fill="' + color + '"/>'
+      + '<text x="' + (x + 16) + '" y="' + y + '" font-size="12" fill="var(--fg)">' + esc(name) + "</text>";
+    x += 24 + esc(name).replace(/[^\x00-\xff]/g, "aa").length * 6 + 34;
+  }
+  return s;
+}
+/* 分组柱形图：本期 vs 上年两系列、等距分组、柱顶数值标注 */
+function barSvg(ch, W, H) {
+  const L = 64, R = 14, T = 18, B = 46;
+  const pw = W - L - R, ph = H - T - B;
+  const max = Math.max(...ch.series.flatMap(s => s.values)) * 1.12;
+  const y = v => T + ph - (v / max) * ph;
+  const groups = ch.labels.length;
+  const gw = pw / groups, bw = Math.min(44, (gw - 34) / ch.series.length);
+  let s = svgOpen(W, H);
+  [0, .5, 1].forEach(f => {
+    const gy = T + ph - f * ph, val = max * f;
+    s += '<line x1="' + L + '" y1="' + gy + '" x2="' + (W - R) + '" y2="' + gy + '" stroke="var(--border)"/>'
+      + '<text x="' + (L - 6) + '" y="' + (gy + 4) + '" font-size="10.5" fill="var(--muted)" text-anchor="end">' + fmtNum(val) + "</text>";
+  });
+  ch.labels.forEach((lab, gi) => {
+    ch.series.forEach((ser, si) => {
+      const v = ser.values[gi];
+      const bx = L + gw * gi + gw / 2 - (ch.series.length * bw + 6 * (ch.series.length - 1)) / 2 + si * (bw + 6);
+      s += '<rect x="' + bx.toFixed(1) + '" y="' + y(v).toFixed(1) + '" width="' + bw + '" height="'
+        + (T + ph - y(v)).toFixed(1) + '" rx="3" fill="' + (si ? CHART_C2 : CHART_C1) + '" opacity=".88"/>'
+        + '<text x="' + (bx + bw / 2).toFixed(1) + '" y="' + (y(v) - 5).toFixed(1)
+        + '" font-size="10.5" fill="var(--fg)" text-anchor="middle">' + fmtNum(v) + "</text>";
+    });
+    s += '<text x="' + (L + gw * gi + gw / 2) + '" y="' + (H - 26) + '" font-size="12" fill="var(--muted)" text-anchor="middle">' + esc(lab) + "</text>";
+  });
+  s += legend(ch.series.map((ser, i) => [ser.name, i ? CHART_C2 : CHART_C1]), W, H - 6) + "</svg>";
+  return s;
+}
+/* 双系列折线：两量纲差异大时各系列按自身量程绘制（数值以标注为准），左轴系列一、右轴系列二 */
+function lineSvg(ch, W, H) {
+  const L = 56, R = 56, T = 18, B = 46;
+  const pw = W - L - R, ph = H - T - B;
+  const n = Math.max(...ch.series.map(s => s.values.length));
+  const px = i => L + (n === 1 ? pw / 2 : (pw * i) / (n - 1));
+  let s = svgOpen(W, H);
+  ch.series.forEach((ser, si) => {
+    const lo = Math.min(...ser.values) * (si ? 0.92 : 0.75), hi = Math.max(...ser.values) * 1.08;
+    const y = v => T + ph - ((v - lo) / (hi - lo)) * ph;
+    const color = si ? CHART_C2 : CHART_C1;
+    const pts = ser.values.map((v, i) => px(i).toFixed(1) + "," + y(v).toFixed(1)).join(" ");
+    s += '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="2.2"/>';
+    ser.values.forEach((v, i) => {
+      const anchor = si ? "start" : "end", dx = si ? 8 : -8;
+      s += '<circle cx="' + px(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="3.6" fill="' + color + '"/>'
+        + '<text x="' + (px(i) + dx).toFixed(1) + '" y="' + (y(v) + 4).toFixed(1) + '" font-size="10.5" fill="var(--fg)" text-anchor="'
+        + anchor + '">' + fmtNum(v) + (ch.unit || "") + "</text>";
+    });
+    [lo, hi].forEach(v => {
+      const ax = si ? W - R + 6 : L - 6;
+      s += '<text x="' + ax + '" y="' + (y(v) + 4).toFixed(1) + '" font-size="10.5" fill="var(--muted)" text-anchor="'
+        + (si ? "start" : "end") + '">' + fmtNum(v) + "</text>";
+    });
+  });
+  ch.labels.forEach((lab, i) => {
+    s += '<text x="' + px(i).toFixed(1) + '" y="' + (H - 26) + '" font-size="12" fill="var(--muted)" text-anchor="middle">' + esc(lab) + "</text>";
+  });
+  s += legend(ch.series.map((ser, i) => [ser.name, i ? CHART_C2 : CHART_C1]), W, H - 6) + "</svg>";
+  return s;
+}
+/* 饼图（甜甜圈）：扇区占比 + 名称数值标注 + 中心总额 */
+function pieSvg(ch, W, H) {
+  const vals = ch.series.map(s => s.values[0]);
+  const total = vals.reduce((a, b) => a + b, 0);
+  const cx = W / 2, cy = H / 2 - 6, r1 = Math.min(W, H) / 2 - 52, r0 = r1 * 0.58;
+  const colors = [CHART_C1, CHART_C2];
+  let s = svgOpen(W, H), a0 = -Math.PI / 2;
+  ch.series.forEach((ser, i) => {
+    const frac = vals[i] / total, a1 = a0 + frac * Math.PI * 2;
+    const large = frac > .5 ? 1 : 0;
+    const p0x = cx + r1 * Math.cos(a0), p0y = cy + r1 * Math.sin(a0);
+    const p1x = cx + r1 * Math.cos(a1), p1y = cy + r1 * Math.sin(a1);
+    const q1x = cx + r0 * Math.cos(a1), q1y = cy + r0 * Math.sin(a1);
+    const q0x = cx + r0 * Math.cos(a0), q0y = cy + r0 * Math.sin(a0);
+    s += '<path d="M' + p0x.toFixed(1) + " " + p0y.toFixed(1)
+      + " A" + r1 + " " + r1 + " 0 " + large + " 1 " + p1x.toFixed(1) + " " + p1y.toFixed(1)
+      + " L" + q1x.toFixed(1) + " " + q1y.toFixed(1)
+      + " A" + r0 + " " + r0 + " 0 " + large + " 0 " + q0x.toFixed(1) + " " + q0y.toFixed(1) + ' Z" fill="'
+      + colors[i % 2] + '" opacity=".88" stroke="var(--bg)" stroke-width="1.5"/>';
+    const mid = (a0 + a1) / 2, lx = cx + (r1 + 14) * Math.cos(mid), ly = cy + (r1 + 14) * Math.sin(mid);
+    s += '<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" font-size="11.5" fill="var(--fg)" text-anchor="middle">'
+      + esc(ser.name) + "</text>"
+      + '<text x="' + lx.toFixed(1) + '" y="' + (ly + 15).toFixed(1) + '" font-size="11" fill="var(--muted)" text-anchor="middle">'
+      + fmtNum(vals[i]) + (ch.unit ? " " + esc(ch.unit) : "") + " · " + (frac * 100).toFixed(1) + "%</text>";
+    a0 = a1;
+  });
+  s += '<text x="' + cx + '" y="' + (cy - 4) + '" font-size="11" fill="var(--muted)" text-anchor="middle">合计</text>'
+    + '<text x="' + cx + '" y="' + (cy + 14) + '" font-size="13.5" fill="var(--fg)" text-anchor="middle">'
+    + fmtNum(total) + (ch.unit ? " " + esc(ch.unit) : "") + "</text></svg>";
+  return s;
+}
+/* 流程框图：7 节点两行蛇形（核验/交付节点强调色描边） */
+function flowSvg(ch, W) {
+  const H = 128, rows = [ch.nodes.slice(0, 4), ch.nodes.slice(4)];
+  const nw = 128, nh = 34, gap = 24;
+  const rowX = r => (W - (rows[r].length * nw + (rows[r].length - 1) * gap)) / 2;
+  let s = svgOpen(W, H);
+  rows.forEach((row, r) => {
+    const y0 = r ? 78 : 18;
+    row.forEach((name, i) => {
+      const x0 = rowX(r) + i * (nw + gap);
+      const strong = /核验|批准|交付/.test(name);
+      s += '<rect x="' + x0.toFixed(1) + '" y="' + y0 + '" width="' + nw + '" height="' + nh + '" rx="9" fill="'
+        + (strong ? "var(--info-bg)" : "var(--surface-2)") + '" stroke="' + (strong ? "var(--info)" : "var(--border)")
+        + '" stroke-width="' + (strong ? 1.6 : 1) + '"/>'
+        + '<text x="' + (x0 + nw / 2).toFixed(1) + '" y="' + (y0 + nh / 2 + 5) + '" font-size="12.5" fill="var(--fg)" text-anchor="middle">'
+        + (r * 4 + i + 1) + ". " + esc(name) + "</text>";
+      if (i < row.length - 1) {
+        const ax = x0 + nw;
+        s += '<line x1="' + (ax + 3) + '" y1="' + (y0 + nh / 2) + '" x2="' + (ax + gap - 5) + '" y2="' + (y0 + nh / 2)
+          + '" stroke="var(--muted)"/><path d="M' + (ax + gap - 5) + " " + (y0 + nh / 2 - 3.5)
+          + " L" + (ax + gap - 1) + " " + (y0 + nh / 2) + " L" + (ax + gap - 5) + " " + (y0 + nh / 2 + 3.5)
+          + ' Z" fill="var(--muted)"/>';
+      }
+    });
+  });
+  /* 行间衔接：行 1 末节点 → 行 2 首节点（L 形折线） */
+  const xTail = rowX(0) + 3 * nw + gap * 2 + nw / 2, xHead = rowX(1) + nw / 2, yMid = 61;
+  s += '<path d="M' + xTail.toFixed(1) + " 52 L" + xTail.toFixed(1) + " " + yMid
+    + " L" + xHead.toFixed(1) + " " + yMid + " L" + xHead.toFixed(1) + " 74" + '" fill="none" stroke="var(--muted)"/>'
+    + '<path d="M' + (xHead - 3.5) + " 74 L" + xHead.toFixed(1) + " 78 L" + (xHead + 3.5) + ' 74 Z" fill="var(--muted)"/></svg>';
+  return s;
+}
+function chartFigure(ch) {
+  return '<figure class="rp-chart">' + chartSvg(ch, true)
+    + "<figcaption><b>" + esc(ch.id) + "</b> · " + esc(ch.title)
+    + (ch.unit ? "（单位：" + esc(ch.unit) + "）" : "")
+    + (ch.type === "line" ? "　<span style='color:var(--muted)'>注：两系列量纲不同，各按自身量程绘制，数值以标注为准。</span>" : "")
+    + "</figcaption></figure>";
+}
+
 /* ———————————————————— 报告 paper 渲染（报告库/抽屉引用共用）———————————————————— */
+/* 工件所属银行 → 快照目录名（与服务端 bankOf 一致）；未识别回退默认 */
+function bankOfCompany(company) {
+  const c = company || "";
+  if (c.includes("招商")) return "cmb";
+  if (c.includes("工商")) return "icbc";
+  if (c.includes("建设")) return "ccb";
+  return "cmb";
+}
+/* 工件对应的银行快照 manifest（多银行）：默认回退 cmb */
+function manifestOf(a) {
+  return state.manifests[bankOfCompany(a && a.company)] || state.manifest || {};
+}
 function paperHtml(a) {
-  const m = state.manifest;
+  const m = manifestOf(a);
   const rows = a.metrics.map(mt => {
     const def = (m.metric_index || {})[mt.key] || {};
     const uLab = { PERCENT: "%", YUAN: "亿元" }[def.unit] || "";
-    const v24 = state.y2024[mt.key];
+    const v24 = (state.y2024s[bankOfCompany(a.company)] || state.y2024 || {})[mt.key];
     return "<tr>"
       + "<td>" + esc(def.label || mt.key) + "</td>"
       + '<td class="num">' + esc(mt.value + (mt.unit || uLab)) + "</td>"
       + '<td class="num">' + (v24 ? esc(v24 + uLab) : "—") + "</td>"
       + '<td class="delta ' + deltaDir(mt) + '">' + esc(deltaText(mt)) + "</td></tr>";
   }).join("");
+  const secCharts = sid => (a.charts || []).filter(c => c.section_id === sid).map(chartFigure).join("");
   const sectionHtml = a.sections.map(sec =>
     '<h2 class="rp-h2" id="sec-' + esc(sec.section_id) + '">' + esc(sec.title) + "</h2>"
+    + secCharts(sec.section_id)
     + String(sec.body).split("\n").filter(p => p.trim())
       .map(p => '<p class="rp-body">' + esc(p) + "</p>").join("")
     + '<div class="rp-refs"><span class="ref-label">本节引用：</span>'
@@ -1523,21 +1731,28 @@ function renderDemoShell() {
 /* ———————————————————— 初始化 ———————————————————— */
 async function init() {
   try {
-    const [health, manifest, positive] = await Promise.all([
-      jget("/health"), jget("/v1/snapshot/manifest"), jget("/demo/positive-artifact.json")
+    const [health, manifest, positive, banks] = await Promise.all([
+      jget("/health"), jget("/v1/snapshot/manifest"), jget("/demo/positive-artifact.json"), jget("/v1/banks")
     ]);
     state.health = health;
     state.manifest = manifest;
     state.positive = positive;
     state.artifact = clone(positive);
     state.citeArtifact = state.artifact;
+    state.banks = Array.isArray(banks) ? banks : [];
+    /* 各银行快照 manifest 并行装载（对话流按所选银行取指标索引/释义） */
+    const mans = await Promise.all(state.banks.map(b =>
+      jget("/v1/snapshot/manifest?bank=" + b.bank).then(m => [b.bank, m]).catch(() => [b.bank, manifest])));
+    state.manifests = Object.fromEntries(mans);
     const hb = $("#health-badge");
     if (health.status === "ok") { hb.className = "badge success"; hb.textContent = "服务正常"; }
     else { hb.className = "badge warning"; hb.textContent = health.status || "状态未知"; }
     $("#health-ver").textContent = "vNumericChecker " + (health.numeric_checker_version || "?")
-      + " · vCitationChecker " + (health.citation_checker_version || "?");
+      + " · vCitationChecker " + (health.citation_checker_version || "?")
+      + " · 银行快照 " + state.banks.length + " 家";
     const p46 = await jget("/v1/snapshot/pages/46");
     state.y2024 = extract2024(p46.text);
+    state.y2024s = { cmb: state.y2024 };
     ASSETS_RENDER = renderAssets();
     renderDemoShell();
     greet();

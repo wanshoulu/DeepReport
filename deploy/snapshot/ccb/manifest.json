@@ -1,0 +1,98 @@
+{
+  "snapshot_version": "ccb-ar-2025-w01@1.0.0",
+  "bank": "ccb",
+  "company": "中国建设银行股份有限公司",
+  "report_period": "2025年度",
+  "generated_at": "2026-11-16",
+  "sources": [
+    {
+      "source_id": "ccb-ar-2025-primary",
+      "title": "中国建设银行股份有限公司2025年度报告（本期节选·演示口径）",
+      "authority": "PRIMARY_OFFICIAL",
+      "origin_url": "snapshot:local/ccb-ar-2025-primary（公开披露年报落盘快照，不实时访问）",
+      "fetched_at": "2026-11-16",
+      "content_sha256": "274ac714c43c7a8b678133410d44d830feff4f52180e6b89f196d7a8af254a08",
+      "pages": [
+        18,
+        30,
+        37
+      ],
+      "note": "本期年报节选：总体经营（P18）、贷款质量（P30）、资本充足（P37）。业务及管理费与贷款减值准备为按披露比率复算的整理值，其余数值均为页内原文。"
+    },
+    {
+      "source_id": "ccb-ar-2024-comparison",
+      "title": "中国建设银行股份有限公司2024年度报告（对比基数节选）",
+      "authority": "PRIMARY_OFFICIAL",
+      "origin_url": "snapshot:local/ccb-ar-2024-comparison（公开披露年报落盘快照，不实时访问）",
+      "fetched_at": "2026-11-16",
+      "content_sha256": "f574243bf96b56b6e4fa472e9562c08d516d598fb95a9779aed99f67caed044c",
+      "pages": [
+        46
+      ],
+      "note": "上年度对比基数页：营收/净利/净息差/成本收入比/不良余额/不良率/拨备覆盖率/CET1。"
+    }
+  ],
+  "page_digests": {
+    "18": "f622c123652181ef5f71e0d4df98478de891fd8870eaf0b1ef04bd417943884a",
+    "30": "790ed5308f6ccd1e1e88c6fb872c10dfb51a080b5709fd992eb0439083fd2fd2",
+    "37": "e8288dca8ac9edb1df4cb678e91c7f35f8d14846e3a943aeb13a9f1ebafd5e34",
+    "46": "f574243bf96b56b6e4fa472e9562c08d516d598fb95a9779aed99f67caed044c"
+  },
+  "entities": [
+    {
+      "full_name": "中国建设银行股份有限公司",
+      "short_names": [
+        "本集团",
+        "本行"
+      ]
+    },
+    {
+      "full_name": "国家金融监督管理总局",
+      "short_names": [
+        "监管机构"
+      ]
+    }
+  ],
+  "metric_index": {
+    "OPERATING_REVENUE": {
+      "label": "营业收入",
+      "page": 18,
+      "source_id": "ccb-ar-2025-primary"
+    },
+    "NET_PROFIT_ATTRIBUTABLE": {
+      "label": "归属于本行股东的净利润",
+      "page": 18,
+      "source_id": "ccb-ar-2025-primary"
+    },
+    "NET_INTEREST_MARGIN": {
+      "label": "净息差",
+      "page": 18,
+      "source_id": "ccb-ar-2025-primary"
+    },
+    "COST_INCOME_RATIO": {
+      "label": "成本收入比",
+      "page": 18,
+      "source_id": "ccb-ar-2025-primary"
+    },
+    "NPL_BALANCE": {
+      "label": "不良贷款余额",
+      "page": 30,
+      "source_id": "ccb-ar-2025-primary"
+    },
+    "NPL_RATIO": {
+      "label": "不良贷款率",
+      "page": 30,
+      "source_id": "ccb-ar-2025-primary"
+    },
+    "PROVISION_COVERAGE": {
+      "label": "拨备覆盖率",
+      "page": 30,
+      "source_id": "ccb-ar-2025-primary"
+    },
+    "CET1_RATIO": {
+      "label": "核心一级资本充足率",
+      "page": 37,
+      "source_id": "ccb-ar-2025-primary"
+    }
+  }
+}

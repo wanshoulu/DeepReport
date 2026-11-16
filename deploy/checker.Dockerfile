@@ -17,10 +17,9 @@ RUN mkdir -p out/main out/test \
     && javac -encoding UTF-8 -cp '/src/libs/*:/src/out/main' -d out/test @test.txt \
     && java -cp '/src/libs/*:/src/out/main:/src/out/test' com.agenthub.w06.checker.TestMain
 
-# 运行时资产：快照 + 静态工件 + 工作台
+# 运行时资产：快照（三银行 {cmb,icbc,ccb} 子目录）+ 静态工件 + 工作台
 COPY deploy/snapshot /snapshot
-COPY deploy/positive-artifact.json /app/demo/positive-artifact.json
-COPY deploy/error-artifact.json /app/demo/error-artifact.json
+COPY deploy/demo /app/demo
 COPY deploy/reference-answer.json /app/demo/reference-answer.json
 COPY deploy/workbench.html /app/workbench.html
 

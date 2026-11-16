@@ -3,9 +3,11 @@
  *
  * 路由：
  *  GET  /health                          健康检查
- *  GET  /v1/sources                      信源注册表（manifest sources[]，真实 sha256）
- *  GET  /v1/snapshot/manifest            快照 manifest 全文（页 digest / 释义表 / 指标索引）
- *  GET  /v1/snapshot/pages/{n}            按页码读快照页文本（含该页 digest）
+ *  GET  /v1/banks                        银行清单（bank/company/report_period/pages/sources）
+ *  GET  /v1/artifacts/template?bank=     正例模板工件（只读，对话流按银行取底稿）
+ *  GET  /v1/sources                      信源注册表（多银行合并，含 bank 归属标注）
+ *  GET  /v1/snapshot/manifest[?bank=]    快照 manifest 全文（缺省招行 cmb）
+ *  GET  /v1/snapshot/pages/{n}[?bank=]   按页码读快照页文本（含该页 digest）
  *  POST /v1/checks/numeric               数值纪律检查（N1–N7）
  *  POST /v1/checks/citation              引用核验（含信源注册表与支持度）
  *  GET  /demo/{positive|error}-artifact.json  演示工件（受控样例）
@@ -77,7 +79,7 @@ public final class CheckerHttpServer {
     // 报告库（任务历史，内存态：容器存活期内刷新不丢）
     static final Map<String, ObjectNode> TASKS = new LinkedHashMap<>();               // task_id -> 任务记录
     static final Map<String, AnnualReportArtifacts> TASK_ARTIFACTS = new HashMap<>();  // task_id -> 交付工件
-    static final AtomicInteger TASK_SEQ = new AtomicInteger(2);                       // 预置 001/002，新任务从 003 递增
+    static final AtomicInteger TASK_SEQ = new AtomicInteger(2);                       // 启动预置 001–004，preload 后新任务从 005 递增
 
     // Agent Hub：运行时（已注册，可动态加载）+ 市场目录（可安装注册）
     static final Map<String, ObjectNode> AGENT_RUNTIME = new LinkedHashMap<>();
@@ -89,18 +91,25 @@ public final class CheckerHttpServer {
 
     // ———————————————————— 快照解析器 ————————————————————
 
-    /**
-     * 页文本解析：byDigest 精确命中（sha256(页文本)）；
-     * digest 为信源 content_sha256 时按「信源注册页」定位；
-     * 都未命中则按页码回退（页文本必须真实存在，绝不凭空生成）。
-     */
-    static final class SnapshotHttpResolver implements NumericChecker.SnapshotTextResolver {
+    /** 单银行快照：页文本（页码/摘要双向索引）+ 信源页清单 + manifest 元数据。 */
+    static final class BankSnap {
+        final String bank;
+        final Path dir;
+        final String company;
+        final String reportPeriod;
+        final JsonNode sourcesNode;
         final Map<String, String> byPageDigest = new HashMap<>();
         final Map<Integer, String> byPageNumber = new TreeMap<>();
         final Map<String, Set<Integer>> sourcePages = new HashMap<>();
 
-        SnapshotHttpResolver(Path snapshotDir) throws IOException {
-            Path pagesDir = snapshotDir.resolve("pages");
+        BankSnap(Path dir, String bank) throws IOException {
+            this.dir = dir;
+            this.bank = bank;
+            JsonNode manifest = MAPPER.readTree(dir.resolve("manifest.json").toFile());
+            this.company = manifest.path("company").asText(bank);
+            this.reportPeriod = manifest.path("report_period").asText("");
+            this.sourcesNode = manifest.path("sources");
+            Path pagesDir = dir.resolve("pages");
             if (Files.isDirectory(pagesDir)) {
                 try (var stream = Files.list(pagesDir)) {
                     for (var f : stream.filter(p -> p.getFileName().toString()
@@ -114,8 +123,7 @@ public final class CheckerHttpServer {
                     }
                 }
             }
-            JsonNode manifest = MAPPER.readTree(snapshotDir.resolve("manifest.json").toFile());
-            for (JsonNode src : manifest.path("sources")) {
+            for (JsonNode src : sourcesNode) {
                 Set<Integer> pages = new HashSet<>();
                 for (JsonNode p : src.path("pages")) {
                     pages.add(p.asInt());
@@ -123,45 +131,117 @@ public final class CheckerHttpServer {
                 sourcePages.put(src.path("content_sha256").asText(), pages);
             }
         }
+    }
+
+    /**
+     * 多银行快照解析器：snapshotDir 下每个含 manifest.json 的子目录为一银行
+     * （{cmb,icbc,ccb}）；旧单银行布局（manifest.json/pages 直接在根）视为 cmb。
+     *
+     * 取文语义（fail-closed）：
+     *  · digest 非空 —— 页文本摘要全局唯一，跨银行精确命中才返回；信源 content_sha256
+     *    （多页合并文本摘要）在工件所属银行的 sourcePages 内按页码定位；
+     *  · digest 给定却未命中任何处 → 返回 null，绝不按页码凭空回退（更严防编造）；
+     *  · digest 为空 —— 只在工件所属银行内按页码取文（防 N6 逐页扫描跨银行串行）。
+     */
+    static final class SnapshotHttpResolver implements NumericChecker.SnapshotTextResolver {
+        final LinkedHashMap<String, BankSnap> banks = new LinkedHashMap<>();
+        final String defaultBank;
+        final Map<String, String> sourceBank = new HashMap<>(); // content_sha256 → 所属银行
+
+        SnapshotHttpResolver(Path snapshotDir) throws IOException {
+            try (var stream = Files.list(snapshotDir)) {
+                for (Path d : stream.filter(Files::isDirectory).sorted().toList()) {
+                    if (Files.isRegularFile(d.resolve("manifest.json"))) {
+                        String bank = d.getFileName().toString();
+                        banks.put(bank, new BankSnap(d, bank));
+                    }
+                }
+            }
+            if (banks.isEmpty()) { // 兼容旧单银行布局
+                banks.put("cmb", new BankSnap(snapshotDir, "cmb"));
+            }
+            this.defaultBank = banks.containsKey("cmb") ? "cmb"
+                    : banks.keySet().iterator().next();
+            for (BankSnap b : banks.values()) {
+                for (String sha : b.sourcePages.keySet()) {
+                    sourceBank.put(sha, b.bank);
+                }
+            }
+        }
+
+        /** 工件公司名 → 银行目录名；未识别返回 null（scoped 到默认银行）。 */
+        static String bankOf(String company) {
+            if (company == null) {
+                return null;
+            }
+            if (company.contains("招商")) {
+                return "cmb";
+            }
+            if (company.contains("工商")) {
+                return "icbc";
+            }
+            if (company.contains("建设")) {
+                return "ccb";
+            }
+            return null;
+        }
+
+        private BankSnap scope(String bank) {
+            return bank != null && banks.containsKey(bank)
+                    ? banks.get(bank) : banks.get(defaultBank);
+        }
+
+        /** 核验用 scoped 解析视图：按工件所属银行取文，checker 接口不变。 */
+        NumericChecker.SnapshotTextResolver scopedFor(AnnualReportArtifacts draft) {
+            String b = bankOf(draft == null ? null : draft.company());
+            final String scopeBank = b != null && banks.containsKey(b) ? b : defaultBank;
+            return (digest, page) -> textOfBank(scopeBank, digest, page);
+        }
+
+        String textOfBank(String bank, String digest, int page) {
+            if (digest != null) {
+                for (BankSnap b : banks.values()) { // 页文本全局唯一，digest 命中即真实原文
+                    String hit = b.byPageDigest.get(digest);
+                    if (hit != null) {
+                        return hit;
+                    }
+                }
+                BankSnap scoped = scope(bank);
+                Set<Integer> pages = scoped.sourcePages.get(digest); // 信源摘要（多页合并）
+                if (pages != null && pages.contains(page)) {
+                    return scoped.byPageNumber.get(page);
+                }
+                return null; // digest 给定却未命中 → null，绝不按页码回退
+            }
+            return scope(bank).byPageNumber.get(page);
+        }
 
         @Override
         public String textOf(String digest, int page) {
-            if (digest != null) {
-                String hit = byPageDigest.get(digest);
-                if (hit != null) {
-                    return hit;
-                }
-                Set<Integer> pages = sourcePages.get(digest);
-                if (pages != null && pages.contains(page)) {
-                    return byPageNumber.get(page);
-                }
-            }
-            return byPageNumber.get(page);
+            return textOfBank(null, digest, page); // 未指定银行 → 默认银行（cmb）
         }
     }
 
-    static List<SourceEntry> loadSourceEntries(Path snapshotDir) throws IOException {
-        JsonNode manifest = MAPPER.readTree(snapshotDir.resolve("manifest.json").toFile());
-        ArrayNode out = MAPPER.createArrayNode();
-        for (JsonNode src : manifest.path("sources")) {
-            ObjectNode node = MAPPER.createObjectNode();
-            node.put("source_id", src.path("source_id").asText());
-            node.put("title", src.path("title").asText());
-            node.put("authority", src.path("authority").asText());
-            node.put("origin_url", src.path("origin_url").asText());
-            node.put("fetched_at", src.path("fetched_at").asText());
-            node.put("content_sha256", src.path("content_sha256").asText());
-            ArrayNode pages = node.putArray("pages");
-            for (JsonNode p : src.path("pages")) {
-                pages.add(p.asInt());
+    /** 信源注册表：合并各银行 manifest 的 sources（SourceEntry 不携带 bank 字段，银行归属由 resolver.sourceBank 提供）。 */
+    static List<SourceEntry> loadSourceEntries(SnapshotHttpResolver resolver) throws IOException {
+        java.util.List<SourceEntry> entries = new java.util.ArrayList<>();
+        for (BankSnap b : resolver.banks.values()) {
+            for (JsonNode src : b.sourcesNode) {
+                ObjectNode node = MAPPER.createObjectNode();
+                node.put("source_id", src.path("source_id").asText());
+                node.put("title", src.path("title").asText());
+                node.put("authority", src.path("authority").asText());
+                node.put("origin_url", src.path("origin_url").asText());
+                node.put("fetched_at", src.path("fetched_at").asText());
+                node.put("content_sha256", src.path("content_sha256").asText());
+                ArrayNode pages = node.putArray("pages");
+                for (JsonNode p : src.path("pages")) {
+                    pages.add(p.asInt());
+                }
+                entries.add(MAPPER.treeToValue(node, SourceEntry.class));
             }
-            out.add(node);
         }
-        SourceEntry[] entries = new SourceEntry[out.size()];
-        for (int i = 0; i < out.size(); i++) {
-            entries[i] = MAPPER.treeToValue(out.get(i), SourceEntry.class);
-        }
-        return List.of(entries);
+        return List.copyOf(entries);
     }
 
     // ———————————————————— main 与路由 ————————————————————
@@ -172,8 +252,8 @@ public final class CheckerHttpServer {
         Path staticDir = Path.of(System.getenv().getOrDefault("STATIC_DIR", "/app"));
 
         SnapshotHttpResolver resolver = new SnapshotHttpResolver(snapshotDir);
-        List<SourceEntry> sources = loadSourceEntries(snapshotDir);
-        preloadTasks(staticDir, resolver, sources);   // 报告库预置 2 条历史任务
+        List<SourceEntry> sources = loadSourceEntries(resolver);
+        preloadTasks(staticDir, snapshotDir, resolver, sources);   // 报告库预置 4 条历史任务（三银行）
         seedAgents();                                 // Agent Hub：9 运行时 + 3 市场目录
         seedSkills();                                 // 技能注册表：5 个技能（可绑定给 agent）
 
@@ -192,7 +272,8 @@ public final class CheckerHttpServer {
 
         server.start();
         System.out.println("W06 checker server up on :" + port
-                + "  snapshot=" + snapshotDir + "  sources=" + sources.size()
+                + "  snapshot=" + snapshotDir + "  banks=" + resolver.banks.keySet()
+                + "  sources=" + sources.size()
                 + "  numeric=" + NumericChecker.CHECKER_VERSION);
     }
 
@@ -214,6 +295,8 @@ public final class CheckerHttpServer {
             ArrayNode arr = MAPPER.createArrayNode();
             for (SourceEntry s : sources) {
                 ObjectNode n = MAPPER.createObjectNode();
+                String bk = resolver.sourceBank.get(s.contentSha256());
+                n.put("bank", bk == null ? "" : bk);
                 n.put("source_id", s.sourceId());
                 n.put("title", s.title());
                 n.put("authority", s.authority() == null ? null : s.authority().name());
@@ -227,14 +310,60 @@ public final class CheckerHttpServer {
             respond(ex, 200, arr);
             return;
         }
-        if ("/v1/snapshot/manifest".equals(path)) {
+        if ("/v1/banks".equals(path)) {
+            ArrayNode arr = MAPPER.createArrayNode();
+            for (BankSnap b : resolver.banks.values()) {
+                ObjectNode n = MAPPER.createObjectNode();
+                n.put("bank", b.bank);
+                n.put("company", b.company);
+                n.put("report_period", b.reportPeriod);
+                ArrayNode pages = n.putArray("pages");
+                b.byPageNumber.keySet().forEach(pages::add);
+                ArrayNode srcs = n.putArray("sources");
+                for (JsonNode src : b.sourcesNode) {
+                    ObjectNode s = srcs.addObject();
+                    s.put("source_id", src.path("source_id").asText());
+                    s.put("title", src.path("title").asText());
+                    s.put("pages", src.path("pages").size());
+                }
+                arr.add(n);
+            }
+            respond(ex, 200, arr);
+            return;
+        }
+        if ("/v1/artifacts/template".equals(path)) { // 正例模板工件（只读）：对话流按银行取底稿
+            Map<String, String> query = parseQuery(ex.getRequestURI().getRawQuery());
+            String bank = query.getOrDefault("bank", resolver.defaultBank);
+            BankSnap b = resolver.banks.get(bank);
+            Path f = b == null ? null : b.dir.resolve("positive-artifact.json");
+            if (f == null || !Files.isRegularFile(f)) {
+                respond(ex, 404, errorNode("template_not_found",
+                        "无模板工件: bank=" + bank + "（可用: " + resolver.banks.keySet() + "）"));
+                return;
+            }
             ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-            respondRaw(ex, 200, Files.readAllBytes(snapshotDir.resolve("manifest.json")));
+            respondRaw(ex, 200, Files.readAllBytes(f));
+            return;
+        }
+        if ("/v1/snapshot/manifest".equals(path)) {
+            Map<String, String> query = parseQuery(ex.getRequestURI().getRawQuery());
+            String bank = query.getOrDefault("bank", resolver.defaultBank);
+            BankSnap b = resolver.banks.get(bank);
+            if (b == null) {
+                respond(ex, 404, errorNode("bank_not_found", "无银行快照: " + bank
+                        + "（可用: " + resolver.banks.keySet() + "）"));
+                return;
+            }
+            ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+            respondRaw(ex, 200, Files.readAllBytes(b.dir.resolve("manifest.json")));
             return;
         }
         if (path.startsWith("/v1/snapshot/pages/")) {
             int page = Integer.parseInt(path.substring("/v1/snapshot/pages/".length()));
-            String text = resolver.textOf(null, page);
+            Map<String, String> query = parseQuery(ex.getRequestURI().getRawQuery());
+            String bank = query.get("bank");
+            String text = resolver.textOfBank(
+                    bank != null && resolver.banks.containsKey(bank) ? bank : null, null, page);
             if (text == null) {
                 respond(ex, 404, errorNode("page_not_found", "快照无第 " + page + " 页"));
                 return;
@@ -247,11 +376,11 @@ public final class CheckerHttpServer {
             return;
         }
         if ("/v1/checks/numeric".equals(path) && "POST".equals(method)) {
-            handleCheck(ex, resolver, draft -> NUMERIC.check(draft, resolver));
+            handleCheck(ex, resolver, draft -> NUMERIC.check(draft, resolver.scopedFor(draft)));
             return;
         }
         if ("/v1/checks/citation".equals(path) && "POST".equals(method)) {
-            handleCheck(ex, resolver, draft -> CITATION.check(draft, resolver, sources));
+            handleCheck(ex, resolver, draft -> CITATION.check(draft, resolver.scopedFor(draft), sources));
             return;
         }
         if (path.startsWith("/demo/") && "GET".equals(method)) {
@@ -409,8 +538,8 @@ public final class CheckerHttpServer {
         CheckResult numeric;
         CheckResult citation;
         try {
-            numeric = NUMERIC.check(draft, resolver);
-            citation = CITATION.check(draft, resolver, sources);
+            numeric = NUMERIC.check(draft, resolver.scopedFor(draft));
+            citation = CITATION.check(draft, resolver.scopedFor(draft), sources);
         } catch (Exception e) {
             respond(ex, 500, errorNode("check_failed", String.valueOf(e)));
             return;
@@ -469,66 +598,118 @@ public final class CheckerHttpServer {
     // ———————————————————— 报告库（任务历史）与 Agent Hub ————————————————————
 
     /**
-     * 预置两条历史任务（报告库初始记录）：
-     *  TASK-2025-AR-001 正例 —— 启动时真实重跑两项核验（均 PASSED），绑定预置批准 APR-0001；
-     *  TASK-2025-AR-002 受控错误样例 —— 真实重跑数值核验（N7 拦截 FAILED），状态 REFUSED 未交付。
+     * 预置 4 条历史任务（报告库初始记录，覆盖三银行）：
+     *  TASK-2025-AR-001 招行正例 —— 启动时真实重跑两项核验（均 PASSED），绑定批准 APR-0001（Alice）；
+     *  TASK-2025-AR-002 招行受控错误样例 —— 真实重跑数值核验（N7 拦截 FAILED），状态 REFUSED 未交付；
+     *  TASK-2025-AR-003 工行正例（Bob / APR-0002）、TASK-2025-AR-004 建行正例（Carol / APR-0003）。
      */
-    private static void preloadTasks(Path staticDir, SnapshotHttpResolver resolver,
+    private static void preloadTasks(Path staticDir, Path snapshotDir, SnapshotHttpResolver resolver,
                                      List<SourceEntry> sources) throws IOException {
+        // —— AR-001 招行正例 / AR-002 招行错误样例（受控演示件）——
         Path posF = staticDir.resolve("demo").resolve("positive-artifact.json");
         Path errF = staticDir.resolve("demo").resolve("error-artifact.json");
         if (!Files.isRegularFile(posF) || !Files.isRegularFile(errF)) {
-            System.out.println("WARN: demo 工件缺失，报告库未预置历史任务");
+            System.out.println("WARN: demo 工件缺失，报告库未预置招行历史任务");
+        } else {
+            ObjectNode posArt = (ObjectNode) MAPPER.readTree(posF.toFile());
+            AnnualReportArtifacts pos = MAPPER.treeToValue(posArt, AnnualReportArtifacts.class);
+            CheckResult posNum = NUMERIC.check(pos, resolver.scopedFor(pos));
+            CheckResult posCit = CITATION.check(pos, resolver.scopedFor(pos), sources);
+            String posDigest = "sha256:" + sha256(MAPPER.writeValueAsBytes(pos));
+            ObjectNode t1 = approvedTask("TASK-2025-AR-001", pos, "APPROVED",
+                    "2025 年度经营简报：8 项指标 + 10 节正文 + 26 条引用，两项核验 PASSED，Alice 具名批准交付",
+                    posDigest, "2026-03-28T09:30:00Z", "2026-03-28T09:41:00Z", posNum, posCit);
+            ObjectNode apr = MAPPER.createObjectNode();
+            apr.put("approval_id", "APR-0001");
+            apr.put("task_id", "TASK-2025-AR-001");
+            apr.put("approver", "Alice");
+            apr.put("approved_at", "2026-03-28T09:41:00Z");
+            apr.put("artifact_digest", posDigest);
+            apr.put("status", "APPROVED");
+            apr.set("checks", checksNode(posNum, posCit));
+            t1.set("approval", apr);
+            TASKS.put("TASK-2025-AR-001", t1);
+            TASK_ARTIFACTS.put("TASK-2025-AR-001", pos);
+            APPROVALS.put("TASK-2025-AR-001", apr);
+
+            ObjectNode errArt = (ObjectNode) MAPPER.readTree(errF.toFile());
+            errArt.put("task_id", "TASK-2025-AR-002");
+            AnnualReportArtifacts err = MAPPER.treeToValue(errArt, AnnualReportArtifacts.class);
+            CheckResult errNum = NUMERIC.check(err, resolver.scopedFor(err));
+            CheckResult errCit = CITATION.check(err, resolver.scopedFor(err), sources);
+            ObjectNode t2 = MAPPER.createObjectNode();
+            t2.put("task_id", "TASK-2025-AR-002");
+            t2.put("company", err.company());
+            t2.put("report_period", err.reportPeriod());
+            t2.put("status", "REFUSED");
+            t2.put("summary", "受控错误样例：拨备变动误写成「下降20.19%」，被 N7 变动口径规则拦截，未获交付");
+            t2.put("artifact_digest", "sha256:" + sha256(MAPPER.writeValueAsBytes(err)));
+            t2.put("created_at", "2026-03-28T10:05:00Z");
+            t2.put("updated_at", "2026-03-28T10:07:00Z");
+            t2.set("checks", checksNode(errNum, errCit));
+            TASKS.put("TASK-2025-AR-002", t2);
+            TASK_ARTIFACTS.put("TASK-2025-AR-002", err);
+        }
+        // —— AR-003 工行正例 / AR-004 建行正例（快照内多银行工件）——
+        loadBankTask(snapshotDir, resolver, sources, "icbc", "TASK-2025-AR-003",
+                "Bob", "APR-0002", "2026-03-28T11:10:00Z", "2026-03-28T11:22:00Z");
+        loadBankTask(snapshotDir, resolver, sources, "ccb", "TASK-2025-AR-004",
+                "Carol", "APR-0003", "2026-03-28T12:10:00Z", "2026-03-28T12:24:00Z");
+        APPROVAL_SEQ.set(3);
+        TASK_SEQ.set(4);
+        System.out.println("报告库预置 4 条历史任务（AR-001/003/004 已批准 / AR-002 已拦截）");
+    }
+
+    /** 从快照目录读某银行正例工件，真实重跑两项核验后登记为历史任务（PASSED 才记批准）。 */
+    private static void loadBankTask(Path snapshotDir, SnapshotHttpResolver resolver,
+                                     List<SourceEntry> sources, String bank, String taskId,
+                                     String approver, String approvalId,
+                                     String createdAt, String updatedAt) throws IOException {
+        Path f = snapshotDir.resolve(bank).resolve("positive-artifact.json");
+        if (!Files.isRegularFile(f)) {
+            System.out.println("WARN: 缺少 " + bank + " 正例工件，跳过 " + taskId);
             return;
         }
-        ObjectNode posArt = (ObjectNode) MAPPER.readTree(posF.toFile());
-        AnnualReportArtifacts pos = MAPPER.treeToValue(posArt, AnnualReportArtifacts.class);
-        CheckResult posNum = NUMERIC.check(pos, resolver);
-        CheckResult posCit = CITATION.check(pos, resolver, sources);
-        String posDigest = "sha256:" + sha256(MAPPER.writeValueAsBytes(pos));
-
-        ObjectNode t1 = MAPPER.createObjectNode();
-        t1.put("task_id", "TASK-2025-AR-001");
-        t1.put("company", pos.company());
-        t1.put("report_period", pos.reportPeriod());
-        t1.put("status", "APPROVED");
-        t1.put("summary", "2025 年度经营简报：8 项指标 + 10 节正文 + 26 条引用，两项核验 PASSED，Alice 具名批准交付");
-        t1.put("artifact_digest", posDigest);
-        t1.put("created_at", "2026-03-28T09:30:00Z");
-        t1.put("updated_at", "2026-03-28T09:41:00Z");
-        t1.set("checks", checksNode(posNum, posCit));
+        AnnualReportArtifacts art = MAPPER.treeToValue(MAPPER.readTree(f.toFile()), AnnualReportArtifacts.class);
+        CheckResult num = NUMERIC.check(art, resolver.scopedFor(art));
+        CheckResult cit = CITATION.check(art, resolver.scopedFor(art), sources);
+        String digest = "sha256:" + sha256(MAPPER.writeValueAsBytes(art));
+        boolean passed = "PASSED".equals(String.valueOf(num.status()))
+                && "PASSED".equals(String.valueOf(cit.status()));
+        String summary = art.company() + " " + art.reportPeriod() + " 年度经营简报：8 项指标 + 10 节正文 + 4 幅图表，"
+                + "两项核验 " + (passed ? "PASSED" : "FAILED") + "，" + approver + " 具名批准交付";
+        ObjectNode t = approvedTask(taskId, art, passed ? "APPROVED" : "FAILED", summary,
+                digest, createdAt, updatedAt, num, cit);
         ObjectNode apr = MAPPER.createObjectNode();
-        apr.put("approval_id", "APR-0001");
-        apr.put("task_id", "TASK-2025-AR-001");
-        apr.put("approver", "Alice");
-        apr.put("approved_at", "2026-03-28T09:41:00Z");
-        apr.put("artifact_digest", posDigest);
-        apr.put("status", "APPROVED");
-        apr.set("checks", checksNode(posNum, posCit));
-        t1.set("approval", apr);
-        TASKS.put("TASK-2025-AR-001", t1);
-        TASK_ARTIFACTS.put("TASK-2025-AR-001", pos);
-        APPROVALS.put("TASK-2025-AR-001", apr);
-        APPROVAL_SEQ.set(1);
+        apr.put("approval_id", approvalId);
+        apr.put("task_id", taskId);
+        apr.put("approver", approver);
+        apr.put("approved_at", updatedAt);
+        apr.put("artifact_digest", digest);
+        apr.put("status", passed ? "APPROVED" : "FAILED");
+        apr.set("checks", checksNode(num, cit));
+        t.set("approval", apr);
+        TASKS.put(taskId, t);
+        TASK_ARTIFACTS.put(taskId, art);
+        if (passed) {
+            APPROVALS.put(taskId, apr);
+        }
+    }
 
-        ObjectNode errArt = (ObjectNode) MAPPER.readTree(errF.toFile());
-        errArt.put("task_id", "TASK-2025-AR-002");
-        AnnualReportArtifacts err = MAPPER.treeToValue(errArt, AnnualReportArtifacts.class);
-        CheckResult errNum = NUMERIC.check(err, resolver);
-        CheckResult errCit = CITATION.check(err, resolver, sources);
-        ObjectNode t2 = MAPPER.createObjectNode();
-        t2.put("task_id", "TASK-2025-AR-002");
-        t2.put("company", err.company());
-        t2.put("report_period", err.reportPeriod());
-        t2.put("status", "REFUSED");
-        t2.put("summary", "受控错误样例：拨备变动误写成「下降20.19%」，被 N7 变动口径规则拦截，未获交付");
-        t2.put("artifact_digest", "sha256:" + sha256(MAPPER.writeValueAsBytes(err)));
-        t2.put("created_at", "2026-03-28T10:05:00Z");
-        t2.put("updated_at", "2026-03-28T10:07:00Z");
-        t2.set("checks", checksNode(errNum, errCit));
-        TASKS.put("TASK-2025-AR-002", t2);
-        TASK_ARTIFACTS.put("TASK-2025-AR-002", err);
-        System.out.println("报告库预置 2 条历史任务（AR-001 已批准 / AR-002 已拦截）");
+    private static ObjectNode approvedTask(String taskId, AnnualReportArtifacts art, String status,
+                                           String summary, String digest, String createdAt, String updatedAt,
+                                           CheckResult num, CheckResult cit) {
+        ObjectNode t = MAPPER.createObjectNode();
+        t.put("task_id", taskId);
+        t.put("company", art.company());
+        t.put("report_period", art.reportPeriod());
+        t.put("status", status);
+        t.put("summary", summary);
+        t.put("artifact_digest", digest);
+        t.put("created_at", createdAt);
+        t.put("updated_at", updatedAt);
+        t.set("checks", checksNode(num, cit));
+        return t;
     }
 
     /** 报告库登记：服务端指派任务编号、同步工件 task_id、计算规范化 digest（upsert 语义）。 */

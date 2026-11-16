@@ -29,7 +29,7 @@ import java.util.Set;
 public final class CitationChecker {
 
     public static final String CHECKER_ID = "citation-checker";
-    public static final String CHECKER_VERSION = "0.1.0";
+    public static final String CHECKER_VERSION = "0.2.1";
 
     public CheckResult check(AnnualReportArtifacts draft, NumericChecker.SnapshotTextResolver resolver) {
         return check(draft, resolver, java.util.List.of());
@@ -136,7 +136,7 @@ public final class CitationChecker {
         }
         return new CheckResult(CHECKER_ID, CHECKER_VERSION,
                 violations.isEmpty() ? CheckStatus.PASSED : CheckStatus.FAILED,
-                violations);
+                violations, NumericChecker.artifactDigest(draft)); // G3：与数值核验绑定同一工件摘要
     }
 
     /**

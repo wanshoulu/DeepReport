@@ -18,8 +18,10 @@ package com.agenthub.w06.checker;
 import com.agenthub.w06.contract.*;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +31,22 @@ import java.util.regex.Pattern;
 public final class NumericChecker {
 
     public static final String CHECKER_ID = "numeric-checker";
-    public static final String CHECKER_VERSION = "0.2.0";
+    public static final String CHECKER_VERSION = "0.2.1";
+
+    /** G3：工件摘要用 Jackson 序列化（与 /v1/artifacts/digest 同一规范化路径）。 */
+    private static final com.fasterxml.jackson.databind.ObjectMapper DIGEST_MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** G3：被检工件的规范化 JSON 摘要 —— verdict 与工件绑定，旧结论不能放行新工件。 */
+    static String artifactDigest(AnnualReportArtifacts draft) {
+        try {
+            byte[] canonical = DIGEST_MAPPER.writeValueAsBytes(draft);
+            return HexFormat.of().formatHex(
+                    MessageDigest.getInstance("SHA-256").digest(canonical));
+        } catch (Exception e) {
+            throw new IllegalStateException("无法计算工件摘要", e);
+        }
+    }
 
     /** 指标 → 约定单位（W01 冻结口径；单位错误即 A07）。 */
     private static final Map<MetricKey, String> EXPECTED_UNITS = Map.of(
@@ -51,6 +68,7 @@ public final class NumericChecker {
 
     public CheckResult check(AnnualReportArtifacts draft, SnapshotTextResolver resolver) {
         List<Violation> violations = new ArrayList<>();
+        String artifactSha = artifactDigest(draft); // G3
 
         // N1 完整性
         Map<MetricKey, MetricValue> byKey = new EnumMap<>(MetricKey.class);
@@ -99,7 +117,7 @@ public final class NumericChecker {
         return new CheckResult(CHECKER_ID, CHECKER_VERSION,
                 violations.isEmpty() ? CheckStatus.PASSED
                         : (waiting ? CheckStatus.WAITING_HUMAN : CheckStatus.FAILED),
-                violations);
+                violations, artifactSha);
     }
 
     /**
