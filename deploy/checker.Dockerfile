@@ -5,8 +5,8 @@ WORKDIR /src
 
 # 源码：契约（agents）+ 核验器与服务端（checker）
 COPY agents/src/main/java/com/agenthub/w06/contract /src/main/java/com/agenthub/w06/contract
-COPY checker/src/main/java /src/main/java/com/agenthub/w06/checker
-COPY checker/src/test/java /src/test/java/com/agenthub/w06/checker
+COPY checker/src/main/java /src/main/java
+COPY checker/src/test/java /src/test/java
 COPY deploy/libs /src/libs
 
 # 编译 + 构建期跑全部 Jupiter 测试（任一失败即中止构建）
