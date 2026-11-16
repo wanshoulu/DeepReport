@@ -19,6 +19,7 @@ COPY deploy/snapshot /snapshot
 COPY deploy/demo /app/demo
 COPY deploy/reference-answer.json /app/demo/reference-answer.json
 COPY deploy/workbench.html /app/workbench.html
+COPY deploy/report-structure.json /app/report-structure.json
 
 ENV CHECKER_PORT=18095 SNAPSHOT_DIR=/snapshot STATIC_DIR=/app
 EXPOSE 18095

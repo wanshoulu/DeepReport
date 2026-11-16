@@ -73,6 +73,7 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.agenthub.w06.contract.Citation;
 
 public final class CheckerHttpServer {
 
@@ -667,6 +668,7 @@ public final class CheckerHttpServer {
         }
         JsonNode body = MAPPER.readTree(ex.getRequestBody());
         String bank = body.path("bank").asText(resolver.defaultBank);
+        String mode = body.path("mode").asText("brief");
         BankSnap snap = resolver.scope(bank);
         Path f = snap.dir.resolve("positive-artifact.json");
         if (!Files.isRegularFile(f)) {
@@ -690,6 +692,28 @@ public final class CheckerHttpServer {
             if ("analysis".equals(sectionRole.get(e.getKey()))) {
                 analysts.add(e.getValue());
             }
+        }
+
+        // long_form 模式：analysis 章节调 openjiuwen agent chat 生成正文（框架合规，不硬接 LLM）
+        if ("long_form".equals(mode)) {
+            List<ReportSection> generated = new java.util.ArrayList<>();
+            for (ReportSection sec : art.sections()) {
+                String role = sectionRole.getOrDefault(sec.sectionId(), "analysis");
+                if ("analysis".equals(role)) {
+                    String prompt = buildSectionPrompt(art, sec, snap);
+                    String newBody = AgentChatClient.chat(prompt);
+                    if (newBody != null && newBody.length() >= 50) {
+                        generated.add(new ReportSection(sec.sectionId(), sec.title(),
+                                newBody, sec.claimIds()));
+                    } else {
+                        generated.add(sec); // 降级：agent 不可达或返回过短时保留原正文
+                    }
+                } else {
+                    generated.add(sec); // static 节不变
+                }
+            }
+            art = new AnnualReportArtifacts(art.taskId(), art.company(), art.reportPeriod(),
+                    art.generatedAt(), art.metrics(), art.citations(), generated, art.charts());
         }
 
         ArrayNode stages = MAPPER.createArrayNode();
@@ -738,12 +762,20 @@ public final class CheckerHttpServer {
         }
         stages.add(s3);
 
-        // 4) 写作：按配置节序逐节成稿（名称保留/深度收缩），字数与 claim 数动态统计
-        ObjectNode s4 = stageNode("writing", "写作", "editor-in-chief", "按骨架配置逐节成稿（名称保留 / 深度收缩）");
+        // 4) 写作：long_form 模式下 analysis 章节已由 LLM 生成，此处统计成稿字数
+        String s4Headline = "long_form".equals(mode)
+                ? "LLM 生成分析章节（openjiuwen agent）+ 模板填充静态章节"
+                : "按骨架配置逐节成稿（名称保留 / 深度收缩）";
+        ObjectNode s4 = stageNode("writing", "写作", "editor-in-chief", s4Headline);
+        s4.put("mode", mode);
         ArrayNode det4 = s4.withArray("details");
         for (ReportSection sec : art.sections()) {
+            String role = sectionRole.getOrDefault(sec.sectionId(), "analysis");
+            String source = "long_form".equals(mode) && "analysis".equals(role)
+                    ? "LLM 生成" : "模板填充";
             det4.add(sec.sectionId() + " " + sec.title()
                     + " · 责任 " + sectionAgent.getOrDefault(sec.sectionId(), "editor-in-chief")
+                    + " · " + source
                     + " · 正文 " + sec.body().length() + " 字 · 引用 " + sec.claimIds().size() + " 条");
         }
         stages.add(s4);
@@ -773,6 +805,82 @@ public final class CheckerHttpServer {
         out.set("checks", checksNode(num, cit));
         out.set("stages", stages);
         respond(ex, 200, out);
+    }
+
+    /**
+     * 构造发送给 openjiuwen agent 的章节写作 prompt。
+     * Java 只组装上下文（章节信息 + 指标 + 引用 + 快照页原文）；
+     * 写作方法论由 agent 侧 skill_tool 加载 annual-report 技能自动获取。
+     */
+    private static String buildSectionPrompt(AnnualReportArtifacts art, ReportSection sec, BankSnap snap) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("请加载 annual-report 技能，按技能方法论为以下银行年报撰写章节正文。\n\n");
+        sb.append("银行：").append(art.company()).append("\n");
+        sb.append("报告期：").append(art.reportPeriod()).append("\n");
+        sb.append("章节编号：").append(sec.sectionId()).append("\n");
+        sb.append("章节标题：").append(sec.title()).append("\n\n");
+
+        // 指标数据
+        sb.append("可用指标数据（必须原样引用值与单位，不得修改）：\n");
+        for (MetricValue m : art.metrics()) {
+            sb.append("- ").append(m.key().getDisplayName())
+                    .append("：").append(m.value()).append(m.unit());
+            if (m.yoyDelta() != null && !m.yoyDelta().isEmpty()) {
+                boolean sign = m.yoyDelta().startsWith("-") || m.yoyDelta().startsWith("+");
+                sb.append("，同比").append(sign ? "" : "+").append(m.yoyDelta());
+                if (m.deltaUnit() != null) sb.append(m.deltaUnit().getLabel());
+            }
+            sb.append("\n");
+        }
+        sb.append("\n");
+
+        // 引用清单
+        if (!sec.claimIds().isEmpty()) {
+            sb.append("可用引用（正文数据陈述须标注对应 [C-n]）：\n");
+            for (String claimId : sec.claimIds()) {
+                for (var cit : art.citations()) {
+                    if (cit.claimId().equals(claimId)) {
+                        String excerpt = cit.evidenceExcerpt();
+                        if (excerpt.length() > 200) excerpt = excerpt.substring(0, 200) + "…";
+                        sb.append("- [").append(claimId).append("] 第")
+                                .append(cit.page()).append("页：")
+                                .append(excerpt).append("\n");
+                        break;
+                    }
+                }
+            }
+            sb.append("\n");
+        }
+
+        // 快照页原文
+        sb.append("快照页原文（数据来源，仅供引用不得编造）：\n");
+        Set<Integer> citedPages = new HashSet<>();
+        for (String claimId : sec.claimIds()) {
+            for (var cit : art.citations()) {
+                if (cit.claimId().equals(claimId)) {
+                    citedPages.add(cit.page());
+                    break;
+                }
+            }
+        }
+        for (int pageNum : citedPages) {
+            String pageText = snap.byPageNumber.get(pageNum);
+            if (pageText != null) {
+                String trimmed = pageText.length() > 800 ? pageText.substring(0, 800) + "…" : pageText;
+                sb.append("--- 第").append(pageNum).append("页 ---\n").append(trimmed).append("\n");
+            }
+        }
+        sb.append("\n");
+
+        sb.append("写作要求：\n");
+        sb.append("- 正文 400-800 字\n");
+        sb.append("- 每个数据陈述标注引用编号 [C-n]\n");
+        sb.append("- 简体中文\n");
+        sb.append("- 不编造快照页外的数据\n");
+        sb.append("- 派生值须标注「基于 [C-k] 计算」+算式\n");
+        sb.append("- 同比变动不要用「同比增长/下降XX%」句式，改用「同比变动-XX%」或「较上年同期变动-XX%」\n");
+
+        return sb.toString();
     }
 
     private static ObjectNode stageNode(String id, String name, String agent, String headline) {

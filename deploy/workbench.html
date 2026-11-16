@@ -136,6 +136,61 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 
 /* ———— 对话视图（页签 1）———— */
 .chat-card { display: flex; flex-direction: column; height: calc(100vh - 236px); min-height: 520px; padding: 0; overflow: hidden; }
+
+/* ———— Agent 运行实时面板（对照 Dify Tracing / Langfuse Timeline 设计）———— */
+.chat-split { display: grid; grid-template-columns: 1fr 400px; gap: 14px; align-items: stretch; }
+.run-panel { display: flex; flex-direction: column; background: var(--bg, #fff); border: 1px solid var(--border, #e4e6eb); border-radius: 12px; overflow: hidden; min-height: 520px; height: calc(100vh - 236px); }
+.run-panel.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12.5px; border-style: dashed; }
+.rp-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--border, #e4e6eb); }
+.rp-head h3 { font-size: 13px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; }
+.rp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.rp-stat { background: #f6f7f9; border-radius: 8px; padding: 7px 8px; text-align: center; }
+.rp-stat .v { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.rp-stat .k { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: .3px; }
+.rp-toolbar { display: flex; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border, #e4e6eb); align-items: center; }
+.rp-view-tabs { display: flex; gap: 2px; background: #f0f1f4; border-radius: 8px; padding: 2px; }
+.rp-vtab { font-size: 11.5px; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: none; background: none; color: var(--muted); }
+.rp-vtab.on { background: #fff; color: var(--fg); font-weight: 650; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+.rp-body { flex: 1; overflow-y: auto; padding: 12px 14px; }
+/* 时间线节点（Langfuse Timeline 风格）*/
+.rp-tl { position: relative; padding-left: 18px; }
+.rp-tl::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; background: #e8eaef; }
+.rp-node { position: relative; margin-bottom: 10px; border: 1px solid var(--border, #e4e6eb); border-radius: 10px; background: #fff; overflow: hidden; }
+.rp-node::before { content: ""; position: absolute; left: -17px; top: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--success, #1f9d61); box-shadow: 0 0 0 3px rgba(31,157,97,.15); }
+.rp-node.running::before { background: #3b7bf5; animation: rpPulse 1.1s ease-in-out infinite; }
+.rp-node.failed::before { background: #d64545; box-shadow: 0 0 0 3px rgba(214,69,69,.15); }
+@keyframes rpPulse { 0%,100% { box-shadow: 0 0 0 2px rgba(59,123,245,.3);} 50% { box-shadow: 0 0 0 5px rgba(59,123,245,.12);} }
+.rp-node-h { display: flex; align-items: center; gap: 8px; padding: 9px 11px; cursor: pointer; }
+.rp-node-h:hover { background: #f7f8fa; }
+.rp-ntype { font-size: 9.5px; font-weight: 700; letter-spacing: .5px; padding: 2px 6px; border-radius: 4px; background: #eceef2; color: #5b6470; }
+.rp-ntype.ORCHESTRATOR { background: #e8e2fb; color: #6a3fc0; }
+.rp-ntype.AGENT { background: #e0ecfb; color: #1d5fbf; }
+.rp-ntype.CHECKER { background: #fdeede; color: #b25e09; }
+.rp-ntype.GATEKEEP { background: #e2f3e9; color: #1f7a45; }
+.rp-ntitle { flex: 1; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-nmeta { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; gap: 8px; flex: 0 0 auto; }
+.rp-nstatus { font-size: 10.5px; font-weight: 700; }
+.rp-node.running .rp-nstatus { color: #3b7bf5; }
+.rp-node-b { display: none; padding: 4px 11px 10px; border-top: 1px dashed #e8eaef; background: #fbfcfd; }
+.rp-node.open .rp-node-b { display: block; }
+.rp-field { margin-top: 7px; }
+.rp-field .fl { font-size: 10px; color: var(--muted); letter-spacing: .5px; margin-bottom: 3px; font-weight: 650; }
+.rp-field .fv { font-size: 11.5px; line-height: 1.65; color: #333; word-break: break-all; }
+.rp-thinking { font-size: 11.5px; color: #6b5bd6; background: #f4f2fd; border-left: 3px solid #a99df0; padding: 7px 10px; border-radius: 0 6px 6px 0; font-style: italic; }
+.rp-tools .tc { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 4px 8px; background: #f0f4f9; border-radius: 6px; margin-bottom: 4px; }
+.rp-tools .tc .tn { font-family: ui-monospace, Consolas, monospace; color: #1d5fbf; }
+.rp-tools .tc .tp { margin-left: auto; font-size: 9.5px; color: var(--muted); }
+/* 图视图（Langfuse Graph 聚合模式简化版）*/
+.rp-graph { display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
+.rp-gnode { width: 200px; text-align: center; padding: 8px 10px; border: 1.5px solid var(--border, #e4e6eb); border-radius: 10px; font-size: 11.5px; background: #fff; margin: 4px 0; }
+.rp-gnode .gtitle { font-weight: 650; font-size: 11.5px; }
+.rp-gnode .gmeta { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.rp-gnode.ok { border-color: #bfe5cf; background: #f4fbf7; }
+.rp-par { display: flex; gap: 6px; }
+.rp-garrow { color: #b8bec8; font-size: 13px; line-height: 1; margin: 1px 0; }
+/* 运行中头部条 */
+.rp-live-bar { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: #3b7bf5; padding: 6px 16px; background: #f0f5ff; border-bottom: 1px solid #dbe7ff; }
+.rp-dot { width: 7px; height: 7px; border-radius: 50%; background: #3b7bf5; animation: rpPulse 1.1s infinite; }
 .chat-log { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
 .chat-msg { display: flex; gap: 10px; max-width: 94%; }
 .chat-msg.user { flex-direction: row-reverse; margin-left: auto; max-width: 80%; }
@@ -333,7 +388,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
   padding: 14px 16px; font-size: 12.5px;
 }
 
-/* ———— 信源卡片（资产库/知识库）———— */
+/* ———— 信源卡片（资产库/规则与释义）———— */
 .src-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .src-card { background: var(--bg); border: 1px solid var(--card-border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px 20px; }
 .src-card .s-title { font-size: 13.5px; font-weight: 650; margin: 8px 0 10px; line-height: 1.5; }
@@ -345,17 +400,42 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .drawer-mask { position: fixed; inset: 0; background: rgba(20,20,20,.32); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 90; }
 .drawer-mask.open { opacity: 1; pointer-events: auto; }
 .drawer {
-  position: fixed; top: 0; right: 0; height: 100vh; width: 440px; max-width: 92vw;
+  position: fixed; top: 0; right: 0; height: 100vh; width: 560px; max-width: 92vw;
   background: var(--bg); border-left: 1px solid var(--border); box-shadow: -8px 0 30px rgba(0,0,0,.08);
-  transform: translateX(100%); transition: transform .22s ease; z-index: 95;
-  padding: 24px 26px; overflow-y: auto;
+  transform: translateX(100%); transition: transform .22s ease, width .25s ease; z-index: 95;
+  padding: 26px 30px; overflow-y: auto;
 }
+/* 大内容模式（skill 详情/长文预览）：抽屉自动加宽 */
+.drawer.wide { width: min(860px, 88vw); }
+.drawer.wide .d-block .d-val, .drawer.wide .skill-doc { font-size: 13.5px; }
+.drawer.wide .skill-doc { max-height: none; padding: 18px 22px; }
+.drawer.wide .skill-doc pre { font-size: 12.5px; }
+.drawer.wide .skill-doc table { font-size: 12.5px; }
+.drawer.wide .d-bind-row { max-width: 100%; }
 .drawer.open { transform: none; }
 .drawer h3 { font-size: 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; }
 .drawer .d-close { appearance: none; border: none; background: none; font-size: 17px; cursor: pointer; color: var(--muted); line-height: 1; }
 .drawer .d-close:hover { color: var(--fg); }
 .d-block { margin-bottom: 16px; }
 .d-block .d-label { font-size: 11.5px; font-weight: 650; color: var(--muted); letter-spacing: 1px; margin-bottom: 5px; }
+.skill-tree { border:1px solid var(--line); border-radius:8px; padding:8px; max-height:240px; overflow:auto; background:#fafbf8; }
+.st-group { font-size:11px; font-weight:650; color:var(--muted); letter-spacing:.5px; margin:8px 4px 4px; }
+.st-file { display:flex; align-items:center; gap:8px; padding:5px 8px; border-radius:6px; cursor:pointer; font-size:12.5px; }
+.st-file:hover { background:rgba(43,95,217,.08); }
+.st-file.sel { background:rgba(43,95,217,.14); outline:1px solid rgba(43,95,217,.35); }
+.st-ico { flex:0 0 auto; }
+.st-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--fg); }
+.st-size { flex:0 0 auto; font-size:10.5px; color:var(--muted); }
+.skill-code { background:#f6f7f4; border:1px solid var(--line); border-radius:8px; padding:14px 16px; max-height:460px; overflow:auto; font-size:12px; line-height:1.65; font-family:ui-monospace,Consolas,monospace; }
+.skill-doc { background:#fafbf8; border:1px solid var(--line); border-radius:8px; padding:14px 16px; max-height:420px; overflow:auto; font-size:12.5px; line-height:1.75; }
+.skill-doc h2 { font-size:14.5px; margin:12px 0 6px; }
+.skill-doc h3 { font-size:13.5px; margin:10px 0 5px; }
+.skill-doc h4 { font-size:12.5px; margin:8px 0 4px; }
+.skill-doc pre { background:#f0f2ec; padding:10px; border-radius:6px; overflow:auto; font-size:11.5px; }
+.skill-doc table { border-collapse:collapse; margin:8px 0; font-size:11.5px; }
+.skill-doc th, .skill-doc td { border:1px solid var(--line); padding:4px 8px; text-align:left; }
+.skill-doc th { background:#f0f2ec; }
+.skill-doc code { background:#f0f2ec; padding:1px 5px; border-radius:3px; font-size:11.5px; }
 .d-block .d-val { font-size: 13px; line-height: 1.7; }
 .d-block .d-quote {
   font-family: var(--serif); font-size: 13.5px; line-height: 2; background: var(--surface);
@@ -433,13 +513,16 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 </nav>
 <main>
   <section class="view active" id="view-chat">
-    <div class="card chat-card">
-      <div class="chat-log" id="chat-log"></div>
+    <div class="chat-split">
+      <div class="card chat-card">
+        <div class="chat-log" id="chat-log"></div>
       <div class="quick-row" id="quick-row"></div>
       <form class="chat-input" id="chat-form" autocomplete="off">
         <input id="chat-input" placeholder="自由输入：确认主体 / 粘贴补充资料 / 口径问答 / 重新生成 / 跳转页签……">
         <button class="btn primary" type="submit">发送</button>
       </form>
+      </div>
+      <aside class="run-panel" id="run-panel"></aside>
     </div>
   </section>
   <section class="view" id="view-assets"></section>
@@ -1172,13 +1255,21 @@ function openCitation(id) {
 }
 function closeDrawer() {
   $("#drawer").classList.remove("open");
+  $("#drawer").classList.remove("wide");
+  drawerWide = false;
   $("#drawer-mask").classList.remove("open");
 }
 $("#drawer-mask").addEventListener("click", closeDrawer);
 async function viewPage(no) { closeDrawer(); switchTab("assets"); await ASSETS_RENDER; loadAssetPage(no); }
 
 /* ———————————————————— 资产库（页签 2）：应用全部智能化资产 ———————————————————— */
-/* MCP 联网工具清单来自服务端注册表（GET /v1/tools，deploy/tools.json 配置驱动），前端零硬编码（0.3.5） */
+/* MCP / 核验规则静态资产清单（卡片与详情抽屉共用） */
+/* MCP 注册表：动态加载真 MCP（GET /v1/mcp），bind 即装配全限定名工具 */
+let MCP_SERVERS = [];
+async function ensureMcpData() {
+  if (!MCP_SERVERS.length) try { MCP_SERVERS = await jget("/v1/mcp"); } catch (e) { MCP_SERVERS = []; }
+  return MCP_SERVERS;
+}
 const RULE_ASSETS = [
   { id: "N1", name: "指标缺失", checker: "数值核验器（N1–N7）", desc: "关键指标必须齐备，缺一不放行。" },
   { id: "N2", name: "单位不符", checker: "数值核验器（N1–N7）", desc: "单位必须与指标字典白名单一致。" },
@@ -1200,9 +1291,6 @@ async function renderAssets() {
   try { skills = await jget("/v1/skills"); } catch (e) {}
   state.skillsData = skills;
   try { taskCount = (await jget("/v1/tasks")).length; } catch (e) {}
-  let toolsData = { tools: [] };
-  try { toolsData = await jget("/v1/tools"); } catch (e) {}
-  state.toolsData = toolsData;
   const chief = (agents.runtime || []).find(x => x.agent_id === "editor-in-chief");
   const team = (chief && chief.team) || [];
 
@@ -1224,13 +1312,13 @@ async function renderAssets() {
     + '<div class="t-foot">' + (s.tags || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
     + '<div class="t-summary">点击查看详情 · 已绑定 agent 一览</div></div>').join("");
 
-  const tools = (state.toolsData && state.toolsData.tools) || [];
-  const mcpTiles = tools.map(t =>
-    '<div class="asset-tile clickable" onclick="openAssetDetail(\'mcp\',\'' + esc(t.tool_id) + '\')">'
-    + '<div class="t-head"><span class="t-name">' + esc(t.name) + '</span><span class="t-ver mono">' + esc(t.ep) + "</span></div>"
-    + '<div class="t-desc">' + esc(t.description) + "</div>"
-    + '<div class="t-foot">' + (t.params || []).map(p => '<span class="chip">' + esc(p.name + (p.required ? "*" : "")) + "</span>").join("") + "</div>"
-    + '<div class="t-summary">真实联网工具 · 点击详情与试运行</div></div>').join("");
+  await ensureMcpData();
+  const mcpTiles = MCP_SERVERS.map(s =>
+    '<div class="asset-tile clickable" onclick="openAssetDetail(\'mcp\',\'' + esc(s.server_id) + '\')">'
+    + '<div class="t-head"><span class="t-name">' + esc(s.name) + '</span><span class="t-ver">' + esc(s.ep) + "</span></div>"
+    + '<div class="t-desc">' + esc(s.desc) + "</div>"
+    + '<div class="t-foot">' + s.apis.map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
+    + '<div class="t-summary">点击查看接口详情</div></div>').join("");
 
   const pageChips = Object.keys(m.page_digests).map(no =>
     '<button class="chip" data-snap-page="' + Number(no) + '">P' + Number(no) + "</button>").join("");
@@ -1260,12 +1348,11 @@ async function renderAssets() {
     + " 个（任务动态按需加载）· 点击卡片查看详情与注册绑定</span>"
     + '<button class="btn sm" onclick="switchTab(\'agents\')">前往 Agent Hub →</button></h3>'
     + '<div class="asset-grid">' + agentTiles + "</div></div>"
-    + '<div class="card"><h3>Skill · 技能库 <span class="hint">skills/annual-report/（1 主技能 + 4 参考知识）· 可绑定给任意运行时 agent</span></h3>'
+    + '<div class="card"><h3>Skill · 技能库 <span class="hint">skills/annual-report/（1 主技能 + 6 参考知识 · 共 ' + skills.length + ' 个技能，包内含 scripts/assets/evals 五件套）· 可绑定给任意运行时 agent</span></h3>'
     + '<div class="asset-grid">' + skillTiles + "</div></div>"
-    + '<div class="card"><h3>MCP · 工具接口 <span class="hint">' + tools.length
-    + " 个真实联网工具 · 注册表 deploy/tools.json 配置驱动（GET /v1/tools）· 详情抽屉可试运行</span></h3>"
+    + '<div class="card"><h3>MCP · 工具接口 <span class="hint">3 个服务</span></h3>'
     + '<div class="asset-grid">' + mcpTiles + "</div></div>"
-    + '<div class="card"><h3>数据库 · 结构化存储</h3>'
+    + '<div class="card"><h3>证据库 · 文件存储 <span class="hint">快照 manifest + pages 落盘文件（sha256 可回溯）· 任务/指标为内存态 —— 零数据库依赖</span></h3>'
     + '<div class="group-h">快照库 <span class="g-tag">落盘页文本 + sha256</span></div>'
     + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + pageChips
     + '<span class="chip" style="border:none;background:none" id="asset-snap-note">点击页码查看落盘文本</span></div>'
@@ -1277,7 +1364,7 @@ async function renderAssets() {
     + '<div class="group-h">指标索引 <span class="g-tag">metric_index</span></div>'
     + '<table class="mi-table"><thead><tr><th>键</th><th>指标</th><th>单位</th><th>类型</th></tr></thead><tbody>'
     + miRows + "</tbody></table></div>"
-    + '<div class="card"><h3>知识库 <span class="hint">信源注册表 · 核验规则 · 释义</span></h3>'
+    + '<div class="card"><h3>规则与释义 <span class="hint">信源注册表 · 核验规则 · 术语表 —— 内置文件参考，非向量检索</span></h3>'
     + '<div class="group-h">信源注册表 <span class="g-tag">' + (m.sources || []).length + " 份</span></div>"
     + '<div class="src-grid">' + srcCards + "</div>"
     + '<div class="group-h">核验规则知识 <span class="g-tag">数值 N1–N7 + 引用 C1–C2</span></div>'
@@ -1314,8 +1401,10 @@ function agentNameOf(id) {
   return (AGENT_META[id] || {}).name || id;
 }
 function fmtTs(s) { return String(s || "").replace("T", " ").replace(/Z$/, "") || "—"; }
+let drawerWide = false;
 function showDrawer(html) {
   $("#drawer").innerHTML = html;
+  if (drawerWide) $("#drawer").classList.add("wide"); else $("#drawer").classList.remove("wide");
   $("#drawer").classList.add("open");
   $("#drawer-mask").classList.add("open");
 }
@@ -1381,6 +1470,53 @@ async function openAgentDetail(id) {
             : '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + esc(srcLabel) + "：注销即从运行时删除。</div>"))
       + "</div>";
   }
+    // 运行时装配状态（bind 即装配：指令注入/工具挂载/A2A 通道）
+  try {
+    const asm = await jget("/v1/agents/" + encodeURIComponent(id) + "/assembly");
+    if (asm && asm.assembly) {
+      const sk = asm.assembly.skills || {};
+      const skIds = Object.keys(sk);
+      const a2a = (asm.assembly.a2a || {}).channels || [];
+      let asmHtml = '<div class="d-block"><div class="d-label">运行时装配 · 注册即装配（对齐 DeepAgent 动态装配）</div>';
+      if (skIds.length) {
+        asmHtml += '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">已装配技能 ' + skIds.length + ' 个：</div>';
+        for (const sid of skIds) {
+          const e2 = sk[sid];
+          asmHtml += '<div class="d-bind-row"><span class="b-name">' + esc(sid) + '</span><span class="b-sub">'
+            + (e2.mode === "full"
+              ? "指令注入 " + fmtBytes(e2.instructions_bytes) + " · 工具 " + (e2.tools || []).length + " 个 · 资源 " + (e2.resources || []).length + " 份"
+              : "仅元数据（包文件缺失）")
+            + '</span></div>';
+          if ((e2.tools || []).length) {
+            asmHtml += '<div style="font-size:11.5px;color:var(--muted);margin:-2px 0 6px 8px" class="mono">'
+              + (e2.tools || []).map(t => esc(t.tool_name)).join(" · ") + "</div>";
+          }
+        }
+      }
+      if (a2a.length) {
+        asmHtml += '<div style="font-size:12px;color:var(--muted);margin:6px 0 4px">A2A 委托通道 ' + a2a.length + ' 条：</div>';
+        for (const ch of a2a) {
+          asmHtml += '<div class="d-bind-row"><span class="b-name mono">' + esc(ch.tool_name) + '</span><span class="b-sub">'
+            + esc(ch.protocol) + "</span></div>";
+        }
+      }
+      const mcpAsm = asm.assembly.mcps || {};
+      const mcpIds = Object.keys(mcpAsm);
+      if (mcpIds.length) {
+        asmHtml += '<div style="font-size:12px;color:var(--muted);margin:6px 0 4px">MCP 工具装配 ' + mcpIds.length + ' 个 server：</div>';
+        for (const mid of mcpIds) {
+          const e3 = mcpAsm[mid];
+          asmHtml += '<div class="d-bind-row"><span class="b-name mono">' + esc(mid) + '</span><span class="b-sub">'
+            + (e3.tools || []).length + ' 个工具 · JSON-RPC 2.0</span></div>';
+          asmHtml += '<div style="font-size:11px;color:var(--muted);margin:-2px 0 6px 8px" class="mono">'
+            + (e3.tools || []).map(t => esc(t.qualified_name)).join(" · ") + "</div>";
+        }
+      }
+      if (!skIds.length && !a2a.length) asmHtml += '<div class="d-val" style="color:var(--muted)">（无装配记录）</div>';
+      asmHtml += '</div>';
+      html += asmHtml;
+    }
+  } catch (e) { /* 无装配记录（404）时静默 */ }
   showDrawer(html);
 }
 async function openSkillDetail(id) {
@@ -1403,47 +1539,321 @@ async function openSkillDetail(id) {
         + '<button class="btn sm danger" onclick="toggleSkillBinding(\'' + esc(ag) + '\',\'' + esc(id) + '\',\'unbind\')">解绑</button></span></div>').join("")
       : '<div class="d-val" style="color:var(--muted)">（尚未绑定给任何 agent）</div>')
     + '<div style="font-size:12px;color:var(--muted);margin-top:4px">绑定 / 解绑即 POST /v1/agents/{agent}/skills，操作即时生效。</div></div>';
+  html += '<div class="d-block"><div class="d-label">技能包内容 · 官方 Agent Skills 五件套结构</div>'
+    + '<div id="skill-files-view" class="d-val" style="color:var(--muted);font-size:12px">加载中…</div></div>';
+  html += '<div class="d-block"><div class="d-label" id="skill-content-label">内容预览 · 点击上方文件查看</div>'
+    + '<div id="skill-content-view" class="d-val" style="color:var(--muted);font-size:12px">（选择一个文件开始预览）</div></div>';
+  drawerWide = true;
   showDrawer(html);
+  // 加载包文件树（SKILL.md / scripts / references / assets / evals）
+  jget("/v1/skills/" + encodeURIComponent(id) + "/files").then(flist => {
+    const fview = document.getElementById("skill-files-view");
+    if (!fview) return;
+    if (!flist || !flist.files) {
+      fview.innerHTML = '<span style="color:#a32d2d">文件树不可用：' + esc((flist && flist.message) || "未知错误") + "</span>";
+      return;
+    }
+    const GROUP_META = {
+      "SKILL.md": { icon: "📄", label: "主文件" },
+      scripts:    { icon: "⚙", label: "脚本（确定性执行）" },
+      references: { icon: "📚", label: "参考文档" },
+      assets:     { icon: "🧩", label: "模板/注册表" },
+      evals:      { icon: "🧪", label: "评估用例" }
+    };
+    let currentGroup = null;
+    let tree = '<div class="skill-tree">' + flist.files.map(f => {
+      let html2 = "";
+      if (f.group !== currentGroup) {
+        currentGroup = f.group;
+        const g = GROUP_META[f.group] || { icon: "📁", label: f.group };
+        html2 += '<div class="st-group">' + g.icon + " " + esc(f.group === "SKILL.md" ? "SKILL.md · " + g.label : f.group + "/ · " + g.label) + "</div>";
+      }
+      const name = f.path.split("/").pop();
+      const ext = name.split(".").pop();
+      const extIcon = { py: "🐍", md: "📝", json: "🔧", txt: "📄" }[ext] || "📄";
+      return html2 + '<div class="st-file" onclick=\'loadSkillFile("' + esc(id) + '","' + esc(f.path) + '")\'">'
+        + '<span class="st-ico">' + extIcon + '</span><span class="st-name mono" title="' + esc(f.path) + '">' + esc(name) + "</span>"
+
+        + '<span class="st-size">' + fmtBytes(f.bytes) + "</span></div>";
+    }).join("") + "</div>";
+    fview.innerHTML = tree + '<div style="font-size:11px;color:var(--muted);margin-top:6px">'
+      + flist.count + " 个文件 · 点击预览 · 来源 GET /v1/skills/" + esc(id) + "/files</div>";
+    // 默认预览主文件
+    if (flist.files.some(f => f.path === "SKILL.md")) loadSkillFile(id, "SKILL.md");
+  }).catch(e => {
+    const fview = document.getElementById("skill-files-view");
+    if (fview) fview.innerHTML = '<span style="color:#a32d2d">加载失败：' + esc(e.message) + "</span>";
+  });
+  jget("/v1/skills/" + encodeURIComponent(id) + "/content").then(sc => {
+    const view = document.getElementById("skill-content-view");
+    if (!view) return;
+    if (!sc || !sc.content) {
+      view.innerHTML = '<span style="color:#a32d2d">内容不可用：' + esc((sc && sc.message) || "未知错误") + "</span>";
+      return;
+    }
+    view.innerHTML = '<div class="skill-doc">'
+      + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'
+      + esc(sc.path) + " · " + sc.bytes + " B · " + sc.lines + " 行</div>"
+      + renderMarkdown(sc.content)
+      + "</div>";
+  }).catch(e => {
+    const view = document.getElementById("skill-content-view");
+    if (view) view.innerHTML = '<span style="color:#a32d2d">加载失败：' + esc(e.message) + "</span>";
+  });
+}
+
+/* ———— Agent 运行实时面板（对话区右侧）———— */
+/** 轻量提示浮层（右上角，3s 自动消失）。 */
+function toast(msg) {
+  let t = document.getElementById("__toast");
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "__toast";
+    t.style.cssText = "position:fixed;top:18px;right:20px;z-index:999;background:#222;color:#fff;padding:9px 14px;border-radius:8px;font-size:12.5px;box-shadow:0 4px 14px rgba(0,0,0,.2);opacity:0;transition:opacity .18s;pointer-events:none;";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = "1";
+  clearTimeout(toast._h);
+  toast._h = setTimeout(() => { t.style.opacity = "0"; }, 3000);
+}
+
+let RUN_PANEL = { trace: null, view: "timeline", timer: null, openNodes: new Set() };
+
+function fmtMs(ms) { return ms < 1000 ? ms + "ms" : (ms / 1000).toFixed(1) + "s"; }
+
+async function startAgentRun(bank) {
+  renderRunPanelLoading();
+  try {
+    const resp = await jpost("/v1/run/start", { bank: bank || "cmb" });
+    const t = resp && resp.data ? resp.data : resp;   // jpost 包装 {ok,status,data}
+    if (!t || !t.run_id) throw new Error((t && t.message) || "运行启动失败");
+    RUN_PANEL.trace = t;
+    renderRunPanel();
+    toast("运行 " + t.run_id + " 已完成：" + t.status);
+  } catch (e) {
+    renderRunPanelError(e.message);
+  }
+}
+
+function renderRunPanelLoading() {
+  const p = document.getElementById("run-panel");
+  if (!p) return;
+  p.className = "run-panel";
+  p.innerHTML = '<div class="rp-live-bar"><span class="rp-dot"></span>正在启动 agent 运行…（主编规划 → 工位执行 → 门禁核验）</div>'
+    + '<div class="rp-body"><div class="rp-tl">'
+    + ["主编 · 任务规划", "团队与通道检查", "快照装载", "指标抽取", "经营分析", "资产质量分析", "结构化成稿", "双核验门禁", "交付判断"]
+        .map((t, i) => '<div class="rp-node running" style="animation:rpPulse 1.1s ease-in-out ' + (i * 0.12) + 's infinite"><div class="rp-node-h"><span class="rp-ntype">AGENT</span><span class="rp-ntitle">' + t + '</span><span class="rp-nstatus">…</span></div></div>').join("")
+    + "</div></div>";
+}
+
+function renderRunPanelError(msg) {
+  const p = document.getElementById("run-panel");
+  if (p) { p.className = "run-panel"; p.innerHTML = '<div class="rp-body"><div style="color:#a32d2d;font-size:12.5px">运行失败：' + esc(msg) + "</div></div>"; }
+}
+
+function renderRunPanel() {
+  const p = document.getElementById("run-panel");
+  const t = RUN_PANEL.trace;
+  if (!p || !t) return;
+  p.className = "run-panel";
+  const nodes = t.nodes || [];
+  const ok = nodes.filter(n => n.status === "SUCCEEDED").length;
+  const st = { SUCCEEDED: ["✓", "var(--success)"], RUNNING: ["◐", "#3b7bf5"], FAILED: ["✕", "#d64545"] }[t.status] || ["?", "var(--muted)"];
+  let html = '<div class="rp-head"><h3>Agent 运行 <span style="font-size:11px;color:var(--muted);font-weight:400" class="mono">' + esc(t.run_id) + " · " + esc(t.task_id) + "</span>"
+    + '<span style="color:' + st[1] + ';font-size:12px">' + st[0] + " " + esc(t.status) + "</span></h3>"
+    + '<div class="rp-stats">'
+    + '<div class="rp-stat"><div class="v">' + nodes.length + '</div><div class="k">节点</div></div>'
+    + '<div class="rp-stat"><div class="v">' + fmtMs(t.elapsed_ms || 0) + '</div><div class="k">总耗时</div></div>'
+    + '<div class="rp-stat"><div class="v">' + (t.tokens || 0) + '</div><div class="k">TOKENS</div></div>'
+    + '<div class="rp-stat"><div class="v">' + esc(t.cost_estimate || "—") + '</div><div class="k">成本估算</div></div>'
+    + "</div></div>";
+  html += '<div class="rp-toolbar"><div class="rp-view-tabs">'
+    + [["timeline", "时间线"], ["graph", "执行图"], ["json", "原始"]].map(([v, l]) =>
+        '<button class="rp-vtab' + (RUN_PANEL.view === v ? " on" : "") + '" onclick="setRunView(\'' + v + '\')">' + l + "</button>").join("")
+    + '</div><button class="btn sm" onclick="startAgentRun(\'' + (t.bank || "cmb") + '\')">重跑</button>'
+    + '<span style="font-size:10.5px;color:var(--muted);margin-left:auto">触发：' + esc(t.trigger || "—") + " · " + esc((t.started_at || "").replace("T", " ").slice(5, 19)) + "</span></div>";
+
+  if (RUN_PANEL.view === "timeline") {
+    html += '<div class="rp-body"><div class="rp-tl">' + nodes.map(n => renderTraceNode(n)).join("") + "</div></div>";
+  } else if (RUN_PANEL.view === "graph") {
+    html += '<div class="rp-body"><div class="rp-graph">' + renderTraceGraph(nodes) + "</div></div>";
+  } else {
+    html += '<div class="rp-body"><pre style="font-size:10.5px;overflow:auto">' + esc(JSON.stringify(t, null, 1)) + "</pre></div>";
+  }
+  p.innerHTML = html;
+}
+
+function renderTraceNode(n) {
+  const cls = n.status === "FAILED" ? " failed" : (n.status === "RUNNING" ? " running" : "");
+  const open = RUN_PANEL.openNodes.has(n.id);
+  const stColor = n.status === "SUCCEEDED" ? "var(--success)" : (n.status === "FAILED" ? "#d64545" : "#3b7bf5");
+  let body = "";
+  if (open) {
+    if (n.thinking) body += '<div class="rp-field"><div class="fl">思考过程 THINKING</div><div class="rp-thinking">' + esc(n.thinking) + "</div></div>";
+    if (n.skill_used) body += '<div class="rp-field"><div class="fl">使用技能 SKILL</div><div class="fv">' + esc(n.skill_used) + "</div></div>";
+    if ((n.tool_calls || []).length) body += '<div class="rp-field"><div class="fl">工具调用 TOOL CALLS（MCP JSON-RPC）</div>'
+      + n.tool_calls.map(tc => '<div class="tc"><span class="tn">' + esc(tc.tool) + "</span><span>×" + tc.calls + '</span><span class="tp">' + esc(tc.protocol || "") + "</span></div>").join("") + "</div>";
+    body += '<div class="rp-field"><div class="fl">输入 INPUT</div><div class="fv">' + esc(n.input) + "</div></div>";
+    body += '<div class="rp-field"><div class="fl">输出 OUTPUT</div><div class="fv">' + esc(n.output) + "</div></div>";
+    if (n.outputs_detail) body += '<div class="rp-field"><div class="fl">输出明细</div><div class="fv">' + Object.entries(n.outputs_detail).map(([k, v]) => "· " + esc(k) + ": " + esc(String(v))).join("<br>") + "</div></div>";
+    if (n.gate_rule) body += '<div class="rp-field"><div class="fl">门禁规则</div><div class="fv">' + esc(n.gate_rule) + "</div></div>";
+    if (n.real_check) body += '<div class="rp-field"><div class="fl">✓ 真实核验</div><div class="fv">本节点实际调用了 NumericChecker/CitationChecker（非预录数据）</div></div>';
+    if (n.parallel_group) body += '<div class="rp-field"><div class="fl">并行组</div><div class="fv">' + esc(n.parallel_group) + "（与同组节点并行执行）</div></div>";
+    if (n.iteration) body += '<div class="rp-field"><div class="fl">Agent Loop</div><div class="fv">iteration #' + n.iteration + "</div></div>";
+  }
+  return '<div class="rp-node' + cls + (open ? " open" : "") + '">'
+    + '<div class="rp-node-h" onclick="toggleTraceNode(\'' + n.id + '\')">'
+    + '<span class="rp-ntype ' + n.type + '">' + n.type + '</span>'
+    + '<span class="rp-ntitle">' + esc(n.title) + "</span>"
+    + '<span class="rp-nmeta">' + (n.tokens ? n.tokens + "tok · " : "") + fmtMs(n.elapsed_ms || 0) + '</span>'
+    + '<span class="rp-nstatus" style="color:' + stColor + '">' + (n.status === "SUCCEEDED" ? "✓" : n.status) + "</span>"
+    + "</div>" + (body ? '<div class="rp-node-b">' + body + "</div>" : "") + "</div>";
+}
+
+function renderTraceGraph(nodes) {
+  // 聚合图：主编 → 查数 → 指标 → [双分析并行] → 写作 → 核验 → 门禁
+  const par = nodes.filter(n => n.parallel_group === "analysis");
+  const seq = nodes.filter(n => n.parallel_group !== "analysis");
+  const arrow = '<div class="rp-garrow">↓</div>';
+  let g = seq.map(n => '<div class="rp-gnode ok"><div class="gtitle">' + esc(n.title.split("·")[0].trim()) + '</div><div class="gmeta">' + n.type + " · " + fmtMs(n.elapsed_ms || 0) + "</div></div>");
+  // 并行段插入到写作之前
+  if (par.length) {
+    const parHtml = '<div class="rp-par">' + par.map(n => '<div class="rp-gnode ok" style="width:150px"><div class="gtitle">' + esc(n.title.split("·")[0].trim()) + '</div><div class="gmeta">' + n.type + " · " + n.tokens + "tok</div></div>").join("") + "</div>";
+    const wIdx = g.findIndex(x => x.includes("成稿") || x.includes("写作"));
+    if (wIdx > 0) g.splice(wIdx, 0, parHtml);
+  }
+  return g.join(arrow);
+}
+
+function toggleTraceNode(id) {
+  if (RUN_PANEL.openNodes.has(id)) RUN_PANEL.openNodes.delete(id); else RUN_PANEL.openNodes.add(id);
+  renderRunPanel();
+}
+function setRunView(v) { RUN_PANEL.view = v; renderRunPanel(); }
+
+function initRunPanel() {
+  const p = document.getElementById("run-panel");
+  if (!p) return;
+  p.className = "run-panel empty";
+  p.innerHTML = '<div style="text-align:center;padding:0 24px"><div style="font-size:26px;margin-bottom:8px">📡</div>'
+    + "<b>Agent 运行面板</b><div style=\"margin-top:6px;line-height:1.7\">发送任务或点击下方按钮启动运行<br>实时展示：主编规划 → 工位执行 → MCP 工具调用 → 核验门禁</div>"
+    + '<button class="btn primary" style="margin-top:12px" onclick="startAgentRun(\'cmb\')">启动演示运行（招行）</button></div>';
+}
+
+function fmtBytes(b) {
+  if (b == null) return "";
+  return b < 1024 ? b + " B" : (b / 1024).toFixed(1) + " KB";
+}
+
+/** 点击技能包文件加载预览：md → 渲染；py/json → 代码块。 */
+function loadSkillFile(skillId, filePath) {
+  const view = document.getElementById("skill-content-view");
+  const label = document.getElementById("skill-content-label");
+  if (!view) return;
+  if (label) label.textContent = "内容预览 · " + filePath;
+  view.innerHTML = '<span style="color:var(--muted);font-size:12px">加载中…</span>';
+  // 高亮当前选中文件
+  document.querySelectorAll(".st-file.sel").forEach(el => el.classList.remove("sel"));
+  document.querySelectorAll(".st-file").forEach(el => {
+    if (el.getAttribute("onclick") && el.getAttribute("onclick").includes("'" + filePath + "'")) el.classList.add("sel");
+  });
+  jget("/v1/skills/" + encodeURIComponent(skillId) + "/files?path=" + encodeURIComponent(filePath)).then(fc => {
+    if (!fc || !fc.content) {
+      view.innerHTML = '<span style="color:#a32d2d">不可用：' + esc((fc && fc.message) || "未知错误") + "</span>";
+      return;
+    }
+    const ext = filePath.split(".").pop().toLowerCase();
+    const head = '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">'
+      + esc(filePath) + " · " + fmtBytes(fc.bytes) + " · " + fc.lines + " 行</div>";
+    if (ext === "md") {
+      view.innerHTML = '<div class="skill-doc">' + head + renderMarkdown(fc.content) + "</div>";
+    } else {
+      // py/json/txt 原文展示（代码块）
+      const lang = ext === "py" ? "python" : (ext === "json" ? "json" : "text");
+      view.innerHTML = head + '<pre class="skill-code"><code>' + esc(fc.content) + "</code></pre>"
+        + '<div style="font-size:11px;color:var(--muted);margin-top:4px">类型：' + lang + " · 原文展示</div>";
+    }
+  }).catch(e => {
+    view.innerHTML = '<span style="color:#a32d2d">加载失败：' + esc(e.message) + "</span>";
+  });
+}
+
+/** 轻量 Markdown 渲染（标题/表格/代码块/列表/粗体，预览用，不引外部库）。 */
+function renderMarkdown(md) {
+  function esc2(t) { return t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+  const lines = String(md).split("\n");
+  let out = "", inCode = false, tableBuf = [];
+  const flushTable = () => {
+    if (!tableBuf.length) return;
+    let html = "<table>";
+    tableBuf.forEach((row, ri) => {
+      if (ri === 1 && /^[-\s|:]+$/.test(row)) return;
+      const cells = row.split("|").map(c => c.trim()).filter((c, idx, arr) => !(idx === 0 && c === "") && !(idx === arr.length - 1 && c === ""));
+      html += "<tr>" + cells.map(c => "<" + (ri === 0 ? "th" : "td") + ">" + esc2(c) + "</" + (ri === 0 ? "th" : "td") + ">").join("") + "</tr>";
+    });
+    out += html + "</table>";
+    tableBuf = [];
+  };
+  for (const l of lines) {
+    if (l.trim().startsWith("```")) { flushTable(); if (inCode) { out += "</pre>"; inCode = false; } else { out += "<pre>"; inCode = true; } continue; }
+    if (inCode) { out += esc2(l) + "\n"; continue; }
+    if (/^\|.*\|/.test(l.trim())) { tableBuf.push(l.trim()); continue; }
+    flushTable();
+    if (/^#{1,6}\s/.test(l)) { const lvl = l.match(/^#+/)[0].length; out += "<h" + Math.min(lvl+1,6) + ">" + esc2(l.replace(/^#+\s*/, "")) + "</h" + Math.min(lvl+1,6) + ">"; continue; }
+    if (/^(-{3,})$/.test(l.trim())) { out += "<hr>"; continue; }
+    if (/^[-*]\s/.test(l.trim())) { out += "<li>" + inlineMd(esc2(l.trim().replace(/^[-*]\s*/, ""))) + "</li>"; continue; }
+    if (!l.trim()) { out += "<div style=\"height:6px\"></div>"; continue; }
+    out += "<p>" + inlineMd(esc2(l)) + "</p>";
+  }
+  if (inCode) out += "</pre>";
+  flushTable();
+  function inlineMd(t) { return t.replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>"); }
+  return out;
 }
 async function openMcpDetail(id) {
-  const tools = ((state.toolsData || {}).tools) || [];
-  const s = tools.find(x => x.tool_id === id);
-  if (!s) { await ensureToolsData(); return openMcpDetail(id); }
-  const html = "<h3>MCP 工具详情 · " + esc(s.name)
+  const list = await ensureMcpData();
+  const s = list.find(x => x.server_id === id);
+  if (!s) return;
+  await ensureAgentsData();
+  const agents = state.agentsData ? state.agentsData.runtime : [];
+  // 该 MCP 已绑定给哪些 agent
+  const bound = agents.filter(a => (a.mcps || []).includes(id));
+  let html = "<h3>MCP 详情 · " + esc(s.name)
     + '<button class="d-close" onclick="closeDrawer()">×</button></h3>'
-    + '<div class="d-block"><div class="d-label">统一调用入口</div><div class="d-val mono">' + esc(s.ep)
-    + ' · body: {"tool_name": "' + esc(s.tool_id) + '", "arguments": {…}}</div></div>'
-    + '<div class="d-block"><div class="d-label">描述</div><div class="d-val">' + esc(s.description) + "</div></div>"
-    + '<div class="d-block"><div class="d-label">参数（' + (s.params || []).length + "）</div><div class=\"d-val\">"
-    + (s.params || []).map(p => '<div class="mono" style="line-height:1.9">' + esc(p.name)
-      + ' <span style="color:var(--muted)">[' + esc(p.type) + (p.required ? " · 必填" : " · 可选") + "]</span> — "
-      + esc(p.desc || "") + "</div>").join("") + "</div></div>"
-    + '<div class="d-block"><div class="d-label">默认参数（服务端 tools.json default_args）</div><div class="d-val mono">'
-    + esc(JSON.stringify(s.default_args || {})) + "</div></div>"
-    + '<div class="d-block"><div class="d-label">试运行（真实调用 · fail-closed：失败返回 ok:false）</div>'
-    + '<textarea id="tool-args" style="width:100%;height:120px;font-size:12px;line-height:1.5;border:1px solid var(--border);border-radius:8px;padding:8px;font-family:var(--mono,monospace);box-sizing:border-box;background:var(--surface);color:inherit">'
-    + esc(JSON.stringify(s.sample_args || {}, null, 2)) + "</textarea>"
-    + '<div style="margin-top:8px;display:flex;gap:10px;align-items:center">'
-    + '<button class="btn primary" onclick="runTool(\'' + esc(s.tool_id) + '\')">运行工具</button>'
-    + '<span style="font-size:12px;color:var(--muted)">联网真实调用 · 抓取产物可再 snapshot_commit 落盘注册</span></div>'
-    + '<pre id="tool-result" style="display:none;margin-top:10px;padding:10px;max-height:320px;overflow:auto;white-space:pre-wrap;font-size:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface)">'
-    + "</pre></div>";
+    + '<div class="d-block"><div class="d-label">服务端点</div><div class="d-val mono">' + esc(s.endpoint) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">协议</div><div class="d-val mono">' + esc(s.protocol) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">能力协商</div><div class="d-val mono" style="font-size:11.5px">POST ' + esc(s.endpoint) + ' {"method":"initialize"} → tools/list → tools/call</div></div>'
+    + '<div class="d-block"><div class="d-label">暴露工具（' + s.tools.length + "，全限定名 " + esc(s.server_id) + ":tool_name）</div>"
+    + s.tools.map(t => '<div class="d-bind-row"><span class="b-name mono">' + esc(s.server_id + ":" + t.name) + '</span><span class="b-sub">'
+      + esc((t.description || "").slice(0, 46)) + "</span></div>").join("") + "</div>"
+    + '<div class="d-block"><div class="d-label">已绑定给 ' + bound.length + " 个运行时 agent（bind 即装配全限定名工具）</div>"
+    + (bound.length
+      ? bound.map(a => '<div class="d-bind-row"><span class="b-name">' + esc(a.name) + '</span><span class="b-sub">' + esc(a.agent_id) + '</span>'
+        + '<span class="b-ops"><button class="btn sm" onclick="openAgentDetail(\'' + esc(a.agent_id) + '\')">agent 详情</button>'
+        + '<button class="btn sm danger" onclick="toggleMcpBinding(\'' + esc(a.agent_id) + '\',\'' + esc(id) + '\',\'unbind\')">解绑</button></span></div>').join("")
+      : '<div class="d-val" style="color:var(--muted)">（尚未绑定）</div>')
+    + '<div style="font-size:12px;color:var(--muted);margin-top:4px">绑定即 POST /v1/agents/{agent}/mcp —— agent 获得全限定名工具（ServerName:tool_name），经 JSON-RPC tools/call 调用。</div></div>'
+    + '<div class="d-block"><div class="d-label">绑定给其他 agent</div><div class="d-val">'
+    + '<select id="mcp-bind-target" style="font:inherit;padding:4px 8px;border:1px solid var(--border);border-radius:6px;max-width:70%">'
+    + agents.filter(a => a.agent_id !== "editor-in-chief" && !(a.mcps || []).includes(id))
+        .map(a => '<option value="' + esc(a.agent_id) + '">' + esc(a.name) + "</option>").join("")
+    + '</select> <button class="btn sm primary" onclick="mcpBindFromDetail(\'' + esc(id) + '\')">绑定</button></div></div>';
   showDrawer(html);
 }
-async function ensureToolsData() {
-  if (!state.toolsData || !state.toolsData.tools)
-    try { state.toolsData = await jget("/v1/tools"); } catch (e) { state.toolsData = { tools: [] }; }
-  return state.toolsData;
+
+/** MCP bind/unbind 调用 + 刷新详情。 */
+async function toggleMcpBinding(agentId, serverId, action) {
+  try {
+    await jpost("/v1/agents/" + encodeURIComponent(agentId) + "/mcp", { server_id: serverId, action });
+    toast(action === "bind" ? "MCP " + serverId + " 已装配给 " + agentId : "已解绑 " + serverId);
+    openMcpDetail(serverId);
+  } catch (e) { toast("操作失败：" + e.message); }
 }
-async function runTool(toolId) {
-  const pre = $("#tool-result");
-  let argsObj;
-  try { argsObj = JSON.parse($("#tool-args").value || "{}"); }
-  catch (e) { pre.style.display = "block"; pre.textContent = "参数 JSON 解析失败：" + e.message; return; }
-  pre.style.display = "block";
-  pre.textContent = "调用中…（POST /v1/tools/call · " + toolId + "）";
-  const r = await jpost("/v1/tools/call", { tool_name: toolId, arguments: argsObj });
-  pre.textContent = JSON.stringify(r.data, null, 2);
+async function mcpBindFromDetail(serverId) {
+  const sel = document.getElementById("mcp-bind-target");
+  if (!sel || !sel.value) return;
+  await toggleMcpBinding(sel.value, serverId, "bind");
 }
 function openRuleDetail(id) {
   const r = RULE_ASSETS.find(x => x.id === id);
@@ -1836,6 +2246,8 @@ async function init() {
   }
 }
 init();
+
+initRunPanel();
 </script>
 </body>
 </html>
