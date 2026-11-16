@@ -1,11 +1,13 @@
 ---
 name: annual-report
-description: 银行年报简报生成与核验方法论：八指标口径、引用纪律、修订预算、信源权威分级。W06 五角色（资料/指标/经营分析/资产质量/写作）必须遵循。
+description: 银行年报简报生成与核验方法论：八指标口径、引用纪律、修订预算、信源权威分级、真实年报骨架（名称保留/深度收缩）、多 Agent 六工位分工。W06 五角色（资料/指标/经营分析/资产质量/写作）必须遵循。
 triggers:
   - 生成年报简报
   - 年报指标抽取
   - 引用核验
   - 银行财务报告
+  - 年报骨架配置
+  - 多agent分工
 ---
 
 # Annual Report Skill（W06 方法论）
@@ -24,6 +26,7 @@ triggers:
 | 指标专员 | `references/metric-dictionary.md` | 值照抄原文（含千分位）；单位用原文；找不到标 NOT_FOUND |
 | 经营/资产质量分析师 | `references/banking-domain.md` | 只用注入的指标子集；每论断恰好一条引用；派生值标"基于 [C-k] 计算"+算式 |
 | 主笔 | `references/citation-style.md` | metrics 原样转抄一字不改；论断只来自两路草稿；修订只动指令指定项 |
+| 图表绘制 | `references/agent-division.md` | 图表类型/挂载节/数据系列来自数据文件与配置；不改任何数值，不发明图表 |
 | 核验员 | 本文件「核验协议」节 | FAIL 打回一次；再 FAIL 或语义存疑转 waiting_human；绝不放行 |
 
 ## 核验协议（fail-closed）
@@ -45,3 +48,5 @@ triggers:
 - `references/banking-domain.md` — 银行业知识与监管指标口径（监管 vs 会计口径差异）
 - `references/source-library.md` — 金融信源库：官方一手/机构二手信源清单与评级标准
 - `references/citation-style.md` — 引用格式与论断标注规范（[C-n] 协议）
+- `references/report-skeleton.md` — 真实年报骨架方法：名称保留/深度收缩，report-structure.json 唯一事实源
+- `references/agent-division.md` — 多 Agent 六工位分工：查数/分析/图表/写作/核验/主编的输入-输出-产物

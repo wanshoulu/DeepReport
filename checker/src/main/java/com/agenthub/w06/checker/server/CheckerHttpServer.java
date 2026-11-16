@@ -40,6 +40,8 @@ import com.agenthub.w06.checker.CitationChecker;
 import com.agenthub.w06.checker.NumericChecker;
 import com.agenthub.w06.contract.AnnualReportArtifacts;
 import com.agenthub.w06.contract.CheckResult;
+import com.agenthub.w06.contract.MetricValue;
+import com.agenthub.w06.contract.ReportSection;
 import com.agenthub.w06.contract.SourceEntry;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -61,6 +63,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -97,6 +100,7 @@ public final class CheckerHttpServer {
         final Path dir;
         final String company;
         final String reportPeriod;
+        final String snapshotVersion;
         final JsonNode sourcesNode;
         final Map<String, String> byPageDigest = new HashMap<>();
         final Map<Integer, String> byPageNumber = new TreeMap<>();
@@ -108,6 +112,7 @@ public final class CheckerHttpServer {
             JsonNode manifest = MAPPER.readTree(dir.resolve("manifest.json").toFile());
             this.company = manifest.path("company").asText(bank);
             this.reportPeriod = manifest.path("report_period").asText("");
+            this.snapshotVersion = manifest.path("snapshot_version").asText("");
             this.sourcesNode = manifest.path("sources");
             Path pagesDir = dir.resolve("pages");
             if (Files.isDirectory(pagesDir)) {
@@ -250,12 +255,13 @@ public final class CheckerHttpServer {
         int port = Integer.parseInt(System.getenv().getOrDefault("CHECKER_PORT", "18095"));
         Path snapshotDir = Path.of(System.getenv().getOrDefault("SNAPSHOT_DIR", "/snapshot"));
         Path staticDir = Path.of(System.getenv().getOrDefault("STATIC_DIR", "/app"));
+        loadReportStructure(staticDir);               // 骨架配置（节序/标题/静态正文/责任 agent 唯一事实源）
 
         SnapshotHttpResolver resolver = new SnapshotHttpResolver(snapshotDir);
         List<SourceEntry> sources = loadSourceEntries(resolver);
         preloadTasks(staticDir, snapshotDir, resolver, sources);   // 报告库预置 4 条历史任务（三银行）
-        seedAgents();                                 // Agent Hub：9 运行时 + 3 市场目录
-        seedSkills();                                 // 技能注册表：5 个技能（可绑定给 agent）
+        seedAgents();                                 // Agent Hub：10 运行时 + 3 市场目录
+        seedSkills();                                 // 技能注册表：7 个技能（可绑定给 agent）
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
@@ -381,6 +387,10 @@ public final class CheckerHttpServer {
         }
         if ("/v1/checks/citation".equals(path) && "POST".equals(method)) {
             handleCheck(ex, resolver, draft -> CITATION.check(draft, resolver.scopedFor(draft), sources));
+            return;
+        }
+        if ("/v1/pipeline/run".equals(path) && "POST".equals(method)) {
+            handlePipelineRun(ex, resolver, sources);
             return;
         }
         if (path.startsWith("/demo/") && "GET".equals(method)) {
@@ -597,6 +607,154 @@ public final class CheckerHttpServer {
 
     // ———————————————————— 报告库（任务历史）与 Agent Hub ————————————————————
 
+    /** 骨架配置（0.3.4 泛化）：节序/role/责任 agent/静态正文模板的唯一事实源 = STATIC_DIR/report-structure.json。 */
+    private static JsonNode STRUCTURE;
+
+    private static void loadReportStructure(Path staticDir) {
+        Path f = staticDir.resolve("report-structure.json");
+        if (!Files.isRegularFile(f)) {
+            System.out.println("WARN: 未找到 report-structure.json，/v1/pipeline/run 不可用");
+            return;
+        }
+        try {
+            STRUCTURE = MAPPER.readTree(f.toFile());
+        } catch (IOException e) {
+            System.out.println("WARN: report-structure.json 解析失败: " + e);
+        }
+    }
+
+    /** 工件规模摘要（动态计数，杜绝硬编码「N 项指标/N 节正文」）。 */
+    private static String artifactBrief(AnnualReportArtifacts art) {
+        int charts = art.charts() == null ? 0 : art.charts().size();
+        return art.metrics().size() + " 项指标 + " + art.sections().size() + " 节正文 + "
+                + art.citations().size() + " 条引用" + (charts > 0 ? " + " + charts + " 幅图表" : "");
+    }
+
+    /**
+     * 六工位受控生成流水线（确定性重放，无 LLM）：查数 → 分析 → 图表 → 写作 → 核验 → 主编。
+     * 分派/标题/节序全部来自骨架配置与工件数据，服务端零机构特判；换银行=换数据配置。
+     */
+    private static void handlePipelineRun(HttpExchange ex, SnapshotHttpResolver resolver,
+                                          List<SourceEntry> sources) throws IOException {
+        if (STRUCTURE == null) {
+            respond(ex, 503, errorNode("structure_missing", "骨架配置 report-structure.json 未加载"));
+            return;
+        }
+        JsonNode body = MAPPER.readTree(ex.getRequestBody());
+        String bank = body.path("bank").asText(resolver.defaultBank);
+        BankSnap snap = resolver.scope(bank);
+        Path f = snap.dir.resolve("positive-artifact.json");
+        if (!Files.isRegularFile(f)) {
+            respond(ex, 404, errorNode("artifact_missing", "银行快照缺少正例工件: " + snap.bank));
+            return;
+        }
+        AnnualReportArtifacts art = MAPPER.treeToValue(MAPPER.readTree(f.toFile()), AnnualReportArtifacts.class);
+
+        // 节 → 责任 agent / role 映射自骨架配置（不写死「第几节归谁」）
+        Map<String, String> sectionAgent = new LinkedHashMap<>();
+        Map<String, String> sectionRole = new LinkedHashMap<>();
+        var secIt = STRUCTURE.path("sections").fields();
+        while (secIt.hasNext()) {
+            var e = secIt.next();
+            sectionAgent.put(e.getKey(), e.getValue().path("agent").asText("editor-in-chief"));
+            sectionRole.put(e.getKey(), e.getValue().path("role").asText("analysis"));
+        }
+        // 分析工位 agent 集合按配置 role=analysis 去重收集（顺序=配置节序）
+        Set<String> analysts = new LinkedHashSet<>();
+        for (Map.Entry<String, String> e : sectionAgent.entrySet()) {
+            if ("analysis".equals(sectionRole.get(e.getKey()))) {
+                analysts.add(e.getValue());
+            }
+        }
+
+        ArrayNode stages = MAPPER.createArrayNode();
+
+        // 1) 查数：快照装载 + 指标索引
+        ObjectNode s1 = stageNode("material", "查数", "material-agent", "装载冻结快照与指标索引");
+        ObjectNode d1 = s1.putObject("data");
+        d1.put("snapshot_version", snap.snapshotVersion);
+        d1.put("sources", snap.sourcesNode.size());
+        d1.put("pages", snap.byPageNumber.size());
+        d1.put("metrics_indexed", art.metrics().size());
+        ArrayNode det1 = s1.withArray("details");
+        for (JsonNode src : snap.sourcesNode) {
+            det1.add(src.path("title").asText("（未命名信源）") + " — " + src.path("pages").size() + " 页");
+        }
+        det1.add("指标索引 " + art.metrics().size() + " 项，口径与单位以指标字典为准");
+        stages.add(s1);
+
+        // 2) 分析：逐指标洞察（值·单位·同比口径），口径文案由 DeltaUnit 承载
+        ObjectNode s2 = stageNode("analysis", "分析", String.join(", ", analysts), "逐指标洞察（值 · 单位 · 同比口径）");
+        ArrayNode det2 = s2.withArray("details");
+        for (MetricValue m : art.metrics()) {
+            StringBuilder ins = new StringBuilder();
+            ins.append(m.key().getDisplayName()).append(" ").append(m.value()).append(" ").append(m.unit());
+            if (m.yoyDelta() != null && !m.yoyDelta().isEmpty()) {
+                boolean sign = m.yoyDelta().startsWith("-") || m.yoyDelta().startsWith("+");
+                ins.append("，同比 ").append(sign ? "" : "+").append(m.yoyDelta())
+                        .append(m.deltaUnit() == null ? "" : m.deltaUnit().getLabel());
+            }
+            det2.add(ins.toString());
+        }
+        stages.add(s2);
+
+        // 3) 图表：类型/标题/挂载节随图表数据文件，chart-agent 只渲染不改数
+        ObjectNode s3 = stageNode("chart", "图表", "chart-agent", "内联 SVG 图表绘制与挂载校验");
+        ArrayNode det3 = s3.withArray("details");
+        for (Map<String, Object> ch : art.charts()) {
+            det3.add("[" + ch.get("id") + " " + ch.get("type") + "] " + ch.get("title")
+                    + " → 挂载 " + ch.get("section_id"));
+        }
+        stages.add(s3);
+
+        // 4) 写作：按配置节序逐节成稿（名称保留/深度收缩），字数与 claim 数动态统计
+        ObjectNode s4 = stageNode("writing", "写作", "editor-in-chief", "按骨架配置逐节成稿（名称保留 / 深度收缩）");
+        ArrayNode det4 = s4.withArray("details");
+        for (ReportSection sec : art.sections()) {
+            det4.add(sec.sectionId() + " " + sec.title()
+                    + " · 责任 " + sectionAgent.getOrDefault(sec.sectionId(), "editor-in-chief")
+                    + " · 正文 " + sec.body().length() + " 字 · 引用 " + sec.claimIds().size() + " 条");
+        }
+        stages.add(s4);
+
+        // 5) 核验：真实跑两项确定性核验（N1-N7 / C1-C2）
+        CheckResult num = NUMERIC.check(art, resolver.scopedFor(art));
+        CheckResult cit = CITATION.check(art, resolver.scopedFor(art), sources);
+        ObjectNode s5 = stageNode("checking", "核验", "numeric-checker, citation-checker", "N1-N7 数值核验 + C1-C2 引用核验（确定性，无 LLM）");
+        s5.withArray("details").add("数值核验 " + num.status()
+                + (num.violations().isEmpty() ? "" : "，违规 " + num.violations().size() + " 条"));
+        s5.withArray("details").add("引用核验 " + cit.status()
+                + (cit.violations().isEmpty() ? "" : "，违规 " + cit.violations().size() + " 条"));
+        stages.add(s5);
+
+        // 6) 主编：汇总 + 批准指引（批准绑定工件内容指纹）
+        String digest = "sha256:" + sha256(MAPPER.writeValueAsBytes(art));
+        ObjectNode s6 = stageNode("consolidation", "主编", "editor-in-chief", "汇总核验结论并出具批准指引");
+        s6.withArray("details").add("工件内容指纹 " + digest + "（规模：" + artifactBrief(art) + "）");
+        s6.withArray("details").add("批准指引：POST /v1/approvals?task_id=…（approver 具名；批准绑定内容指纹，工件一改批准即失效）");
+        stages.add(s6);
+
+        ObjectNode out = MAPPER.createObjectNode();
+        out.put("bank", snap.bank);
+        out.put("company", art.company());
+        out.put("report_period", art.reportPeriod());
+        out.put("artifact_digest", digest);
+        out.set("checks", checksNode(num, cit));
+        out.set("stages", stages);
+        respond(ex, 200, out);
+    }
+
+    private static ObjectNode stageNode(String id, String name, String agent, String headline) {
+        ObjectNode n = MAPPER.createObjectNode();
+        n.put("stage_id", id);
+        n.put("name", name);
+        n.put("agent", agent);
+        n.put("headline", headline);
+        n.putArray("details");
+        n.putObject("data");
+        return n;
+    }
+
     /**
      * 预置 4 条历史任务（报告库初始记录，覆盖三银行）：
      *  TASK-2025-AR-001 招行正例 —— 启动时真实重跑两项核验（均 PASSED），绑定批准 APR-0001（Alice）；
@@ -617,7 +775,7 @@ public final class CheckerHttpServer {
             CheckResult posCit = CITATION.check(pos, resolver.scopedFor(pos), sources);
             String posDigest = "sha256:" + sha256(MAPPER.writeValueAsBytes(pos));
             ObjectNode t1 = approvedTask("TASK-2025-AR-001", pos, "APPROVED",
-                    "2025 年度经营简报：8 项指标 + 10 节正文 + 26 条引用，两项核验 PASSED，Alice 具名批准交付",
+                    "2025 年度经营简报：" + artifactBrief(pos) + "，两项核验 PASSED，Alice 具名批准交付",
                     posDigest, "2026-03-28T09:30:00Z", "2026-03-28T09:41:00Z", posNum, posCit);
             ObjectNode apr = MAPPER.createObjectNode();
             apr.put("approval_id", "APR-0001");
@@ -676,7 +834,7 @@ public final class CheckerHttpServer {
         String digest = "sha256:" + sha256(MAPPER.writeValueAsBytes(art));
         boolean passed = "PASSED".equals(String.valueOf(num.status()))
                 && "PASSED".equals(String.valueOf(cit.status()));
-        String summary = art.company() + " " + art.reportPeriod() + " 年度经营简报：8 项指标 + 10 节正文 + 4 幅图表，"
+        String summary = art.company() + " " + art.reportPeriod() + " 年度经营简报：" + artifactBrief(art) + "，"
                 + "两项核验 " + (passed ? "PASSED" : "FAILED") + "，" + approver + " 具名批准交付";
         ObjectNode t = approvedTask(taskId, art, passed ? "APPROVED" : "FAILED", summary,
                 digest, createdAt, updatedAt, num, cit);
@@ -777,7 +935,7 @@ public final class CheckerHttpServer {
         return node;
     }
 
-    /** Agent Hub 种子：9 个内置运行时 agent（含默认 skill 绑定与主编团队）+ 3 个市场目录可安装 agent。 */
+    /** Agent Hub 种子：10 个内置运行时 agent（含默认 skill 绑定与主编团队）+ 3 个市场目录可安装 agent。 */
     private static void seedAgents() {
         String boot = Instant.now().toString();
         putAgent(AGENT_RUNTIME, "editor-in-chief", "主编编排 Agent", "ORCHESTRATOR", "1.0.0",
@@ -804,6 +962,10 @@ public final class CheckerHttpServer {
                 "披露规范审查：口径铁律、释义与脚注体例（证监会 2 号准则对齐）",
                 new String[]{"披露口径审查", "释义脚注"},
                 new String[]{"annual-report", "citation-style"}, boot);
+        putAgent(AGENT_RUNTIME, "chart-agent", "图表绘制 Agent", "ANALYST", "1.0.0",
+                "受控图表绘制：按图表数据文件与骨架配置挂载节位渲染内联 SVG，只渲染不改数、不发明图表",
+                new String[]{"图表绘制", "挂载校验"},
+                new String[]{"annual-report", "report-skeleton", "agent-division"}, boot);
         putAgent(AGENT_RUNTIME, "numeric-checker", "数值核验器", "CHECKER", NumericChecker.CHECKER_VERSION,
                 "N1–N7 数值纪律：指标完整性、单位白名单、数字页内字面存在、派生复算、同比复算、变动口径",
                 new String[]{"数值复算", "口径拦截"},
@@ -817,10 +979,10 @@ public final class CheckerHttpServer {
                 new String[]{"具名批准", "digest 绑定"},
                 new String[]{"annual-report"}, boot);
 
-        // 主编团队：内置 8 个专业 agent 默认注册给主编编排 Agent
+        // 主编团队：内置 9 个专业 agent 默认注册给主编编排 Agent
         ArrayNode team = AGENT_RUNTIME.get("editor-in-chief").putArray("team");
         for (String member : new String[]{"material-agent", "finance-analyst", "risk-analyst", "capital-analyst",
-                "disclosure-officer", "numeric-checker", "citation-checker", "approver"}) {
+                "disclosure-officer", "chart-agent", "numeric-checker", "citation-checker", "approver"}) {
             team.add(member);
         }
 
@@ -838,11 +1000,17 @@ public final class CheckerHttpServer {
                 new String[]{}, null);
     }
 
-    /** 技能注册表种子：5 个技能（与 skills/annual-report 目录一致），可绑定给任意运行时 agent。 */
+    /** 技能注册表种子：7 个技能（与 skills/annual-report 目录一致），可绑定给任意运行时 agent。 */
     private static void seedSkills() {
         putSkill("annual-report", "annual-report 主技能", "skills/annual-report/SKILL.md",
                 "年报编制主技能：受控流程编排——资料装载 → 口径澄清 → 分节成稿 → 双重核验 → 具名批准，内含四份 reference（领域/引用/口径/信源）。",
                 new String[]{"编排", "成稿", "核验", "批准"});
+        putSkill("report-skeleton", "年报骨架方法", "skills/annual-report/references/report-skeleton.md",
+                "真实年报骨架方法（名称保留/深度收缩）：report-structure.json 是节序/标题/静态正文/责任 agent 的唯一事实源，新增银行零代码。",
+                new String[]{"骨架配置"});
+        putSkill("agent-division", "六工位分工", "skills/annual-report/references/agent-division.md",
+                "多 Agent 六工位分工：查数/分析/图表/写作/核验/主编的输入-输出-产物与分派纪律，分派来自骨架配置。",
+                new String[]{"多agent协同"});
         putSkill("banking-domain", "银行业领域知识", "skills/annual-report/references/banking-domain.md",
                 "银行业术语与监管口径基线：巴塞尔资本口径、不良/拨备/资本概念辨析、监管指标体系。",
                 new String[]{"领域知识"});

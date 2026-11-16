@@ -19,12 +19,63 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { ICBC, CCB } = require('./bank-pages.js');
 
 const DEPLOY = __dirname;
 const SNAP_ROOT = path.join(DEPLOY, 'snapshot');
 const DEMO_DIR = path.join(DEPLOY, 'demo');
 const GENERATED_AT = '2026-11-16';
+
+const { ICBC, CCB } = require('./bank-pages.js');
+
+// ——————— 0. 骨架配置（0.3.4 泛化）：标题/节序/静态节正文/责任 agent 唯一事实源是 report-structure.json ———————
+// 方法约定（名称保留、深度收缩）沉淀在 skill references；银行差异（3.x/8.x/6.x 章号）只是配置数据。
+const STRUCTURE = JSON.parse(fs.readFileSync(path.join(DEPLOY, 'report-structure.json'), 'utf8'));
+
+function titleOf(bank, sectionId) {
+  const bankCfg = STRUCTURE.banks[bank];
+  if (!bankCfg || !bankCfg.titles || !bankCfg.titles[sectionId]) {
+    throw new Error('report-structure.json 缺少标题配置: banks.' + bank + '.titles.' + sectionId);
+  }
+  return bankCfg.titles[sectionId];
+}
+
+function fillBody(tpl, manifest, company) {
+  const primary = (manifest.sources[0].pages || []).map((p) => 'P' + p).join('/');
+  const comparison = (manifest.sources[1].pages || []).map((p) => 'P' + p).join('/');
+  return String(tpl)
+    .replace(/\{company\}/g, company)
+    .replace(/\{snapshot_version\}/g, manifest.snapshot_version)
+    .replace(/\{primary_pages\}/g, primary)
+    .replace(/\{comparison_pages\}/g, comparison);
+}
+
+function staticSectionsOf(b, manifest) {
+  return STRUCTURE.section_order
+    .filter((sid) => STRUCTURE.sections[sid] && STRUCTURE.sections[sid].role === 'static')
+    .map((sid) => ({
+      section_id: sid,
+      title: titleOf(b.bank, sid),
+      body: fillBody(STRUCTURE.static_bodies[sid], manifest, b.company),
+      claim_ids: [],
+    }));
+}
+
+// 按配置归一化工件骨架：标题取配置、静态节体取配置、按 section_order 排序补缺
+function normalizeSections(art, manifest, bank) {
+  const byId = new Map(art.sections.map((s) => [s.section_id, s]));
+  art.sections = STRUCTURE.section_order.map((sid) => {
+    const cfg = STRUCTURE.sections[sid];
+    if (!byId.has(sid)) {
+      if (cfg.role !== 'static') throw new Error('analysis 节缺失素材: ' + sid);
+      return { section_id: sid, title: titleOf(bank, sid), body: fillBody(STRUCTURE.static_bodies[sid], manifest, art.company), claim_ids: [] };
+    }
+    const sec = byId.get(sid);
+    sec.title = titleOf(bank, sid);
+    if (cfg.role === 'static') sec.body = fillBody(STRUCTURE.static_bodies[sid], manifest, art.company);
+    return sec;
+  });
+  return art;
+}
 
 function sha256(text) {
   return crypto.createHash('sha256').update(text, 'utf8').digest('hex');
@@ -88,6 +139,7 @@ function buildManifest(b) {
     company: b.company,
     report_period: b.reportPeriod,
     generated_at: GENERATED_AT,
+    source_note: b.sourceNote,
     sources: [
       {
         source_id: short + '-ar-2025-primary',
@@ -185,7 +237,7 @@ function buildArtifact(b, manifest, taskId, opts) {
         evidence_excerpt_digest: sha256(c.evidence_excerpt),
       });
     }
-    sections.push({ section_id: sec.section_id, title: sec.title, body, claim_ids: claimIds });
+    sections.push({ section_id: sec.section_id, title: titleOf(short, sec.section_id), body, claim_ids: claimIds });
   }
   // S-7 对比节引用上年页（comparison digest, page 46）
   for (const c of citations) if (sectionOfClaim[c.claim_id] === 'S-7') { c.source_document_digest = manifest.sources[1].content_sha256; c.page = 46; }
@@ -197,20 +249,9 @@ function buildArtifact(b, manifest, taskId, opts) {
   // S-5 资本 → P37
   for (const c of citations) if (sectionOfClaim[c.claim_id] === 'S-5') c.page = 37;
 
-  const staticSections = [
-    {
-      section_id: 'S-8', title: '八、口径与数据说明', body: '1. 本报告为受控演示产物：以' + b.company + '公开披露年报关键数据充当 2025 期演示数据（演示口径），上年度对比基数为 2024 年度披露数。\n2. 数值单位：金额为人民币亿元；比率保留两位小数；净息差变动以基点计，其余比率变动以百分点计。\n3. 业务及管理费、贷款减值准备为按披露比率复算的整理值，其余数值均取自快照页原文。', claim_ids: [],
-    },
-    {
-      section_id: 'S-9', title: '九、核验与交付说明', body: '1. 本报告经 N1-N7 数值核验与 C1-C2 引用核验，全部通过后方予交付。\n2. 每条引用携带信源摘要（SHA-256）与页码，可回溯至快照页原文。\n3. 交付须具名批准（审批人+工件摘要），未批准版本不出域。', claim_ids: [],
-    },
-    {
-      section_id: 'S-10', title: '十、数据来源与使用限制', body: '1. 数据来源：' + b.company + '公开披露年报落盘快照（本期节选 P18/P30/P37，对比基数 P46）。\n2. 本报告仅用于工作台功能演示，不构成投资建议；演示口径数据与官方披露如有出入，以官方披露为准。\n3. 转载或对外引用须经合规复核。', claim_ids: [],
-    },
-  ];
-  sections.push(...staticSections);
+  sections.push(...staticSectionsOf(b, manifest));
 
-  return {
+  const art = {
     task_id: taskId,
     company: b.company,
     report_period: b.reportPeriod,
@@ -220,6 +261,8 @@ function buildArtifact(b, manifest, taskId, opts) {
     sections,
     charts: buildCharts(b),
   };
+  normalizeSections(art, manifest, b.bank);
+  return art;
 }
 
 // ——————— 4. 图表（顶层 charts，前端内联 SVG 渲染） ———————
@@ -284,6 +327,7 @@ const BANKS = [
   {
     ...CCB,
     dir: 'ccb', taskIdPos: 'TASK-2025-AR-004', taskIdErr: 'TASK-2025-AR-006',
+    sourceNote: '真实披露页素材取自建设银行官网《2025年半年度报告》公开 PDF（P2-P75 节选，共 70 页，按 PDF 物理页码落盘）；P18/P30/P37/P46 数值演示页沿用 2024 年报披露口径充当 2025 期（见工件 S-10 标注）。',
     metricsText: {
       rev: 7501.51, revDelta: -2.54, revExcerpt: '营业收入7,501.51亿元，较上年减少195.85亿元，降幅2.54%',
       profit: 3355.77, profitDelta: 0.88, profitExcerpt: '净利润3,355.77亿元，较上年增加29.24亿元，增幅0.88%',
@@ -319,9 +363,6 @@ for (const b of BANKS) {
   fs.mkdirSync(pagesDir, { recursive: true });
 
   const manifest = buildManifest(b);
-  if (b.bank === 'ccb') {
-    manifest.source_note = '真实披露页素材取自建设银行官网《2025年半年度报告》公开 PDF（P2-P75 节选，共 70 页，按 PDF 物理页码落盘）；P18/P30/P37/P46 数值演示页沿用 2024 年报披露口径充当 2025 期（见工件 S-10 标注）。';
-  }
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
   for (const p of b.pages) {
     fs.writeFileSync(path.join(pagesDir, 'page-' + p + '.txt'), pageText(b['pages_' + p]), 'utf8');
@@ -380,6 +421,11 @@ for (const b of BANKS) {
   check('citation-excerpt-on-page', excerptBad.length === 0, excerptBad.map((c) => c.claim_id + '@P' + c.page).join(',') || '全部摘录命中声明页');
   const valueBad = pos.metrics.filter((m) => !numPresent(pageOf(m.source_document_digest, m.page) || '', m.value));
   check('metric-value-on-page', valueBad.length === 0, valueBad.map((m) => m.key + '@P' + m.page).join(',') || '全部数值命中声明页');
+
+  // 骨架一致性：节序与标题必须与 report-structure.json 一致（配置是唯一事实源）
+  check('skeleton-order', pos.sections.map((s) => s.section_id).join(',') === STRUCTURE.section_order.join(','), pos.sections.length + ' 节按 section_order');
+  check('skeleton-titles', pos.sections.every((s) => s.title === titleOf(b.bank, s.section_id)), '标题全部来自 banks.' + b.bank + '.titles');
+  check('charts-mounted', pos.charts.every((ch) => pos.sections.some((s) => s.section_id === ch.section_id)), pos.charts.map((ch) => ch.id + '@' + ch.section_id).join(', '));
 }
 
 // ——————— 7. demo 目录（CMB 正例+error，带 charts） ———————
@@ -391,30 +437,18 @@ const cmbErrorSrc = path.join(DEPLOY, 'error-artifact.json');
 if (fs.existsSync(cmbPositiveSrc)) {
   const pos = JSON.parse(fs.readFileSync(cmbPositiveSrc, 'utf8'));
   const err = JSON.parse(fs.readFileSync(cmbErrorSrc, 'utf8'));
-  pos.charts = [
-    {
-      id: 'CH-1', type: 'bar', section_id: 'S-1', title: '营业收入与归母净利润：本期 vs 上年', unit: '亿元',
-      labels: ['上年(2024)', '本期(2025)'],
-      series: [{ name: '营业收入', values: [3374.88, 3375.32] }, { name: '归母净利润', values: [1483.91, 1501.81] }],
-    },
-    {
-      id: 'CH-2', type: 'line', section_id: 'S-3', title: '净息差与成本收入比走势', unit: '%',
-      labels: ['上年(2024)', '本期(2025)'],
-      series: [{ name: '净息差', values: [1.98, 1.87] }, { name: '成本收入比', values: [31.89, 31.98] }],
-    },
-    {
-      id: 'CH-3', type: 'pie', section_id: 'S-3', title: '营业收入结构：利息 vs 非利息', unit: '亿元',
-      series: [{ name: '净利息收入', values: [2155.93] }, { name: '非利息净收入', values: [1219.39] }],
-    },
-    { id: 'CH-4', type: 'flow', section_id: 'S-9', title: '受控生成流水线', nodes: ['快照装载', '指标提取', '分节成稿', '数值核验', '引用核验', '具名批准', '受控交付'] },
-  ];
-  err.charts = pos.charts;
+  // 骨架归一化（配置驱动）：标题/静态节体取 report-structure.json，节序按配置；charts 随数据文件自带，脚本不再硬编码
+  normalizeSections(pos, cmbManifest, 'cmb');
+  normalizeSections(err, cmbManifest, 'cmb');
+  check('demo-skeleton-order', pos.sections.map((s) => s.section_id).join(',') === STRUCTURE.section_order.join(','), pos.sections.length + ' 节按 section_order');
+  check('demo-static-filled', pos.sections.filter((s) => STRUCTURE.sections[s.section_id].role === 'static').every((s) => !s.body.includes('{') && !s.body.includes('undefined')), '静态节占位符全部替换');
+  check('demo-charts-mounted', pos.charts.every((ch) => pos.sections.some((s) => s.section_id === ch.section_id)), pos.charts.map((ch) => ch.id + '@' + ch.section_id).join(', '));
   fs.writeFileSync(path.join(DEMO_DIR, 'positive-artifact.json'), JSON.stringify(pos, null, 2) + '\n', 'utf8');
   fs.writeFileSync(path.join(DEMO_DIR, 'error-artifact.json'), JSON.stringify(err, null, 2) + '\n', 'utf8');
   // 同步写入 snapshot/cmb/（preload 多银行读取）
   fs.writeFileSync(path.join(CMB_DIR, 'positive-artifact.json'), JSON.stringify(pos, null, 2) + '\n', 'utf8');
   fs.writeFileSync(path.join(CMB_DIR, 'error-artifact.json'), JSON.stringify(err, null, 2) + '\n', 'utf8');
-  console.log('\n[demo] cmb positive/error rewritten with charts');
+  console.log('\n[demo] cmb positive/error normalized by report-structure.json (charts kept from data files)');
 } else {
   console.log('\n[demo] deploy/positive-artifact.json absent — skip demo rewrite');
 }

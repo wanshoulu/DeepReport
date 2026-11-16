@@ -555,6 +555,7 @@ const AGENT_META = {
   "risk-analyst":        { name: "风险与拨备 Agent", kind: "ANALYST", av: "风" },
   "capital-analyst":     { name: "资本管理 Agent", kind: "ANALYST", av: "本" },
   "disclosure-officer":  { name: "披露合规 Agent", kind: "ANALYST", av: "披" },
+  "chart-agent":         { name: "图表绘制 Agent", kind: "ANALYST", av: "图" },
   "numeric-checker":     { name: "数值核验器", kind: "CHECKER", av: "数" },
   "citation-checker":    { name: "引用核验器", kind: "CHECKER", av: "引" },
   "approver":            { name: "交付批准官", kind: "APPROVER", av: "批" }
@@ -632,12 +633,35 @@ async function pickBank(b) {
   }
 }
 
-function startClarify() {
+function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+async function startClarify() {
   setQuick([]);
   chat.stage = "clarify";
+  // 口径澄清对象数据驱动：delta_unit=PERCENTAGE_POINT 即「比率类 + 百分点表述」（N7 口径铁律的领域判据），
+  // 按变动幅度取最大者（无指标名硬编码；value 是否带 % 不作为判据——模板工件与 demo 工件格式可不同）
+  let art = null;
+  try {
+    art = chat.bank === "cmb" ? state.positive : await jget("/v1/artifacts/template?bank=" + encodeURIComponent(chat.bank));
+  } catch (e) { art = null; }
+  const cands = art && art.metrics
+    ? art.metrics.filter(x => x.delta_unit === "PERCENTAGE_POINT")
+    : [];
+  const cand = cands.sort((a, b) => Math.abs(Number(b.yoy_delta || 0)) - Math.abs(Number(a.yoy_delta || 0)))[0] || null;
+  if (!cand) {
+    addMsg("editor-in-chief", "编制前口径检查完成：工件中无需澄清项。");
+    addMsg("risk-analyst", "未发现需要口径澄清的比率类变动，按披露惯例直接进入编制。");
+    startGeneration(true);
+    return;
+  }
   addMsg("editor-in-chief", "进入编制前有一处口径需要澄清。");
+  const midx = (state.manifests[chat.bank] || {}).metric_index || {};
+  const label = (midx[cand.key] || {}).label || cand.key;
+  const dd = Number(cand.yoy_delta);
+  const dirTxt = dd < 0 ? "下降 " : "上升 ";
+  chat.clarify = { key: cand.key, label: label, delta: Math.abs(dd) };
   addMsg("risk-analyst",
-    "编制「资产质量」章节时需要确认变动口径：拨备覆盖率 <b>391.79%</b>，较上年末下降 <b>20.19</b>。<br>"
+    "编制「资产质量」章节时需要确认变动口径：<b>" + esc(label) + " " + esc(cand.value) + "</b>，较上年末" + dirTxt + "<b>" + Math.abs(dd) + "</b>。<br>"
     + "按监管披露惯例，比率类指标的变动应以什么口径表述？");
   setQuick([
     { label: "个百分点（披露惯例）", cls: "primary", fn: () => answerClarify(true) },
@@ -668,8 +692,12 @@ async function startGeneration(correct) {
     return;
   }
   if (!correct) {
-    const s2 = base.sections.find(s => s.section_id === "S-2");
-    s2.body = s2.body.replace("下降20.19个百分点", "下降20.19%");
+    // 演示腐化：澄清指标的比率变动句「个百分点」→「%」——按「指标名 + 上升/下降变动表述」联合定位目标句（无节号/指标名硬编码），
+    // 跳过仅含上年基数的对比句（如摘要节的「2024年……成本收入比26.96%。」）
+    const lbl = (chat.clarify && chat.clarify.label) || "拨备覆盖率";
+    const corruptOf = s => (s.body || "").match(new RegExp(escRe(lbl) + "[^。]*?(?:上升|下降)\\d+(?:\\.\\d+)?个百分点")) ? s : null;
+    const sec = base.sections.map(corruptOf).find(Boolean);
+    if (sec) sec.body = sec.body.replace(new RegExp("(" + escRe(lbl) + "[^。]*?(?:上升|下降))(\\d+(?:\\.\\d+)?)个百分点", "g"), "$1$2%");
   }
   const r = await jpost("/v1/tasks", {
     task: { status: "GENERATING", summary: bank.company + " 2025 年度经营简报（对话式编制）" },
@@ -684,25 +712,37 @@ async function startGeneration(correct) {
   base.task_id = chat.taskId;
   chat.artifact = base;
   addMsg("editor-in-chief",
-    "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。分派专业 agent 分节成稿（各 agent 按任务动态按需加载，图表随稿生成）。");
-  const plan = [
-    ["finance-analyst", "S-1", "经营业绩概要"],
-    ["risk-analyst", "S-2", "贷款质量"],
-    ["finance-analyst", "S-3", "盈利结构"],
-    ["finance-analyst", "S-4", "资产负债概览"],
-    ["capital-analyst", "S-5", "资本充足（高级法）"],
-    ["capital-analyst", "S-6", "资本充足（权重法）"],
-    ["disclosure-officer", "S-7", "上年同期对比"],
-    ["disclosure-officer", "S-8", "口径与数据说明"],
-    ["disclosure-officer", "S-9", "核验与交付说明"],
-    ["disclosure-officer", "S-10", "数据来源与使用限制"]
-  ];
-  for (const [aid, sid, label] of plan) {
+    "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。启动六工位流水线（查数 → 分析 → 图表 → 写作 → 核验 → 主编），各工位按骨架配置分派……");
+  // 六工位流水线：播报内容全部来自服务端 stages[]（headline/details），前端只渲染不编造
+  const p = await jpost("/v1/pipeline/run", { bank: chat.bank });
+  if (!p.ok || !p.data || !p.data.stages) {
+    addMsg("editor-in-chief", '<span style="color:var(--destructive)">流水线执行失败：HTTP ' + (p.status || "—") + " " + esc((p.data && p.data.error) || "") + "</span>");
+    setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
+    return;
+  }
+  for (const st of p.data.stages) {
+    if (st.stage_id === "writing") continue; // 写作工位在下方逐节播报
+    const agentOf = { material: "material-agent", chart: "chart-agent", checking: "numeric-checker", consolidation: "editor-in-chief" };
+    const aid = agentOf[st.stage_id] || String(st.agent || "").split(",")[0].trim() || "editor-in-chief";
     await jpost("/v1/agents/load", { agent_id: aid, task_id: chat.taskId });
-    const sec = chat.artifact.sections.find(s => s.section_id === sid);
+    const det = (st.details || []);
+    const head = det.slice(0, st.stage_id === "analysis" ? 4 : 2).map(d => '<div class="quote">' + esc(d) + "</div>").join("");
+    const more = det.length > (st.stage_id === "analysis" ? 4 : 2) ? '<span style="font-size:12px;color:var(--muted)">…共 ' + det.length + " 条</span>" : "";
+    addMsg(aid, "【" + esc(st.name) + "工位】" + esc(st.headline) + head + more);
+  }
+  // 写作工位：按服务端 details（节序/标题/责任 agent 来自骨架配置）逐节播报
+  const wr = p.data.stages.find(s => s.stage_id === "writing");
+  for (const line of (wr && wr.details) || []) {
+    const m = line.match(/^(S-\d+)\s+(.*)$/);
+    if (!m) continue;
+    const parts = m[2].split(" · 责任 ");
+    const sec = chat.artifact.sections.find(s => s.section_id === m[1]);
+    if (!sec) continue;
+    const aid = ((parts[1] || "").match(/^\S+/) || ["editor-in-chief"])[0];
+    await jpost("/v1/agents/load", { agent_id: aid, task_id: chat.taskId });
     const fs = (sec.body.match(/^[^。]{0,120}。/) || [sec.body.slice(0, 90) + "……"])[0];
-    const ch = (chat.artifact.charts || []).find(c => c.section_id === sid);
-    addMsg(aid, "【" + label + "】" + esc(sec.title) + " 成稿："
+    const ch = (chat.artifact.charts || []).find(c => c.section_id === m[1]);
+    addMsg(aid, esc(sec.title) + " 成稿："
       + '<div class="quote">' + esc(fs) + "</div>"
       + (ch ? '<div class="m-chart">' + chartSvg(ch, false) + "</div>" : "")
       + "指标与引用已绑定快照页码与摘录指纹"
@@ -740,12 +780,19 @@ async function runNumericCheck() {
 async function applyFix() {
   setQuick([]);
   addMsg("user", "采纳修订：改为「个百分点」。");
-  const s2 = chat.artifact.sections.find(s => s.section_id === "S-2");
-  s2.body = s2.body.replace("下降20.19%", "下降20.19个百分点");
-  const sent = s2.body.match(/拨备覆盖率[^。]*。/)?.[0] || "";
+  // 修订目标句按「指标名 + 上升/下降变动表述（% 口径）」联合定位（无节号/指标名硬编码）
+  const lbl = (chat.clarify && chat.clarify.label) || "拨备覆盖率";
+  const sec = chat.artifact.sections.find(s =>
+    new RegExp(escRe(lbl) + "[^。]*?(?:上升|下降)\\d+(?:\\.\\d+)?%").test(s.body || ""));
+  if (!sec) {
+    addMsg("risk-analyst", '<span style="color:var(--destructive)">未在草稿中找到待修订句。</span>');
+    return;
+  }
+  sec.body = sec.body.replace(new RegExp("(" + escRe(lbl) + "[^。]*?(?:上升|下降))(\\d+(?:\\.\\d+)?)%", "g"), "$1$2个百分点");
+  const sent = sec.body.match(new RegExp(escRe(lbl) + "[^。]*。"))?.[0] || "";
   addMsg("risk-analyst", "已修订（仅改该句口径，其余内容零改动）："
-    + '<div class="quote">' + esc(sent).replace("下降20.19个百分点",
-      '<span class="fix">下降20.19个百分点</span>') + "</div>");
+    + '<div class="quote">' + esc(sent).replace(/(?:上升|下降)(\d+(?:\.\d+)?)个百分点/,
+      '<span class="fix">$&</span>') + "</div>");
   addMsg("editor-in-chief", "重新提交数值核验。");
   runNumericCheck();
 }
@@ -766,7 +813,7 @@ async function runCitationCheck() {
     "引用核验 PASSED（v" + esc(c.data.checker_version) + "）：" + chat.artifact.citations.length
     + " 条引用摘录指纹一致、页内字面存在、信源均在注册表内。");
   await jpost("/v1/tasks", {
-    task: { task_id: chat.taskId, status: "GENERATED", summary: "2025 年度经营简报：两项核验 PASSED，等待具名批准" },
+    task: { task_id: chat.taskId, status: "GENERATED", summary: (chat.artifact.report_period || "2025 年度") + "经营简报：两项核验 PASSED，等待具名批准" },
     artifact: chat.artifact
   });
   chat.stage = "wait_approval";
