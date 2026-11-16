@@ -1,51 +1,401 @@
 {
-  "task_id": "TASK-2025-AR-001",
+  "task_id": "TASK-2025-AR-002",
   "company": "招商银行股份有限公司",
   "report_period": "2025年度",
+  "generated_at": "2026-11-16",
   "metrics": [
-    { "key": "OPERATING_REVENUE",       "value": "3,375.32", "unit": "亿元", "period": "2025年度", "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 18, "evidence_excerpt_digest": "6677359cdfa3f17bd61ef66fbd4117e4377e167e1ada359c83ae6412e22b66f9", "yoy_delta": "+0.01",  "delta_unit": "PERCENT" },
-    { "key": "NET_PROFIT_ATTRIBUTABLE", "value": "1,501.81", "unit": "亿元", "period": "2025年度", "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 18, "evidence_excerpt_digest": "5e7f97f3b7d2cac8e3ccd6c7c9c317c86b6f318380a3b69e19ca99a2a4e049d0", "yoy_delta": "+1.21",  "delta_unit": "PERCENT" },
-    { "key": "NET_INTEREST_MARGIN",     "value": "1.87",     "unit": "%",    "period": "2025年度", "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 18, "evidence_excerpt_digest": "ae67d0eb8ba4abf877c8c8dfc46737c23cf5c793c1a34f69b1cf6cf322dad5d5", "yoy_delta": "-11",    "delta_unit": "BASIS_POINT" },
-    { "key": "COST_INCOME_RATIO",       "value": "31.98",    "unit": "%",    "period": "2025年度", "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 18, "evidence_excerpt_digest": "dfcc964586fcf516a8f5c3033f62ffd5c950c0bf0fce5f333c3019f8d4d5a135", "yoy_delta": "+0.09",  "delta_unit": "PERCENTAGE_POINT" },
-    { "key": "NPL_BALANCE",             "value": "682.06",   "unit": "亿元", "period": "2025年度", "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 30, "evidence_excerpt_digest": "35d7410106a56e7aba15de540e60b6441b8b1d31aaa94382b39878d28b2b4ef0", "yoy_delta": "+25.96", "delta_unit": "YUAN" },
-    { "key": "NPL_RATIO",               "value": "0.94",     "unit": "%",    "period": "2025年度", "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 30, "evidence_excerpt_digest": "c65808de97af8c31f6fe09c378a6f78a1e67d06b367511e16f614bdef1e7bb70", "yoy_delta": "-0.01",  "delta_unit": "PERCENTAGE_POINT" },
-    { "key": "PROVISION_COVERAGE",      "value": "391.79",   "unit": "%",    "period": "2025年度", "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 30, "evidence_excerpt_digest": "a94b079ae0ea33c81367e2b731b344fa681d66e17624c7ab1c37e0b86e5345f8", "yoy_delta": "-20.19", "delta_unit": "PERCENTAGE_POINT" },
-    { "key": "CET1_RATIO",              "value": "14.16",    "unit": "%",    "period": "2025年度", "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 37, "evidence_excerpt_digest": "07a9573653494b41c483eec3ee8ed25ad738c6adf616637e86e36938cd11d1b6", "yoy_delta": "-0.70",  "delta_unit": "PERCENTAGE_POINT" }
-  ],
-  "citations": [
-    { "claim_id": "C-1", "claim_text": "报告期内实现营业收入3,375.32亿元，同比微增",       "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 18, "evidence_excerpt": "营业收入3,375.32亿元，同比增长0.01%",            "evidence_excerpt_digest": "6677359cdfa3f17bd61ef66fbd4117e4377e167e1ada359c83ae6412e22b66f9" },
-    { "claim_id": "C-2", "claim_text": "归属于本行股东的净利润1,501.81亿元，同比增长1.21%", "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 18, "evidence_excerpt": "净利润1,501.81亿元，同比增长1.21%",            "evidence_excerpt_digest": "5e7f97f3b7d2cac8e3ccd6c7c9c317c86b6f318380a3b69e19ca99a2a4e049d0" },
-    { "claim_id": "C-3", "claim_text": "净息差1.87%，同比下降11个基点",                     "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 18, "evidence_excerpt": "净息差1.87%，同比下降11个基点",               "evidence_excerpt_digest": "ae67d0eb8ba4abf877c8c8dfc46737c23cf5c793c1a34f69b1cf6cf322dad5d5" },
-    { "claim_id": "C-4", "claim_text": "成本收入比31.98%，同比上升0.09个百分点",           "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 18, "evidence_excerpt": "成本收入比31.98%，同比上升0.09个百分点",       "evidence_excerpt_digest": "dfcc964586fcf516a8f5c3033f62ffd5c950c0bf0fce5f333c3019f8d4d5a135" },
-    { "claim_id": "C-5", "claim_text": "不良贷款余额682.06亿元，较上年末增加25.96亿元",     "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 30, "evidence_excerpt": "不良贷款余额682.06亿元，较上年末增加25.96亿元", "evidence_excerpt_digest": "35d7410106a56e7aba15de540e60b6441b8b1d31aaa94382b39878d28b2b4ef0" },
-    { "claim_id": "C-6", "claim_text": "不良贷款率0.94%，较上年末下降0.01个百分点",         "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 30, "evidence_excerpt": "不良贷款率0.94%，较上年末下降0.01个百分点",     "evidence_excerpt_digest": "c65808de97af8c31f6fe09c378a6f78a1e67d06b367511e16f614bdef1e7bb70" },
-    { "claim_id": "C-7", "claim_text": "拨备覆盖率391.79%，较上年末下降20.19个百分点",     "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 30, "evidence_excerpt": "拨备覆盖率391.79%，较上年末下降20.19个百分点",   "evidence_excerpt_digest": "a94b079ae0ea33c81367e2b731b344fa681d66e17624c7ab1c37e0b86e5345f8" },
-    { "claim_id": "C-8", "claim_text": "高级法下核心一级资本充足率14.16%",                  "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f", "page": 37, "evidence_excerpt": "高级法下核心一级资本充足率14.16%",             "evidence_excerpt_digest": "07a9573653494b41c483eec3ee8ed25ad738c6adf616637e86e36938cd11d1b6" }
+    {
+      "key": "OPERATING_REVENUE",
+      "value": "3,375.32",
+      "unit": "亿元",
+      "period": "2025年度",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt_digest": "6677359cdfa3f17bd61ef66fbd4117e4377e167e1ada359c83ae6412e22b66f9",
+      "yoy_delta": "+0.01",
+      "delta_unit": "PERCENT"
+    },
+    {
+      "key": "NET_PROFIT_ATTRIBUTABLE",
+      "value": "1,501.81",
+      "unit": "亿元",
+      "period": "2025年度",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt_digest": "5e7f97f3b7d2cac8e3ccd6c7c9c317c86b6f318380a3b69e19ca99a2a4e049d0",
+      "yoy_delta": "+1.21",
+      "delta_unit": "PERCENT"
+    },
+    {
+      "key": "NET_INTEREST_MARGIN",
+      "value": "1.87",
+      "unit": "%",
+      "period": "2025年度",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt_digest": "ae67d0eb8ba4abf877c8c8dfc46737c23cf5c793c1a34f69b1cf6cf322dad5d5",
+      "yoy_delta": "-11",
+      "delta_unit": "BASIS_POINT"
+    },
+    {
+      "key": "COST_INCOME_RATIO",
+      "value": "31.98",
+      "unit": "%",
+      "period": "2025年度",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt_digest": "dfcc964586fcf516a8f5c3033f62ffd5c950c0bf0fce5f333c3019f8d4d5a135",
+      "yoy_delta": "+0.09",
+      "delta_unit": "PERCENTAGE_POINT"
+    },
+    {
+      "key": "NPL_BALANCE",
+      "value": "682.06",
+      "unit": "亿元",
+      "period": "2025年度",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 30,
+      "evidence_excerpt_digest": "35d7410106a56e7aba15de540e60b6441b8b1d31aaa94382b39878d28b2b4ef0",
+      "yoy_delta": "+25.96",
+      "delta_unit": "YUAN"
+    },
+    {
+      "key": "NPL_RATIO",
+      "value": "0.94",
+      "unit": "%",
+      "period": "2025年度",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 30,
+      "evidence_excerpt_digest": "c65808de97af8c31f6fe09c378a6f78a1e67d06b367511e16f614bdef1e7bb70",
+      "yoy_delta": "-0.01",
+      "delta_unit": "PERCENTAGE_POINT"
+    },
+    {
+      "key": "PROVISION_COVERAGE",
+      "value": "391.79",
+      "unit": "%",
+      "period": "2025年度",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 30,
+      "evidence_excerpt_digest": "a94b079ae0ea33c81367e2b731b344fa681d66e17624c7ab1c37e0b86e5345f8",
+      "yoy_delta": "-20.19",
+      "delta_unit": "PERCENTAGE_POINT"
+    },
+    {
+      "key": "CET1_RATIO",
+      "value": "14.16",
+      "unit": "%",
+      "period": "2025年度",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 37,
+      "evidence_excerpt_digest": "07a9573653494b41c483eec3ee8ed25ad738c6adf616637e86e36938cd11d1b6",
+      "yoy_delta": "-0.70",
+      "delta_unit": "PERCENTAGE_POINT"
+    }
   ],
   "sections": [
     {
       "section_id": "S-1",
       "title": "一、经营业绩概要",
-      "body": "报告期内，本集团实现营业收入3,375.32亿元，同比增长0.01%；归属于本行股东的净利润1,501.81亿元，同比增长1.21%。盈利结构保持稳定，净利息收入2,155.93亿元，净息差1.87%，同比下降11个基点；非利息净收入1,219.39亿元。业务及管理费1,079.43亿元，成本收入比31.98%，同比上升0.09个百分点，运营效率保持稳健。",
-      "claim_ids": ["C-1", "C-2", "C-3", "C-4"]
+      "body": "报告期内，本集团实现营业收入3,375.32亿元，同比增长0.01%；归属于本行股东的净利润1,501.81亿元，同比增长1.21%。\n净利息收入2,155.93亿元，净息差1.87%，同比下降11个基点。",
+      "claim_ids": [
+        "C-1",
+        "C-2",
+        "C-3"
+      ]
     },
     {
       "section_id": "S-2",
       "title": "二、贷款质量",
-      "body": "报告期末，本集团不良贷款余额682.06亿元，较上年末增加25.96亿元；不良贷款率0.94%，较上年末下降0.01个百分点。贷款减值准备2,672.24亿元，拨备覆盖率391.79%，较上年末下降20.19%，风险抵补能力保持充足。",
-      "claim_ids": ["C-5", "C-6", "C-7"]
+      "body": "报告期末，本集团贷款和垫款本金总额72,580.58亿元，不良贷款余额682.06亿元，较上年末增加25.96亿元。\n不良贷款率0.94%，较上年末下降0.01个百分点。不良生成率1.03%，同比下降0.02个百分点。\n贷款减值准备2,672.24亿元，拨备覆盖率391.79%，较上年末下降20.19%。贷款拨备率3.68%，信用成本0.60%。",
+      "claim_ids": [
+        "C-5",
+        "C-6",
+        "C-14",
+        "C-15",
+        "C-7",
+        "C-16"
+      ]
     },
     {
       "section_id": "S-3",
-      "title": "三、资本充足",
-      "body": "报告期末，本集团高级法下核心一级资本充足率14.16%，较上年末下降0.70个百分点，资本充足水平保持同业前列。",
-      "claim_ids": ["C-8"]
+      "title": "三、盈利结构",
+      "body": "非利息净收入1,219.39亿元。\n业务及管理费1,079.43亿元，成本收入比31.98%，同比上升0.09个百分点。",
+      "claim_ids": [
+        "C-9",
+        "C-10",
+        "C-4"
+      ]
     },
     {
       "section_id": "S-4",
-      "title": "四、口径与数据说明",
-      "body": "本简报全部数值取自报告期公开年报快照，经确定性数值核验器逐项复算校验后交付；比率类指标变动以「个百分点」表述，净息差变动以「基点」表述，金额类变动以「亿元」表述。本简报不含前景展望章节，不构成任何预测或投资建议。",
+      "title": "四、资产负债概览",
+      "body": "报告期末，本集团资产总额130,705.23亿元，贷款和垫款本金总额72,580.58亿元，客户存款98,361.30亿元。",
+      "claim_ids": [
+        "C-11",
+        "C-12",
+        "C-13"
+      ]
+    },
+    {
+      "section_id": "S-5",
+      "title": "五、资本充足（高级法）",
+      "body": "报告期末，本集团高级法下核心一级资本充足率14.16%，一级资本充足率16.51%，资本充足率18.24%，较上年末分别下降0.70、0.97、0.81个百分点。",
+      "claim_ids": [
+        "C-8",
+        "C-17",
+        "C-18"
+      ]
+    },
+    {
+      "section_id": "S-6",
+      "title": "六、资本充足（权重法）",
+      "body": "权重法下核心一级资本充足率11.92%，一级资本充足率13.90%，资本充足率15.00%。",
+      "claim_ids": [
+        "C-19",
+        "C-20",
+        "C-21"
+      ]
+    },
+    {
+      "section_id": "S-7",
+      "title": "七、上年同期对比",
+      "body": "2024年，本集团实现营业收入3,374.88亿元，归属于本行股东的净利润1,483.91亿元，净息差1.98%，成本收入比31.89%。\n2024年末，本集团不良贷款余额656.10亿元，不良贷款率0.95%，拨备覆盖率411.98%，高级法核心一级资本充足率14.86%。",
+      "claim_ids": [
+        "C-22",
+        "C-23",
+        "C-24",
+        "C-25",
+        "C-26"
+      ]
+    },
+    {
+      "section_id": "S-8",
+      "title": "八、口径与数据说明",
+      "body": "本报告八项关键财务与监管指标取自 W01 冻结快照（cmb-ar-2025-w01@1.0.0）的指标索引页。\n金额单位为人民币亿元；比率单位为百分比（%）；净息差变动以基点（bp）表述，比率变动以百分点表述。\n正文全部陈述句均来自快照页（P18/P30/P37/P46）原文，页外推算或评述性内容不进入正文。",
       "claim_ids": []
+    },
+    {
+      "section_id": "S-9",
+      "title": "九、核验与交付说明",
+      "body": "本报告在交付前通过双重确定性核验：数值核验（N1 指标完整性、N2 单位、N3 页内字面命中、N4 复算、N5 同比复算、N6 同比方向、N7 变动口径）与引用核验（A08 伪造来源、A09 摘录指纹、信源注册表、页内字面命中、支持度）。\n批准记录绑定工件内容指纹（sha256），批准人具名留痕；任何对指标的篡改都会使既有批准立即失效。\n核验不通过的工件按受控交付门禁打回修订，第二轮仍不通过转人工复核。",
+      "claim_ids": []
+    },
+    {
+      "section_id": "S-10",
+      "title": "十、数据来源与使用限制",
+      "body": "本节数据来源为已注册的两份官方一手信源：招商银行股份有限公司2025年度报告（本期节选，P18/P30/P37）与2024年度报告（对比基数节选，P46），信源指纹见引用清单。\n本报告仅用于多 Agent 受控交付链路的演示与审计，不构成投资建议或盈利预测。\n快照之外的信息（包括后续公告、更正或补充披露）不在本报告覆盖范围内。",
+      "claim_ids": []
+    }
+  ],
+  "citations": [
+    {
+      "claim_id": "C-1",
+      "claim_text": "报告期内实现营业收入3,375.32亿元，同比微增",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt": "营业收入3,375.32亿元，同比增长0.01%",
+      "evidence_excerpt_digest": "6677359cdfa3f17bd61ef66fbd4117e4377e167e1ada359c83ae6412e22b66f9"
+    },
+    {
+      "claim_id": "C-2",
+      "claim_text": "归属于本行股东的净利润1,501.81亿元，同比增长1.21%",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt": "净利润1,501.81亿元，同比增长1.21%",
+      "evidence_excerpt_digest": "5e7f97f3b7d2cac8e3ccd6c7c9c317c86b6f318380a3b69e19ca99a2a4e049d0"
+    },
+    {
+      "claim_id": "C-3",
+      "claim_text": "净息差1.87%，同比下降11个基点",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt": "净息差1.87%，同比下降11个基点",
+      "evidence_excerpt_digest": "ae67d0eb8ba4abf877c8c8dfc46737c23cf5c793c1a34f69b1cf6cf322dad5d5"
+    },
+    {
+      "claim_id": "C-4",
+      "claim_text": "成本收入比31.98%，同比上升0.09个百分点",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt": "成本收入比31.98%，同比上升0.09个百分点",
+      "evidence_excerpt_digest": "dfcc964586fcf516a8f5c3033f62ffd5c950c0bf0fce5f333c3019f8d4d5a135"
+    },
+    {
+      "claim_id": "C-5",
+      "claim_text": "不良贷款余额682.06亿元，较上年末增加25.96亿元",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 30,
+      "evidence_excerpt": "不良贷款余额682.06亿元，较上年末增加25.96亿元",
+      "evidence_excerpt_digest": "35d7410106a56e7aba15de540e60b6441b8b1d31aaa94382b39878d28b2b4ef0"
+    },
+    {
+      "claim_id": "C-6",
+      "claim_text": "不良贷款率0.94%，较上年末下降0.01个百分点",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 30,
+      "evidence_excerpt": "不良贷款率0.94%，较上年末下降0.01个百分点",
+      "evidence_excerpt_digest": "c65808de97af8c31f6fe09c378a6f78a1e67d06b367511e16f614bdef1e7bb70"
+    },
+    {
+      "claim_id": "C-7",
+      "claim_text": "拨备覆盖率391.79%，较上年末下降20.19个百分点",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 30,
+      "evidence_excerpt": "拨备覆盖率391.79%，较上年末下降20.19个百分点",
+      "evidence_excerpt_digest": "a94b079ae0ea33c81367e2b731b344fa681d66e17624c7ab1c37e0b86e5345f8"
+    },
+    {
+      "claim_id": "C-8",
+      "claim_text": "高级法下核心一级资本充足率14.16%",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 37,
+      "evidence_excerpt": "高级法下核心一级资本充足率14.16%",
+      "evidence_excerpt_digest": "07a9573653494b41c483eec3ee8ed25ad738c6adf616637e86e36938cd11d1b6"
+    },
+    {
+      "claim_id": "C-9",
+      "claim_text": "非利息净收入1,219.39亿元",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt": "非利息净收入1,219.39亿元",
+      "evidence_excerpt_digest": "92a8900baa6ab00dd9af402c9d6fe5d35b28bda1a258fd586b19d8c364c12e96"
+    },
+    {
+      "claim_id": "C-10",
+      "claim_text": "业务及管理费1,079.43亿元",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt": "业务及管理费1,079.43亿元",
+      "evidence_excerpt_digest": "9b2a39dd1fd6ec58413b4a23f266868ae09049ae7079140831c49b6f422f765d"
+    },
+    {
+      "claim_id": "C-11",
+      "claim_text": "资产总额130,705.23亿元",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt": "资产总额130,705.23亿元",
+      "evidence_excerpt_digest": "816aaf2e63b58c83ae8a42951ddb307626c3d9e1391d8b3a6d44468e6fbeab1f"
+    },
+    {
+      "claim_id": "C-12",
+      "claim_text": "贷款和垫款本金总额72,580.58亿元",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt": "贷款和垫款本金总额72,580.58亿元",
+      "evidence_excerpt_digest": "fdca3ab27d4de5371c4e23163538308c4b6f333b68c8b105e0abadee7ec9af2c"
+    },
+    {
+      "claim_id": "C-13",
+      "claim_text": "客户存款98,361.30亿元",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 18,
+      "evidence_excerpt": "客户存款98,361.30亿元",
+      "evidence_excerpt_digest": "35cd4a2bc04f113aab357d6a02210e27737c68270d588887c89af0e7c4ff6420"
+    },
+    {
+      "claim_id": "C-14",
+      "claim_text": "不良生成率1.03%，同比下降0.02个百分点",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 30,
+      "evidence_excerpt": "不良生成率1.03%，同比下降0.02个百分点",
+      "evidence_excerpt_digest": "24fe765a360b6d88af8846f25e75539a12f4c9a60e7bf02849673c212ccd0ef8"
+    },
+    {
+      "claim_id": "C-15",
+      "claim_text": "贷款减值准备2,672.24亿元",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 30,
+      "evidence_excerpt": "贷款减值准备2,672.24亿元",
+      "evidence_excerpt_digest": "4f6e1408c0a25caa48004c8564239ae110a73d91955db2b18fad1c65af2a0e48"
+    },
+    {
+      "claim_id": "C-16",
+      "claim_text": "贷款拨备率3.68%，信用成本0.60%",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 30,
+      "evidence_excerpt": "贷款拨备率3.68%，信用成本0.60%",
+      "evidence_excerpt_digest": "69d3cff2c70886e5181151c5828135fc4ccef657c165d165634dd459e8ca0238"
+    },
+    {
+      "claim_id": "C-17",
+      "claim_text": "高级法下一级资本充足率16.51%",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 37,
+      "evidence_excerpt": "一级资本充足率16.51%",
+      "evidence_excerpt_digest": "d4480fc9b955d09b716c70eec73190c34b1e1668dd966aef5f405aca41ab1772"
+    },
+    {
+      "claim_id": "C-18",
+      "claim_text": "高级法下资本充足率18.24%",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 37,
+      "evidence_excerpt": "资本充足率18.24%",
+      "evidence_excerpt_digest": "e7f260aef17c0431b6de8fd9c94701f8341f38a7e6e75311f2903a5cff53a9be"
+    },
+    {
+      "claim_id": "C-19",
+      "claim_text": "权重法下核心一级资本充足率11.92%",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 37,
+      "evidence_excerpt": "权重法下核心一级资本充足率11.92%",
+      "evidence_excerpt_digest": "c1b9994334942e3257de24746c598e4d9d59741b5d214cec6c7599131cd3803f"
+    },
+    {
+      "claim_id": "C-20",
+      "claim_text": "权重法下一级资本充足率13.90%",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 37,
+      "evidence_excerpt": "一级资本充足率13.90%",
+      "evidence_excerpt_digest": "2deeae34450c097c913131042d1de478e36b8512e34184d5624ccd1f89454014"
+    },
+    {
+      "claim_id": "C-21",
+      "claim_text": "权重法下资本充足率15.00%",
+      "source_document_digest": "696460edb9ddc740f83c8baf8a26d69ebf050f252f65442e871c0dbe818dd39f",
+      "page": 37,
+      "evidence_excerpt": "资本充足率15.00%",
+      "evidence_excerpt_digest": "a9a6c6d9fb780d6946cb285b3082a1a3e187204d09560ca1353ee5a3d8f681f4"
+    },
+    {
+      "claim_id": "C-22",
+      "claim_text": "上年实现营业收入3,374.88亿元",
+      "source_document_digest": "69c6096504be57484a32ea1afb02499891286066ea1179dcb30f54212bec3366",
+      "page": 46,
+      "evidence_excerpt": "2024年，本集团实现营业收入3,374.88亿元",
+      "evidence_excerpt_digest": "b9af9e0ae8f5f870415c5cd47cc0f7c3ac0664eb07f4307f62f4a778a0c355b9"
+    },
+    {
+      "claim_id": "C-23",
+      "claim_text": "上年归属于本行股东的净利润1,483.91亿元",
+      "source_document_digest": "69c6096504be57484a32ea1afb02499891286066ea1179dcb30f54212bec3366",
+      "page": 46,
+      "evidence_excerpt": "归属于本行股东的净利润1,483.91亿元",
+      "evidence_excerpt_digest": "969c6b68c407189d37d490ac4a9e9fa0db4babfa10979c01b6419c9a2b352787"
+    },
+    {
+      "claim_id": "C-24",
+      "claim_text": "上年净息差1.98%",
+      "source_document_digest": "69c6096504be57484a32ea1afb02499891286066ea1179dcb30f54212bec3366",
+      "page": 46,
+      "evidence_excerpt": "净息差1.98%",
+      "evidence_excerpt_digest": "1c160f8c52c8638fd14438b75ee2fb49f21492509a7fefda7189eae6bdd963f7"
+    },
+    {
+      "claim_id": "C-25",
+      "claim_text": "上年末不良贷款余额656.10亿元",
+      "source_document_digest": "69c6096504be57484a32ea1afb02499891286066ea1179dcb30f54212bec3366",
+      "page": 46,
+      "evidence_excerpt": "不良贷款余额656.10亿元",
+      "evidence_excerpt_digest": "616a339f577491e37b0ae7e065e38c8f56402cb560dc7503944c60af6e4d4774"
+    },
+    {
+      "claim_id": "C-26",
+      "claim_text": "上年末拨备覆盖率411.98%",
+      "source_document_digest": "69c6096504be57484a32ea1afb02499891286066ea1179dcb30f54212bec3366",
+      "page": 46,
+      "evidence_excerpt": "拨备覆盖率411.98%",
+      "evidence_excerpt_digest": "d31e0c758ac23f3ca8e1d870e307eb2816a4a25377bec110726ea1d5d3a5e0da"
     }
   ]
 }

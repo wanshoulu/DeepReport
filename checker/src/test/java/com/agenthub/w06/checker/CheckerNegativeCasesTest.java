@@ -155,7 +155,7 @@ class CheckerNegativeCasesTest {
                                                List<Citation> citations,
                                                List<ReportSection> sections) {
         return new AnnualReportArtifacts("TASK-2025-AR-001", "招商银行股份有限公司",
-                "2025年度", metrics, citations, sections);
+                "2025年度", null, metrics, citations, sections);
     }
 
     private static Violation first(List<Violation> vs, String rule) {

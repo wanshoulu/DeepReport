@@ -356,6 +356,37 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
   border-left: 3px solid var(--success); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 10px 14px;
 }
 .d-verify { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--success); }
+/* ———— 资产卡片可点击 + 详情抽屉绑定行 ———— */
+.asset-tile.clickable { cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+.asset-tile.clickable:hover { border-color: hsl(214 70% 78%); box-shadow: 0 2px 12px rgba(0,0,0,.07); }
+.asset-tile .t-summary {
+  font-size: 11px; color: var(--muted); font-family: var(--mono); margin-top: 8px;
+  padding-top: 7px; border-top: 1px dashed var(--border);
+}
+.d-bind-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 10px; border: 1px solid var(--card-border); border-radius: var(--radius-sm);
+  margin-bottom: 6px; background: var(--bg);
+}
+.d-bind-row .b-name { font-size: 12.5px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-bind-row .b-sub { font-size: 11px; color: var(--muted); font-family: var(--mono); flex-shrink: 0; }
+.d-bind-row .b-ops { display: flex; gap: 6px; flex-shrink: 0; }
+/* ———— 报告目录（年报级）———— */
+.rp-toc { margin: 32px 0 8px; padding: 18px 26px; background: var(--surface); border-radius: var(--radius-sm); }
+.rp-toc h4 { font-family: var(--serif); font-size: 15px; font-weight: 650; letter-spacing: 8px; text-align: center; margin-bottom: 10px; }
+.rp-toc ol { list-style: none; columns: 2; column-gap: 34px; }
+.rp-toc li { font-family: var(--serif); font-size: 13px; line-height: 2.05; cursor: pointer; color: #333; border-bottom: 1px dotted var(--border); }
+.rp-toc li:hover { color: var(--info); }
+.rp-h2 { scroll-margin-top: 84px; }
+/* ———— Agent Hub 注册表单 ———— */
+.reg-form { display: grid; grid-template-columns: 1.3fr .7fr; gap: 10px; margin-top: 12px; }
+.reg-form input, .reg-form select, .reg-form textarea {
+  font: inherit; font-size: 13px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 7px 10px; outline: none; background: var(--bg);
+}
+.reg-form input:focus, .reg-form select:focus, .reg-form textarea:focus { border-color: hsl(214 70% 75%); }
+.reg-form .full { grid-column: 1 / -1; }
+.reg-form textarea { resize: vertical; min-height: 52px; }
 
 /* ———— 打印（A4，仅打印报告库当前展开的年报）———— */
 @media print {
@@ -631,10 +662,16 @@ async function startGeneration(correct) {
   addMsg("editor-in-chief",
     "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。分派专业 agent 分节成稿（各 agent 按任务动态按需加载）。");
   const plan = [
-    ["finance-analyst", "S-1", "经营业绩与盈利结构"],
-    ["risk-analyst", "S-2", "资产质量与风险抵补"],
-    ["capital-analyst", "S-3", "资本充足状况"],
-    ["disclosure-officer", "S-4", "释义与声明"]
+    ["finance-analyst", "S-1", "经营业绩概要"],
+    ["risk-analyst", "S-2", "贷款质量"],
+    ["finance-analyst", "S-3", "盈利结构"],
+    ["finance-analyst", "S-4", "资产负债概览"],
+    ["capital-analyst", "S-5", "资本充足（高级法）"],
+    ["capital-analyst", "S-6", "资本充足（权重法）"],
+    ["disclosure-officer", "S-7", "上年同期对比"],
+    ["disclosure-officer", "S-8", "口径与数据说明"],
+    ["disclosure-officer", "S-9", "核验与交付说明"],
+    ["disclosure-officer", "S-10", "数据来源与使用限制"]
   ];
   for (const [aid, sid, label] of plan) {
     await jpost("/v1/agents/load", { agent_id: aid, task_id: chat.taskId });
@@ -805,12 +842,20 @@ function paperHtml(a) {
       + '<td class="delta ' + deltaDir(mt) + '">' + esc(deltaText(mt)) + "</td></tr>";
   }).join("");
   const sectionHtml = a.sections.map(sec =>
-    '<h2 class="rp-h2">' + esc(sec.title) + "</h2>"
-    + '<div class="rp-body">' + esc(sec.body) + "</div>"
+    '<h2 class="rp-h2" id="sec-' + esc(sec.section_id) + '">' + esc(sec.title) + "</h2>"
+    + String(sec.body).split("\n").filter(p => p.trim())
+      .map(p => '<p class="rp-body">' + esc(p) + "</p>").join("")
     + '<div class="rp-refs"><span class="ref-label">本节引用：</span>'
-    + (sec.claim_ids || []).map(id =>
-      '<button class="ref-chip" onclick="openCitation(\'' + esc(id) + '\')">' + esc(id) + "</button>").join("")
+    + ((sec.claim_ids || []).length
+      ? sec.claim_ids.map(id =>
+        '<button class="ref-chip" onclick="openCitation(\'' + esc(id) + '\')">' + esc(id) + "</button>").join("")
+      : '<span style="font-size:11.5px;color:var(--muted)">（本章为口径 / 核验 / 来源说明，不含数据论断引用）</span>')
     + "</div>").join("");
+  const tocHtml = '<div class="rp-toc"><h4>目　录</h4><ol>'
+    + '<li onclick="scrollToSec(\'sec-metrics\')">关键财务与监管指标</li>'
+    + a.sections.map(sec =>
+      '<li onclick="scrollToSec(\'sec-' + esc(sec.section_id) + '\')">' + esc(sec.title) + "</li>").join("")
+    + '<li onclick="scrollToSec(\'sec-glossary\')">释义</li></ol></div>';
   const entities = m.entities || [];
   const glossary = entities.map(en =>
     "<dt>" + esc((en.short_names || []).join(" / ")) + "</dt><dd>" + esc(en.full_name) + "</dd>").join("")
@@ -829,12 +874,13 @@ function paperHtml(a) {
     + "<li>批准记录与工件内容指纹（sha256）绑定：批准后内容如有任何改动，批准即失效；</li>"
     + "<li>比率类指标较上年变动以「个百分点」（净息差类以「基点」）表述，为绝对变动而非相对变动。</li>"
     + "</ol></div>"
-    + '<h2 class="rp-h2">关键财务与监管指标</h2>'
+    + tocHtml
+    + '<h2 class="rp-h2" id="sec-metrics">关键财务与监管指标</h2>'
     + '<table class="rp-table"><thead><tr><th>指标</th><th>' + esc(a.report_period) + "</th><th>2024</th><th>同比增减</th></tr></thead>"
     + "<tbody>" + rows + "</tbody></table>"
     + '<div class="rp-table-note">注：较上年增减为绝对变动口径——比率类以「个百分点」、净息差类以「基点」、金额类以「亿元」表述；「%」仅用于水平值。2024 对比值取自快照 P46 原文。</div>'
     + sectionHtml
-    + '<h2 class="rp-h2">释义</h2><div class="rp-glossary"><dl>' + glossary + "</dl></div>"
+    + '<h2 class="rp-h2" id="sec-glossary">释义</h2><div class="rp-glossary"><dl>' + glossary + "</dl></div>"
     + '<div class="rp-footnote">'
     + "<p>一、数据来源：公司公开披露年报落盘快照（" + esc(m.snapshot_id) + "，内容 sha256 已登记），全部引用可逐页回溯验证。</p>"
     + "<p>二、本稿通过确定性核验：数值核验 v" + esc(state.health.numeric_checker_version)
@@ -842,6 +888,11 @@ function paperHtml(a) {
     + "；交付批准与工件指纹 sha256 绑定。</p>"
     + "<p>三、本简报为受控交付的契约工件：批准后任何字节级改动都将使既有批准失效。</p>"
     + "</div></article>";
+}
+/* 目录跳转：平滑滚动到报告章节锚点 */
+function scrollToSec(id) {
+  const el = document.getElementById(id);
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 /* ———— 引用证据抽屉 ———— */
@@ -872,52 +923,66 @@ $("#drawer-mask").addEventListener("click", closeDrawer);
 async function viewPage(no) { closeDrawer(); switchTab("assets"); await ASSETS_RENDER; loadAssetPage(no); }
 
 /* ———————————————————— 资产库（页签 2）：应用全部智能化资产 ———————————————————— */
+/* MCP / 核验规则静态资产清单（卡片与详情抽屉共用） */
+const MCP_ASSETS = [
+  { id: "snapshot-reader", name: "snapshot-reader 快照读取", ep: "internal",
+    desc: "落盘年报快照读取服务：页文本、指标索引与快照清单。所有编制数字必须能从快照页回溯。",
+    apis: ["read_page(no)", "list_metrics_index()", "manifest()"] },
+  { id: "checker-gateway", name: "checker-gateway 核验交付网关", ep: "internal",
+    desc: "确定性核验、工件指纹与交付批准的服务端网关：fail-closed 门禁的唯一执行方。",
+    apis: ["POST /v1/checks/numeric", "POST /v1/checks/citation", "POST /v1/artifacts/digest", "POST /v1/approvals", "GET /v1/tasks"] },
+  { id: "a2a-gateway", name: "a2a-gateway agent 协作网关", ep: ":18094",
+    desc: "Agent 间协作（A2A）网关：跨 agent 任务委托与卡片发现。",
+    apis: ["GET /agent-card", "POST /tasks/send"] }
+];
+const RULE_ASSETS = [
+  { id: "N1", name: "指标缺失", checker: "数值核验器（N1–N7）", desc: "关键指标必须齐备，缺一不放行。" },
+  { id: "N2", name: "单位不符", checker: "数值核验器（N1–N7）", desc: "单位必须与指标字典白名单一致。" },
+  { id: "N3", name: "数字无源", checker: "数值核验器（N1–N7）", desc: "数值须在快照对应页内字面出现。" },
+  { id: "N4", name: "派生复算", checker: "数值核验器（N1–N7）", desc: "派生比率按披露口径复算须一致。" },
+  { id: "N5", name: "期间口径", checker: "数值核验器（N1–N7）", desc: "期间 / 时点口径须与指标定义一致。" },
+  { id: "N6", name: "同比复算", checker: "数值核验器（N1–N7）", desc: "同比变动与 2024 对比值复算须一致。" },
+  { id: "N7", name: "变动口径", checker: "数值核验器（N1–N7）", desc: "比率变动须用「个百分点」（净息差类用「基点」），违规即 BLOCKING 拦截。" },
+  { id: "C1", name: "摘录伪造", checker: "引用核验器（C1–C2）", desc: "证据摘录须与快照页内文本逐字一致（FABRICATED_CITATION / EXCERPT_DIGEST_MISMATCH）。" },
+  { id: "C2", name: "信源未注册", checker: "引用核验器（C1–C2）", desc: "引用信源必须在快照注册表内（SOURCE_UNREGISTERED）。" }
+];
 async function renderAssets() {
   const m = state.manifest;
   let agents = { runtime: [], catalog: [] };
+  let skills = [];
   let taskCount = 0;
   try { agents = await jget("/v1/agents"); } catch (e) {}
+  state.agentsData = agents;
+  try { skills = await jget("/v1/skills"); } catch (e) {}
+  state.skillsData = skills;
   try { taskCount = (await jget("/v1/tasks")).length; } catch (e) {}
+  const chief = (agents.runtime || []).find(x => x.agent_id === "editor-in-chief");
+  const team = (chief && chief.team) || [];
 
   const agentTiles = (agents.runtime || []).map(a =>
-    '<div class="asset-tile"><div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.kind) + "</div>"
+    '<div class="asset-tile clickable" onclick="openAssetDetail(\'agent\',\'' + esc(a.agent_id) + '\')">'
+    + '<div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.kind) + statusBadge(a.status) + "</div>"
     + '<div class="t-ver">v' + esc(a.version) + " · " + esc(a.agent_id) + "</div>"
-    + '<div class="t-desc">' + esc(a.description) + "</div></div>").join("");
+    + '<div class="t-desc">' + esc(a.description) + "</div>"
+    + '<div class="t-foot">' + (a.capabilities || []).slice(0, 3).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
+    + '<div class="t-summary">已绑技能 ' + (a.enabled_skills || []).length
+    + " · 主编团队 " + (a.agent_id === "editor-in-chief" ? "负责人" : (team.includes(a.agent_id) ? "✓ 已注册" : "— 未注册"))
+    + " · 点击查看详情与绑定</div></div>").join("");
 
-  const SKILLS = [
-    ["annual-report 主技能", "skills/annual-report/SKILL.md",
-      "年度报告编制主技能：受控流程编排——资料装载 → 口径澄清 → 分节成稿 → 双重核验 → 具名批准。",
-      ["编排", "成稿", "核验", "批准"]],
-    ["banking-domain 银行领域知识", "skills/annual-report/references/banking-domain.md",
-      "银行业领域知识：监管指标定义、披露口径惯例与专业术语。", ["领域知识"]],
-    ["citation-style 引用体例", "skills/annual-report/references/citation-style.md",
-      "引用体例：claim–evidence–页码–摘录指纹的四元组约束。", ["引用规范"]],
-    ["metric-dictionary 指标字典", "skills/annual-report/references/metric-dictionary.md",
-      "指标字典：关键指标的键名、单位白名单与派生口径。", ["指标口径"]],
-    ["source-library 信源库", "skills/annual-report/references/source-library.md",
-      "信源库：公开披露信源的注册、落盘快照与内容指纹策略。", ["信源管理"]]
-  ];
-  const skillTiles = SKILLS.map(s =>
-    '<div class="asset-tile"><div class="t-head"><span class="t-name">' + esc(s[0]) + "</span></div>"
-    + '<div class="t-ver">' + esc(s[1]) + "</div>"
-    + '<div class="t-desc">' + esc(s[2]) + "</div>"
-    + '<div class="t-foot">' + s[3].map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div></div>").join("");
+  const skillTiles = (skills.length ? skills : []).map(s =>
+    '<div class="asset-tile clickable" onclick="openAssetDetail(\'skill\',\'' + esc(s.skill_id) + '\')">'
+    + '<div class="t-head"><span class="t-name">' + esc(s.name) + '</span><span class="badge neutral">已注册 ' + (s.registered_count || 0) + " agent</span></div>"
+    + '<div class="t-ver">' + esc(s.path) + "</div>"
+    + '<div class="t-desc">' + esc(s.description) + "</div>"
+    + '<div class="t-foot">' + (s.tags || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
+    + '<div class="t-summary">点击查看详情 · 已绑定 agent 一览</div></div>').join("");
 
-  const MCPS = [
-    ["snapshot-reader 快照读取", "internal",
-      "落盘年报快照读取服务：页文本、指标索引与快照清单。",
-      ["read_page(no)", "list_metrics_index()", "manifest()"]],
-    ["checker-gateway 核验交付网关", "internal",
-      "确定性核验、工件指纹与交付批准的服务端网关。",
-      ["POST /v1/checks/numeric", "POST /v1/checks/citation", "POST /v1/artifacts/digest", "POST /v1/approvals", "GET /v1/tasks"]],
-    ["a2a-gateway agent 协作网关", ":18094",
-      "Agent 间协作（A2A）网关：跨 agent 任务委托与卡片发现。",
-      ["GET /agent-card", "POST /tasks/send"]]
-  ];
-  const mcpTiles = MCPS.map(s =>
-    '<div class="asset-tile"><div class="t-head"><span class="t-name">' + esc(s[0]) + '</span><span class="t-ver">' + esc(s[1]) + "</span></div>"
-    + '<div class="t-desc">' + esc(s[2]) + "</div>"
-    + '<div class="t-foot">' + s[3].map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div></div>").join("");
+  const mcpTiles = MCP_ASSETS.map(s =>
+    '<div class="asset-tile clickable" onclick="openAssetDetail(\'mcp\',\'' + esc(s.id) + '\')">'
+    + '<div class="t-head"><span class="t-name">' + esc(s.name) + '</span><span class="t-ver">' + esc(s.ep) + "</span></div>"
+    + '<div class="t-desc">' + esc(s.desc) + "</div>"
+    + '<div class="t-foot">' + s.apis.map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
+    + '<div class="t-summary">点击查看接口详情</div></div>').join("");
 
   const pageChips = Object.keys(m.page_digests).map(no =>
     '<button class="chip" data-snap-page="' + Number(no) + '">P' + Number(no) + "</button>").join("");
@@ -933,30 +998,21 @@ async function renderAssets() {
     + '<div class="digest">内容指纹 sha256 ' + esc(s.content_sha256) + "</div>"
     + '<div class="s-pages">' + (s.pages || []).map(p =>
       '<button class="chip" data-snap-page="' + Number(p) + '">P' + Number(p) + "</button>").join("") + "</div></div>").join("");
-  const RULES = [
-    ["N1", "指标缺失", "关键指标必须齐备，缺一不放行"],
-    ["N2", "单位不符", "单位必须与指标字典白名单一致"],
-    ["N3", "数字无源", "数值须在快照对应页内字面出现"],
-    ["N4", "派生复算", "派生比率按披露口径复算须一致"],
-    ["N5", "期间口径", "期间/时点口径须与指标定义一致"],
-    ["N6", "同比复算", "同比变动与 2024 对比值复算须一致"],
-    ["N7", "变动口径", "比率变动须用「个百分点」（净息差类用「基点」），BLOCKING"],
-    ["C1", "摘录伪造", "证据摘录须与快照页内文本逐字一致（FABRICATED_CITATION / EXCERPT_DIGEST_MISMATCH）"],
-    ["C2", "信源未注册", "引用信源必须在快照注册表内（SOURCE_UNREGISTERED）"]
-  ];
-  const ruleTiles = RULES.map(r =>
-    '<div class="asset-tile"><div class="t-head"><span class="t-name"><span class="mono">' + r[0] + "</span> " + esc(r[1]) + "</span></div>"
-    + '<div class="t-desc">' + esc(r[2]) + "</div></div>").join("");
+  const ruleTiles = RULE_ASSETS.map(r =>
+    '<div class="asset-tile clickable" onclick="openAssetDetail(\'rule\',\'' + esc(r.id) + '\')">'
+    + '<div class="t-head"><span class="t-name"><span class="mono">' + esc(r.id) + "</span> " + esc(r.name) + "</span></div>"
+    + '<div class="t-desc">' + esc(r.desc) + "</div>"
+    + '<div class="t-summary">所属：' + esc(r.checker) + " · BLOCKING</div></div>").join("");
   const glossaryDl = (m.entities || []).map(en =>
     "<dt style=\"font-size:12.5px;font-weight:600\">" + esc((en.short_names || []).join(" / "))
     + "</dt><dd style=\"font-size:12.5px;color:var(--muted)\">" + esc(en.full_name) + "</dd>").join("");
 
   $("#view-assets").innerHTML =
     '<div class="card"><h3>Agent · 智能体 <span class="hint">运行时 ' + (agents.runtime || []).length
-    + " 个（任务动态按需加载）</span>"
+    + " 个（任务动态按需加载）· 点击卡片查看详情与注册绑定</span>"
     + '<button class="btn sm" onclick="switchTab(\'agents\')">前往 Agent Hub →</button></h3>'
     + '<div class="asset-grid">' + agentTiles + "</div></div>"
-    + '<div class="card"><h3>Skill · 技能库 <span class="hint">skills/annual-report/（1 主技能 + 4 参考知识）</span></h3>'
+    + '<div class="card"><h3>Skill · 技能库 <span class="hint">skills/annual-report/（1 主技能 + 4 参考知识）· 可绑定给任意运行时 agent</span></h3>'
     + '<div class="asset-grid">' + skillTiles + "</div></div>"
     + '<div class="card"><h3>MCP · 工具接口 <span class="hint">3 个服务</span></h3>'
     + '<div class="asset-grid">' + mcpTiles + "</div></div>"
@@ -984,6 +1040,176 @@ $("#view-assets").addEventListener("click", e => {
   const chip = e.target.closest("[data-snap-page]");
   if (chip) loadAssetPage(Number(chip.dataset.snapPage));
 });
+
+/* ———— 资产详情抽屉：Agent / Skill / MCP / 核验规则 ———— */
+function openAssetDetail(type, id) {
+  if (type === "agent") return openAgentDetail(id);
+  if (type === "skill") return openSkillDetail(id);
+  if (type === "mcp") return openMcpDetail(id);
+  if (type === "rule") return openRuleDetail(id);
+}
+async function ensureAgentsData() {
+  if (!state.agentsData || !state.agentsData.runtime)
+    try { state.agentsData = await jget("/v1/agents"); } catch (e) { state.agentsData = { runtime: [], catalog: [] }; }
+  return state.agentsData;
+}
+async function ensureSkillsData() {
+  if (!state.skillsData)
+    try { state.skillsData = await jget("/v1/skills"); } catch (e) { state.skillsData = []; }
+  return state.skillsData;
+}
+function agentNameOf(id) {
+  const d = state.agentsData || {};
+  for (const a of (d.runtime || []).concat(d.catalog || []))
+    if (a.agent_id === id) return a.name;
+  return (AGENT_META[id] || {}).name || id;
+}
+function fmtTs(s) { return String(s || "").replace("T", " ").replace(/Z$/, "") || "—"; }
+function showDrawer(html) {
+  $("#drawer").innerHTML = html;
+  $("#drawer").classList.add("open");
+  $("#drawer-mask").classList.add("open");
+}
+async function openAgentDetail(id) {
+  const d = await ensureAgentsData();
+  const a = (d.runtime || []).concat(d.catalog || []).find(x => x.agent_id === id);
+  if (!a) { alert("未找到 agent：" + id); return; }
+  const running = a.status === "RUNNING";
+  const chief = (d.runtime || []).find(x => x.agent_id === "editor-in-chief");
+  const team = (chief && chief.team) || [];
+  const isChief = id === "editor-in-chief";
+  const inTeam = team.includes(id);
+  const skills = await ensureSkillsData();
+  const capChips = (a.capabilities || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("");
+  const srcLabel = { BUILT_IN: "内置预置（随服务启动注册）", MARKET: "市场目录", CUSTOM: "自定义注册" }[a.source] || a.source;
+  let html = "<h3>Agent 详情 · " + esc(a.name)
+    + '<button class="d-close" onclick="closeDrawer()">×</button></h3>'
+    + '<div class="d-block"><div class="d-label">身份</div><div class="d-val"><span class="mono">' + esc(a.agent_id)
+    + "</span> · v" + esc(a.version) + " " + kindBadge(a.kind) + " " + statusBadge(a.status) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">描述</div><div class="d-val">' + esc(a.description) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">能力</div><div class="d-val">' + (capChips || "—") + "</div></div>"
+    + '<div class="d-block"><div class="d-label">来源</div><div class="d-val">' + esc(srcLabel) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">注册时间</div><div class="d-val mono">' + fmtTs(a.registered_at) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">最近按需加载</div><div class="d-val">'
+    + (a.last_loaded_task ? "任务 <span class=\"mono\">" + esc(a.last_loaded_task) + "</span> · " + fmtTs(a.last_loaded_at) : "—") + "</div></div>";
+  if (!running) {
+    html += '<div class="d-block"><div class="d-label">注册操作</div>'
+      + '<button class="btn primary" onclick="installAgent(\'' + esc(id) + '\')">安装注册（进入运行时）</button>'
+      + '<div style="font-size:12px;color:var(--muted);margin-top:6px">未安装注册的 agent 不参与运行时调度；安装后即可绑定技能、注册给主编编排 Agent 团队。</div></div>';
+  } else {
+    if (isChief) {
+      html += '<div class="d-block"><div class="d-label">主编团队（已注册给主编编排 Agent 的成员 ' + team.length + " 人）</div>"
+        + (team.length
+          ? team.map(m => '<div class="d-bind-row"><span class="b-name">' + esc(agentNameOf(m)) + '</span><span class="b-sub">' + esc(m) + '</span>'
+            + '<span class="b-ops"><button class="btn sm danger" onclick="toggleTeam(\'' + esc(m) + '\',\'unregister\',\'editor-in-chief\')">移出团队</button></span></div>').join("")
+          : '<div class="d-val" style="color:var(--muted)">（团队为空）</div>')
+        + "</div>";
+    } else {
+      html += '<div class="d-block"><div class="d-label">注册关系 · 主编编排 Agent 团队</div>'
+        + '<div class="d-bind-row"><span class="b-name">主编编排 Agent（editor-in-chief）</span><span class="b-sub">'
+        + (inTeam ? "已注册 ✓" : "未注册") + '</span><span class="b-ops">'
+        + (inTeam
+          ? '<button class="btn sm danger" onclick="toggleTeam(\'' + esc(id) + '\',\'unregister\',\'' + esc(id) + '\')">退出团队</button>'
+          : '<button class="btn sm primary" onclick="toggleTeam(\'' + esc(id) + '\',\'register\',\'' + esc(id) + '\')">注册给主编（加入团队）</button>')
+        + "</span></div></div>";
+    }
+    html += '<div class="d-block"><div class="d-label">技能绑定（已启用 ' + (a.enabled_skills || []).length + " 项）</div>"
+      + skills.map(s => {
+        const on = (a.enabled_skills || []).includes(s.skill_id);
+        return '<div class="d-bind-row"><span class="b-name">' + esc(s.name) + '</span><span class="b-sub">'
+          + esc(s.skill_id) + (on ? " · 已绑定" : " · 未绑定") + '</span><span class="b-ops">'
+          + (on
+            ? '<button class="btn sm danger" onclick="toggleSkillBinding(\'' + esc(id) + '\',\'' + esc(s.skill_id) + '\',\'unbind\')">解绑</button>'
+            : '<button class="btn sm" onclick="toggleSkillBinding(\'' + esc(id) + '\',\'' + esc(s.skill_id) + '\',\'bind\')">绑定</button>')
+          + "</span></div>";
+      }).join("") + "</div>";
+    html += '<div class="d-block"><div class="d-label">运行时注销</div>'
+      + (isChief
+        ? '<div style="font-size:12.5px;color:var(--muted)">主编编排 Agent 是运行时根节点，不可注销。</div>'
+        : '<button class="btn danger" onclick="unregisterAgent(\'' + esc(id) + '\')">注销该 Agent（移出运行时）</button>'
+          + (a.source === "MARKET"
+            ? '<div style="font-size:12px;color:var(--muted);margin-top:6px">市场来源：注销后退回市场目录，可重新安装。</div>'
+            : '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + esc(srcLabel) + "：注销即从运行时删除。</div>"))
+      + "</div>";
+  }
+  showDrawer(html);
+}
+async function openSkillDetail(id) {
+  const skills = await ensureSkillsData();
+  const s = skills.find(x => x.skill_id === id);
+  if (!s) { alert("未找到 skill：" + id); return; }
+  await ensureAgentsData();
+  const ras = s.registered_agents || [];
+  let html = "<h3>Skill 详情 · " + esc(s.name)
+    + '<button class="d-close" onclick="closeDrawer()">×</button></h3>'
+    + '<div class="d-block"><div class="d-label">技能标识</div><div class="d-val mono">' + esc(s.skill_id) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">技能文件</div><div class="d-val mono">' + esc(s.path) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">描述</div><div class="d-val">' + esc(s.description) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">标签</div><div class="d-val">'
+    + (s.tags || []).map(t => '<span class="chip">' + esc(t) + "</span>").join("") + "</div></div>"
+    + '<div class="d-block"><div class="d-label">已绑定（注册）给 ' + ras.length + " 个运行时 agent</div>"
+    + (ras.length
+      ? ras.map(ag => '<div class="d-bind-row"><span class="b-name">' + esc(agentNameOf(ag)) + '</span><span class="b-sub">' + esc(ag) + '</span>'
+        + '<span class="b-ops"><button class="btn sm" onclick="openAgentDetail(\'' + esc(ag) + '\')">agent 详情</button>'
+        + '<button class="btn sm danger" onclick="toggleSkillBinding(\'' + esc(ag) + '\',\'' + esc(id) + '\',\'unbind\')">解绑</button></span></div>').join("")
+      : '<div class="d-val" style="color:var(--muted)">（尚未绑定给任何 agent）</div>')
+    + '<div style="font-size:12px;color:var(--muted);margin-top:4px">绑定 / 解绑即 POST /v1/agents/{agent}/skills，操作即时生效。</div></div>';
+  showDrawer(html);
+}
+function openMcpDetail(id) {
+  const s = MCP_ASSETS.find(x => x.id === id);
+  if (!s) return;
+  const html = "<h3>MCP 详情 · " + esc(s.name)
+    + '<button class="d-close" onclick="closeDrawer()">×</button></h3>'
+    + '<div class="d-block"><div class="d-label">服务端点</div><div class="d-val mono">' + esc(s.ep) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">描述</div><div class="d-val">' + esc(s.desc) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">暴露接口（' + s.apis.length + "）</div><div class=\"d-val\">"
+    + s.apis.map(a => '<div class="mono" style="line-height:1.9">' + esc(a) + "</div>").join("") + "</div></div>";
+  showDrawer(html);
+}
+function openRuleDetail(id) {
+  const r = RULE_ASSETS.find(x => x.id === id);
+  if (!r) return;
+  const html = "<h3>核验规则详情 · " + esc(r.id) + " " + esc(r.name)
+    + '<button class="d-close" onclick="closeDrawer()">×</button></h3>'
+    + '<div class="d-block"><div class="d-label">所属核验器</div><div class="d-val">' + esc(r.checker) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">规则说明</div><div class="d-val">' + esc(r.desc) + "</div></div>"
+    + '<div class="d-block"><div class="d-label">严重级别</div><div class="d-val"><span class="badge fail">BLOCKING</span> '
+    + '<span style="font-size:12px;color:var(--muted)">fail-closed：任一规则违规即整体 FAILED，不放行交付。</span></div></div>';
+  showDrawer(html);
+}
+/* ———— 绑定 / 团队注册 / 注销：操作后统一刷新 ———— */
+async function afterAgentMutation(reopenId) {
+  try { state.agentsData = await jget("/v1/agents"); } catch (e) { state.agentsData = { runtime: [], catalog: [] }; }
+  try { state.skillsData = await jget("/v1/skills"); } catch (e) { state.skillsData = []; }
+  renderAssets();
+  refreshAgents();
+  if (reopenId) openAgentDetail(reopenId); else closeDrawer();
+}
+async function toggleSkillBinding(agentId, skillId, action) {
+  const r = await jpost("/v1/agents/" + encodeURIComponent(agentId) + "/skills", { skill_id: skillId, action: action });
+  if (!r.ok) { alert("操作失败：" + (((r.data || {}).message) || ("HTTP " + r.status))); return; }
+  await afterAgentMutation(agentId);
+}
+async function toggleTeam(agentId, action, reopenId) {
+  const r = await jpost("/v1/agents/editor-in-chief/team", { agent_id: agentId, action: action });
+  if (!r.ok) { alert("操作失败：" + (((r.data || {}).message) || ("HTTP " + r.status))); return; }
+  await afterAgentMutation(reopenId || agentId);
+}
+async function unregisterAgent(id) {
+  if (id === "editor-in-chief") { alert("主编编排 Agent 是运行时根节点，不可注销。"); return; }
+  let r = null, data = null;
+  try {
+    r = await fetch("/v1/agents/" + encodeURIComponent(id), { method: "DELETE" });
+    data = await r.json().catch(() => null);
+  } catch (e) { alert("注销请求失败：" + e.message); return; }
+  if (r.ok) {
+    alert("已注销 " + id + (data && data.returned_to_market ? "（市场来源：已退回市场目录，可重新安装）" : "（已从运行时删除）"));
+    await afterAgentMutation(null);
+  } else {
+    alert("注销失败：" + ((data || {}).message || ("HTTP " + r.status)));
+  }
+}
 
 async function loadAssetPage(no) {
   try {
@@ -1082,20 +1308,32 @@ async function openTask(id) {
 }
 /* ———————————————————— Agent Hub（页签 4）：预置运行时 + 市场安装注册 + 动态按需加载 ———————————————————— */
 function agentTile(a) {
+  const d = state.agentsData || {};
+  const chief = (d.runtime || []).find(x => x.agent_id === "editor-in-chief");
+  const team = (chief && chief.team) || [];
   return '<div class="asset-tile">'
     + '<div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.kind) + statusBadge(a.status) + "</div>"
     + '<div class="t-ver">v' + esc(a.version) + " · " + esc(a.agent_id) + "</div>"
     + '<div class="t-desc">' + esc(a.description) + "</div>"
     + '<div class="t-foot">' + (a.capabilities || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
+    + '<div class="t-summary">已绑技能 ' + (a.enabled_skills || []).length
+    + " · 主编团队 " + (a.agent_id === "editor-in-chief" ? "负责人" : (team.includes(a.agent_id) ? "✓ 已注册" : "— 未注册")) + "</div>"
     + '<div class="t-meta">' + esc(a.source) + " · 注册于 " + esc((a.registered_at || "").replace("T", " ").slice(0, 19) || "—") + "<br>"
     + (a.last_loaded_task
       ? "最近加载 " + esc(a.last_loaded_task) + " · " + esc((a.last_loaded_at || "").replace("T", " ").slice(0, 19))
-      : "最近加载 —") + "</div></div>";
+      : "最近加载 —") + "</div>"
+    + '<div style="margin-top:10px;display:flex;gap:6px;align-items:center">'
+    + '<button class="btn sm" onclick="openAssetDetail(\'agent\',\'' + esc(a.agent_id) + '\')">详情 · 绑定</button>'
+    + (a.agent_id === "editor-in-chief"
+      ? '<span class="chip">根节点 · 不可注销</span>'
+      : '<button class="btn sm danger" onclick="unregisterAgent(\'' + esc(a.agent_id) + '\')">注销</button>')
+    + "</div></div>";
 }
 
 async function refreshAgents() {
   let d = { runtime: [], catalog: [] };
   try { d = await jget("/v1/agents"); } catch (e) {}
+  state.agentsData = d;
   const rt = d.runtime || [], cg = d.catalog || [];
   const cgCards = cg.map(a =>
     '<div class="asset-tile">'
@@ -1103,23 +1341,67 @@ async function refreshAgents() {
     + '<div class="t-ver">v' + esc(a.version) + " · " + esc(a.agent_id) + "</div>"
     + '<div class="t-desc">' + esc(a.description) + "</div>"
     + '<div class="t-foot">' + (a.capabilities || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
-    + '<div style="margin-top:10px"><button class="btn sm primary" onclick="installAgent(\'' + esc(a.agent_id) + '\')">安装注册</button></div></div>').join("");
+    + '<div style="margin-top:10px;display:flex;gap:6px">'
+    + '<button class="btn sm" onclick="openAssetDetail(\'agent\',\'' + esc(a.agent_id) + '\')">详情</button>'
+    + '<button class="btn sm primary" onclick="installAgent(\'' + esc(a.agent_id) + '\')">安装注册</button></div></div>').join("");
   $("#view-agents").innerHTML =
-    '<div class="card"><h3>Agent Hub <span class="hint">安装注册 → 加入运行时 → 按任务动态按需加载</span></h3>'
+    '<div class="card"><h3>Agent Hub <span class="hint">安装注册 → 加入运行时 → 按任务动态按需加载 → 可注销 / 可注册</span></h3>'
     + '<div style="font-size:12.5px;color:var(--muted);line-height:1.9">'
     + "① 从<b>市场目录</b>选择 agent 点击「安装注册」，即加入<b>运行时</b>（RUNNING）；<br>"
     + "② 对话页签的编制流程会按任务对运行时 agent 发起<b>动态按需加载</b>（POST /v1/agents/load），最近加载记录实时回写卡片；<br>"
-    + "③ 未安装注册的 agent 不参与运行时调度——安装注册是进入运行时的唯一入口。</div></div>"
+    + "③ 运行时 agent 可<b>注销</b>（卡片或详情抽屉操作）：市场来源退回市场目录可重装，内置 / 自定义来源直接移除；主编编排 Agent 为运行时根节点不可注销；<br>"
+    + "④ 下方表单可<b>注册自定义 agent</b>（名称 / 类型 / 能力 / 描述），注册即加入运行时（CUSTOM 来源）；<br>"
+    + "⑤ agent 的<b>技能绑定</b>与「注册给主编编排 Agent 团队」在卡片「详情 · 绑定」抽屉中操作。</div></div>"
     + '<div class="card"><h3>运行时 Agent <span class="hint">' + rt.length + " 个 · RUNNING</span></h3>"
     + '<div class="asset-grid">' + (rt.map(agentTile).join("") || "（运行时为空）") + "</div></div>"
     + '<div class="card"><h3>市场目录 <span class="hint">' + cg.length + " 个 · 可安装注册</span></h3>"
-    + '<div class="asset-grid">' + (cgCards || "（市场目录为空）") + "</div></div>";
+    + '<div class="asset-grid">' + (cgCards || "（市场目录为空）") + "</div></div>"
+    + '<div class="card"><h3>注册新 Agent <span class="hint">POST /v1/agents/register · 注册即加入运行时（CUSTOM 来源）</span></h3>'
+    + '<form class="reg-form" onsubmit="return submitRegisterAgent(event)">'
+    + '<input id="reg-agent-name" placeholder="名称（必填），如：宏观研究 Agent" required>'
+    + '<select id="reg-agent-kind"><option value="ANALYST">ANALYST · 分析</option><option value="ORCHESTRATOR">ORCHESTRATOR · 编排</option>'
+    + '<option value="CHECKER">CHECKER · 核验</option><option value="APPROVER">APPROVER · 批准</option></select>'
+    + '<input id="reg-agent-caps" class="full" placeholder="能力（逗号分隔，可空），如：宏观研究, 行业景气">'
+    + '<textarea id="reg-agent-desc" class="full" placeholder="描述（可空）"></textarea>'
+    + '<div class="full" style="display:flex;gap:10px;align-items:center">'
+    + '<button class="btn primary sm" type="submit">注册加入运行时</button>'
+    + '<span id="reg-agent-msg" style="font-size:12px;color:var(--muted)"></span></div>'
+    + "</form></div>";
 }
 
 async function installAgent(id) {
   const r = await jpost("/v1/agents/install", { agent_id: id });
-  if (r.ok) refreshAgents();
+  if (r.ok) { try { state.agentsData = await jget("/v1/agents"); } catch (e) {} renderAssets(); refreshAgents(); }
   else alert("安装失败：" + ((r.data || {}).message || "HTTP " + r.status));
+}
+function submitRegisterAgent(ev) {
+  ev.preventDefault();
+  const name = $("#reg-agent-name").value.trim();
+  const msg = $("#reg-agent-msg");
+  if (!name) { msg.style.color = "#c0392b"; msg.textContent = "请填写名称。"; return false; }
+  const kind = $("#reg-agent-kind").value;
+  const caps = $("#reg-agent-caps").value.split(/[,，、]/).map(s => s.trim()).filter(Boolean);
+  const desc = $("#reg-agent-desc").value.trim();
+  submitRegisterAgentRun(name, kind, caps, desc);
+  return false;
+}
+async function submitRegisterAgentRun(name, kind, caps, desc) {
+  const msg = $("#reg-agent-msg");
+  msg.style.color = "var(--muted)";
+  msg.textContent = "注册中…";
+  const r = await jpost("/v1/agents/register", { name: name, kind: kind, capabilities: caps, description: desc });
+  if (r.ok) {
+    const a = r.data || {};
+    msg.style.color = "var(--success)";
+    msg.textContent = "已注册 " + (a.agent_id || "新 agent") + "（v" + (a.version || "1.0") + "），已加入运行时。";
+    $("#reg-agent-name").value = ""; $("#reg-agent-caps").value = ""; $("#reg-agent-desc").value = "";
+    try { state.agentsData = await jget("/v1/agents"); } catch (e) {}
+    renderAssets();
+    refreshAgents();
+  } else {
+    msg.style.color = "#c0392b";
+    msg.textContent = "注册失败：" + ((r.data || {}).message || "HTTP " + r.status);
+  }
 }
 
 /* ———————————————————— 演示链（页签 5）：六步 · 每步真实调用后端 ———————————————————— */

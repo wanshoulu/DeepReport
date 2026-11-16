@@ -12,6 +12,7 @@ public record AnnualReportArtifacts(
         @JsonProperty("task_id") String taskId,
         @JsonProperty("company") String company,            // 招商银行
         @JsonProperty("report_period") String reportPeriod, // 2025 年度
+        @JsonProperty("generated_at") String generatedAt,   // 工件生成时间（ISO-8601，可缺省）
         @JsonProperty("metrics") List<MetricValue> metrics,          // 8 条，缺一 FAIL（完整性）
         @JsonProperty("citations") List<Citation> citations,         // 每条论断至少一条
         @JsonProperty("sections") List<ReportSection> sections       // 正文分节

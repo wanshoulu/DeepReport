@@ -21,6 +21,11 @@
  *  GET  /v1/agents                       Agent Hub：{runtime, catalog}
  *  POST /v1/agents/install {agent_id}    市场目录 agent 安装注册 → 加入运行时
  *  POST /v1/agents/load {agent_id,task_id} 运行时 agent 按任务动态按需加载（记录最近加载）
+ *  GET  /v1/skills                       技能注册表（skill→agent 绑定关系，registered_agents 实时反查）
+ *  POST /v1/agents/register              自定义 agent 注册 {name,kind,description,capabilities[]} → 运行时
+ *  POST /v1/agents/{id}/skills           skill 绑定/解绑给 agent {skill_id, action: bind|unbind}
+ *  POST /v1/agents/editor-in-chief/team  agent 注册给主编团队/退出 {agent_id, action: register|unregister}
+ *  DELETE /v1/agents/{id}                运行时注销（主编根节点除外；市场安装的退回市场目录）
  *  GET  /                                 workbench.html（工作台，五页签版）
  *
  * 环境变量：CHECKER_PORT（默认 18095）、SNAPSHOT_DIR（默认 /snapshot）、
@@ -77,6 +82,10 @@ public final class CheckerHttpServer {
     // Agent Hub：运行时（已注册，可动态加载）+ 市场目录（可安装注册）
     static final Map<String, ObjectNode> AGENT_RUNTIME = new LinkedHashMap<>();
     static final Map<String, ObjectNode> AGENT_CATALOG = new LinkedHashMap<>();
+
+    // 技能注册表（skill→agent 绑定的合法对象）与自定义 agent 序号
+    static final Map<String, ObjectNode> SKILL_REGISTRY = new LinkedHashMap<>();
+    static final AtomicInteger CUSTOM_SEQ = new AtomicInteger();
 
     // ———————————————————— 快照解析器 ————————————————————
 
@@ -166,6 +175,7 @@ public final class CheckerHttpServer {
         List<SourceEntry> sources = loadSourceEntries(snapshotDir);
         preloadTasks(staticDir, resolver, sources);   // 报告库预置 2 条历史任务
         seedAgents();                                 // Agent Hub：9 运行时 + 3 市场目录
+        seedSkills();                                 // 技能注册表：5 个技能（可绑定给 agent）
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
@@ -307,6 +317,10 @@ public final class CheckerHttpServer {
             respond(ex, 200, out);
             return;
         }
+        if ("/v1/skills".equals(path) && "GET".equals(method)) {
+            handleSkillsList(ex);
+            return;
+        }
         if ("/v1/agents".equals(path) && "GET".equals(method)) {
             ObjectNode out = MAPPER.createObjectNode();
             ArrayNode runtime = out.putArray("runtime");
@@ -322,6 +336,22 @@ public final class CheckerHttpServer {
         }
         if ("/v1/agents/load".equals(path) && "POST".equals(method)) {
             handleAgentLoad(ex);
+            return;
+        }
+        if ("/v1/agents/register".equals(path) && "POST".equals(method)) {
+            handleAgentRegister(ex);
+            return;
+        }
+        if (path.matches("/v1/agents/[^/]+/skills") && "POST".equals(method)) {
+            handleSkillBind(ex, path);
+            return;
+        }
+        if ("/v1/agents/editor-in-chief/team".equals(path) && "POST".equals(method)) {
+            handleTeamRegister(ex);
+            return;
+        }
+        if (path.matches("/v1/agents/[^/]+") && "DELETE".equals(method)) {
+            handleAgentUnregister(ex, path.substring("/v1/agents/".length()));
             return;
         }
         if ("/".equals(path) || "/workbench.html".equals(path) || "/testpage.html".equals(path)) {
@@ -462,7 +492,7 @@ public final class CheckerHttpServer {
         t1.put("company", pos.company());
         t1.put("report_period", pos.reportPeriod());
         t1.put("status", "APPROVED");
-        t1.put("summary", "2025 年度经营简报：8 项指标 + 4 节正文，两项核验 PASSED，Alice 具名批准交付");
+        t1.put("summary", "2025 年度经营简报：8 项指标 + 10 节正文 + 26 条引用，两项核验 PASSED，Alice 具名批准交付");
         t1.put("artifact_digest", posDigest);
         t1.put("created_at", "2026-03-28T09:30:00Z");
         t1.put("updated_at", "2026-03-28T09:41:00Z");
@@ -566,50 +596,101 @@ public final class CheckerHttpServer {
         return node;
     }
 
-    /** Agent Hub 种子：9 个内置运行时 agent + 3 个市场目录可安装 agent。 */
+    /** Agent Hub 种子：9 个内置运行时 agent（含默认 skill 绑定与主编团队）+ 3 个市场目录可安装 agent。 */
     private static void seedAgents() {
         String boot = Instant.now().toString();
         putAgent(AGENT_RUNTIME, "editor-in-chief", "主编编排 Agent", "ORCHESTRATOR", "1.0.0",
                 "受控对话流主编：受理任务、澄清确认需求、分派专业 agent、汇总交付",
-                new String[]{"任务受理", "需求澄清", "多agent分派", "交付汇总"}, boot);
+                new String[]{"任务受理", "需求澄清", "多agent分派", "交付汇总"},
+                new String[]{"annual-report"}, boot);
         putAgent(AGENT_RUNTIME, "material-agent", "资料管理 Agent", "ANALYST", "1.0.0",
                 "信源快照装载与页读取（read_page / list_metrics_index），编制资料导入的唯一入口",
-                new String[]{"快照装载", "页读取", "指标索引"}, boot);
+                new String[]{"快照装载", "页读取", "指标索引"},
+                new String[]{"annual-report", "source-library"}, boot);
         putAgent(AGENT_RUNTIME, "finance-analyst", "财务分析 Agent", "ANALYST", "1.0.0",
                 "经营业绩与盈利结构分析：营收、净利润、净息差、成本收入比",
-                new String[]{"经营业绩分析", "盈利结构分析"}, boot);
+                new String[]{"经营业绩分析", "盈利结构分析"},
+                new String[]{"annual-report", "banking-domain", "metric-dictionary"}, boot);
         putAgent(AGENT_RUNTIME, "risk-analyst", "风险与拨备 Agent", "ANALYST", "1.0.0",
                 "贷款质量与风险抵补分析：不良余额/不良率、拨备覆盖率，负责变动口径澄清",
-                new String[]{"贷款质量分析", "口径澄清"}, boot);
+                new String[]{"贷款质量分析", "口径澄清"},
+                new String[]{"annual-report", "banking-domain"}, boot);
         putAgent(AGENT_RUNTIME, "capital-analyst", "资本管理 Agent", "ANALYST", "1.0.0",
                 "资本充足分析：高级法/权重法 CET1 等资本口径",
-                new String[]{"资本充足分析"}, boot);
+                new String[]{"资本充足分析"},
+                new String[]{"annual-report", "banking-domain", "metric-dictionary"}, boot);
         putAgent(AGENT_RUNTIME, "disclosure-officer", "披露合规 Agent", "ANALYST", "1.0.0",
                 "披露规范审查：口径铁律、释义与脚注体例（证监会 2 号准则对齐）",
-                new String[]{"披露口径审查", "释义脚注"}, boot);
+                new String[]{"披露口径审查", "释义脚注"},
+                new String[]{"annual-report", "citation-style"}, boot);
         putAgent(AGENT_RUNTIME, "numeric-checker", "数值核验器", "CHECKER", NumericChecker.CHECKER_VERSION,
                 "N1–N7 数值纪律：指标完整性、单位白名单、数字页内字面存在、派生复算、同比复算、变动口径",
-                new String[]{"数值复算", "口径拦截"}, boot);
+                new String[]{"数值复算", "口径拦截"},
+                new String[]{"annual-report", "metric-dictionary"}, boot);
         putAgent(AGENT_RUNTIME, "citation-checker", "引用核验器", "CHECKER", CitationChecker.CHECKER_VERSION,
                 "引用溯源：摘录指纹比对、页内字面存在、信源注册表校验",
-                new String[]{"引用溯源", "防篡改"}, boot);
+                new String[]{"引用溯源", "防篡改"},
+                new String[]{"annual-report", "citation-style"}, boot);
         putAgent(AGENT_RUNTIME, "approver", "交付批准官", "APPROVER", "1.0.0",
                 "具名批准交付：批准记录与工件 digest 绑定，内容一改批准即失效",
-                new String[]{"具名批准", "digest 绑定"}, boot);
+                new String[]{"具名批准", "digest 绑定"},
+                new String[]{"annual-report"}, boot);
+
+        // 主编团队：内置 8 个专业 agent 默认注册给主编编排 Agent
+        ArrayNode team = AGENT_RUNTIME.get("editor-in-chief").putArray("team");
+        for (String member : new String[]{"material-agent", "finance-analyst", "risk-analyst", "capital-analyst",
+                "disclosure-officer", "numeric-checker", "citation-checker", "approver"}) {
+            team.add(member);
+        }
 
         putAgent(AGENT_CATALOG, "peer-benchmark", "同业对标 Agent", "ANALYST", "0.9.0",
                 "四大行关键指标横向对标，为报告补充同业排名论断",
-                new String[]{"同业对标"}, null);
+                new String[]{"同业对标"},
+                new String[]{}, null);
         putAgent(AGENT_CATALOG, "macro-review", "宏观审慎 Agent", "ANALYST", "0.9.0",
                 "宏观环境与监管动态审阅，为风险章节补充环境论断",
-                new String[]{"宏观审阅"}, null);
+                new String[]{"宏观审阅"},
+                new String[]{}, null);
         putAgent(AGENT_CATALOG, "layout-reviewer", "排版审校 Agent", "ANALYST", "0.9.0",
                 "年报版式审校：A4 版式、表格规范、脚注体例",
-                new String[]{"版式审校"}, null);
+                new String[]{"版式审校"},
+                new String[]{}, null);
+    }
+
+    /** 技能注册表种子：5 个技能（与 skills/annual-report 目录一致），可绑定给任意运行时 agent。 */
+    private static void seedSkills() {
+        putSkill("annual-report", "annual-report 主技能", "skills/annual-report/SKILL.md",
+                "年报编制主技能：受控流程编排——资料装载 → 口径澄清 → 分节成稿 → 双重核验 → 具名批准，内含四份 reference（领域/引用/口径/信源）。",
+                new String[]{"编排", "成稿", "核验", "批准"});
+        putSkill("banking-domain", "银行业领域知识", "skills/annual-report/references/banking-domain.md",
+                "银行业术语与监管口径基线：巴塞尔资本口径、不良/拨备/资本概念辨析、监管指标体系。",
+                new String[]{"领域知识"});
+        putSkill("citation-style", "引用体例规范", "skills/annual-report/references/citation-style.md",
+                "引用三元组（digest/page/excerpt）与脚注体例、信源注册表使用规则、摘录指纹计算约定。",
+                new String[]{"引用规范"});
+        putSkill("metric-dictionary", "指标口径词典", "skills/annual-report/references/metric-dictionary.md",
+                "八指标口径词典：单位白名单、变动口径铁律（个百分点 vs %）、派生复算与同比复算规则。",
+                new String[]{"指标口径"});
+        putSkill("source-library", "信源库管理", "skills/annual-report/references/source-library.md",
+                "一手信源铁律与快照装载流程：页文本读取、digest 校验、二手信源禁入。",
+                new String[]{"信源管理"});
+    }
+
+    private static void putSkill(String id, String name, String path, String desc, String[] tags) {
+        ObjectNode s = MAPPER.createObjectNode();
+        s.put("skill_id", id);
+        s.put("name", name);
+        s.put("path", path);
+        s.put("description", desc);
+        ArrayNode t = s.putArray("tags");
+        for (String tag : tags) {
+            t.add(tag);
+        }
+        SKILL_REGISTRY.put(id, s);
     }
 
     private static void putAgent(Map<String, ObjectNode> pool, String id, String name, String kind,
-                                 String version, String desc, String[] caps, String registeredAt) {
+                                 String version, String desc, String[] caps, String[] skills, String registeredAt) {
         ObjectNode a = MAPPER.createObjectNode();
         a.put("agent_id", id);
         a.put("name", name);
@@ -621,6 +702,10 @@ public final class CheckerHttpServer {
         ArrayNode arr = a.putArray("capabilities");
         for (String c : caps) {
             arr.add(c);
+        }
+        ArrayNode sk = a.putArray("enabled_skills");
+        for (String s : skills) {
+            sk.add(s);
         }
         if (registeredAt == null) {
             a.putNull("registered_at");
@@ -678,6 +763,224 @@ public final class CheckerHttpServer {
         }
         a.put("last_loaded_task", taskId);
         a.put("last_loaded_at", Instant.now().toString());
+        respond(ex, 200, a.deepCopy());
+    }
+
+    /** 技能注册表：GET /v1/skills，含每个技能已注册（绑定）的运行时 agent 反查。 */
+    private static void handleSkillsList(HttpExchange ex) throws IOException {
+        ArrayNode arr = MAPPER.createArrayNode();
+        for (ObjectNode s : SKILL_REGISTRY.values()) {
+            ObjectNode out = s.deepCopy();
+            String skillId = s.path("skill_id").asText();
+            ArrayNode bound = out.putArray("registered_agents");
+            for (ObjectNode a : AGENT_RUNTIME.values()) {
+                if (hasSkill(a, skillId)) {
+                    bound.add(a.path("agent_id").asText());
+                }
+            }
+            out.put("registered_count", bound.size());
+            arr.add(out);
+        }
+        respond(ex, 200, arr);
+    }
+
+    private static boolean hasSkill(ObjectNode agent, String skillId) {
+        for (JsonNode s : agent.path("enabled_skills")) {
+            if (s.asText().equals(skillId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** skill→agent 绑定/解绑：POST /v1/agents/{id}/skills {skill_id, action: bind|unbind}。 */
+    private static void handleSkillBind(HttpExchange ex, String path) throws IOException {
+        String agentId = path.substring("/v1/agents/".length(), path.length() - "/skills".length());
+        JsonNode body;
+        try {
+            body = MAPPER.readTree(ex.getRequestBody());
+        } catch (Exception e) {
+            respond(ex, 400, errorNode("bad_request", "请求体解析失败"));
+            return;
+        }
+        String skillId = body.path("skill_id").asText("");
+        String action = body.path("action").asText("");
+        ObjectNode a = AGENT_RUNTIME.get(agentId);
+        if (a == null) {
+            respond(ex, 404, errorNode("unknown_agent", "运行时无此 agent: " + agentId));
+            return;
+        }
+        if (!SKILL_REGISTRY.containsKey(skillId)) {
+            respond(ex, 404, errorNode("unknown_skill", "技能注册表无此 skill: " + skillId));
+            return;
+        }
+        ArrayNode skills = (ArrayNode) a.get("enabled_skills");
+        switch (action) {
+            case "bind" -> {
+                if (!hasSkill(a, skillId)) {
+                    skills.add(skillId);
+                }
+            }
+            case "unbind" -> {
+                for (int i = skills.size() - 1; i >= 0; i--) {
+                    if (skills.get(i).asText().equals(skillId)) {
+                        skills.remove(i);
+                    }
+                }
+            }
+            default -> {
+                respond(ex, 400, errorNode("bad_request", "action 须为 bind|unbind"));
+                return;
+            }
+        }
+        respond(ex, 200, a.deepCopy());
+    }
+
+    /** agent→主编团队注册/退出：POST /v1/agents/editor-in-chief/team {agent_id, action: register|unregister}。 */
+    private static void handleTeamRegister(HttpExchange ex) throws IOException {
+        JsonNode body;
+        try {
+            body = MAPPER.readTree(ex.getRequestBody());
+        } catch (Exception e) {
+            respond(ex, 400, errorNode("bad_request", "请求体解析失败"));
+            return;
+        }
+        String agentId = body.path("agent_id").asText("");
+        String action = body.path("action").asText("");
+        if ("editor-in-chief".equals(agentId)) {
+            respond(ex, 400, errorNode("bad_request", "主编编排 Agent 不能注册给自己名下"));
+            return;
+        }
+        ObjectNode a = AGENT_RUNTIME.get(agentId);
+        if (a == null) {
+            if (AGENT_CATALOG.containsKey(agentId)) {
+                respond(ex, 409, errorNode("not_installed",
+                        agentId + " 尚未安装注册（在市场目录），请先在 Agent Hub 安装"));
+            } else {
+                respond(ex, 404, errorNode("unknown_agent", "运行时无此 agent: " + agentId));
+            }
+            return;
+        }
+        ObjectNode chief = AGENT_RUNTIME.get("editor-in-chief");
+        ArrayNode team = (ArrayNode) chief.get("team");
+        boolean inTeam = false;
+        for (JsonNode m : team) {
+            if (m.asText().equals(agentId)) {
+                inTeam = true;
+                break;
+            }
+        }
+        switch (action) {
+            case "register" -> {
+                if (!inTeam) {
+                    team.add(agentId);
+                }
+            }
+            case "unregister" -> {
+                for (int i = team.size() - 1; i >= 0; i--) {
+                    if (team.get(i).asText().equals(agentId)) {
+                        team.remove(i);
+                    }
+                }
+            }
+            default -> {
+                respond(ex, 400, errorNode("bad_request", "action 须为 register|unregister"));
+                return;
+            }
+        }
+        respond(ex, 200, chief.deepCopy());
+    }
+
+    /**
+     * 运行时注销：DELETE /v1/agents/{id}。
+     * 主编编排 Agent 是运行时根节点，不可注销；市场安装来源的注销后退回市场目录（可重新安装）；
+     * 内置与自定义来源的注销即从运行时删除。
+     */
+    private static void handleAgentUnregister(HttpExchange ex, String id) throws IOException {
+        if ("editor-in-chief".equals(id)) {
+            respond(ex, 409, errorNode("protected_agent",
+                    "主编编排 Agent 是运行时根节点，不可注销（可先在团队中移除其他成员）"));
+            return;
+        }
+        ObjectNode a = AGENT_RUNTIME.remove(id);
+        if (a == null) {
+            respond(ex, 404, errorNode("unknown_agent", "运行时无此 agent: " + id));
+            return;
+        }
+        // 同步从主编团队移除（若在团队中）
+        ObjectNode chief = AGENT_RUNTIME.get("editor-in-chief");
+        if (chief != null && chief.has("team")) {
+            ArrayNode team = (ArrayNode) chief.get("team");
+            for (int i = team.size() - 1; i >= 0; i--) {
+                if (team.get(i).asText().equals(id)) {
+                    team.remove(i);
+                }
+            }
+        }
+        boolean toMarket = "MARKET".equals(a.path("source").asText());
+        if (toMarket) {
+            a.put("status", "AVAILABLE");
+            a.putNull("registered_at");
+            a.putNull("last_loaded_task");
+            a.putNull("last_loaded_at");
+            AGENT_CATALOG.put(id, a);
+        }
+        ObjectNode out = MAPPER.createObjectNode();
+        out.put("status", "UNREGISTERED");
+        out.put("agent_id", id);
+        out.put("returned_to_market", toMarket);
+        respond(ex, 200, out);
+    }
+
+    /** 自定义 agent 注册：POST /v1/agents/register {name, kind, description, capabilities[]}。 */
+    private static void handleAgentRegister(HttpExchange ex) throws IOException {
+        JsonNode body;
+        try {
+            body = MAPPER.readTree(ex.getRequestBody());
+        } catch (Exception e) {
+            respond(ex, 400, errorNode("bad_request", "请求体解析失败"));
+            return;
+        }
+        String name = body.path("name").asText("").trim();
+        if (name.isEmpty()) {
+            respond(ex, 400, errorNode("bad_request", "name 不能为空"));
+            return;
+        }
+        String kind = body.path("kind").asText("ANALYST");
+        if (!List.of("ORCHESTRATOR", "ANALYST", "CHECKER", "APPROVER").contains(kind)) {
+            respond(ex, 400, errorNode("bad_request", "kind 须为 ORCHESTRATOR|ANALYST|CHECKER|APPROVER"));
+            return;
+        }
+        String desc = body.path("description").asText("");
+        if (desc.isBlank()) {
+            desc = "自定义 agent（经 Agent Hub 注册进入运行时）";
+        }
+        ArrayNode caps = MAPPER.createArrayNode();
+        if (body.path("capabilities").isArray()) {
+            for (JsonNode c : body.path("capabilities")) {
+                if (!c.asText().isBlank()) {
+                    caps.add(c.asText().trim());
+                }
+            }
+        }
+        if (caps.isEmpty()) {
+            caps.add("自定义能力");
+        }
+        String id = String.format("custom-agent-%02d", CUSTOM_SEQ.incrementAndGet());
+        ObjectNode a = MAPPER.createObjectNode();
+        a.put("agent_id", id);
+        a.put("name", name);
+        a.put("kind", kind);
+        a.put("version", "0.1.0");
+        a.put("description", desc);
+        a.put("source", "CUSTOM");
+        a.put("status", "RUNNING");
+        a.set("capabilities", caps);
+        a.putArray("enabled_skills");
+        a.put("registered_at", Instant.now().toString());
+        a.putNull("last_loaded_task");
+        a.putNull("last_loaded_at");
+        AGENT_RUNTIME.put(id, a);
         respond(ex, 200, a.deepCopy());
     }
 
