@@ -90,7 +90,8 @@ def main():
     ap.add_argument("--template-file", default="")
     ap.add_argument("--template-name", default="annual-report-28sec")
     ap.add_argument("--template-id", default="1")
-    ap.add_argument("--web-search-id", default="1")
+    ap.add_argument("--web-search-id", default="")
+    ap.add_argument("--materials-dir", default="")
     ap.add_argument("--query", default="2025年中国大型商业银行经营状况与风险表现分析")
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--out", default="phase0_report.md")
@@ -165,9 +166,24 @@ def main():
                     "api_key": args.llm_key,
                 }
             },
-            "web_search_config": {"web_search_config_id": int(args.web_search_id)},
             "template_id": int(args.template_id) if args.template_id else -1,
         }
+        # 用户材料模式: 不依赖真实搜索, 直接喂本地材料 (DeepSearch 原生支持)
+        # 注意: 服务端校验 web/local 检索配置必须有其一, 故材料模式仍传 web_search_config
+        if args.materials_dir:
+            import glob as _glob
+            mats = []
+            for fp in sorted(_glob.glob(f"{args.materials_dir}/*.txt")):
+                txt = open(fp, encoding="utf-8", errors="replace").read().strip()
+                if txt:
+                    mats.append({"url": fp.replace("\\", "/"), "content": txt[:30000]})
+            payload["metadata"] = {"user_materials_enabled": True, "user_materials": mats}
+            payload["info_collector_search_method"] = "web"
+            if args.web_search_id:
+                payload["web_search_config"] = {"web_search_config_id": int(args.web_search_id)}
+            print(f"[4] user_materials: {len(mats)} pages from {args.materials_dir}")
+        elif args.web_search_id:
+            payload["web_search_config"] = {"web_search_config_id": int(args.web_search_id)}
         print(f"[4] run: {args.query[:50]}... (SSE, 可能需要 5-20 分钟)")
         try:
             chunks = sse_run(url, payload, args.out + ".events")
