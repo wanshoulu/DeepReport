@@ -324,51 +324,64 @@ final class ToolGateway {
     // ———————————————————— snapshot_commit ————————————————————
 
     /**
-     * 抓取产物落盘为快照页 + sha256 注册进信源注册表。
-     *
-     * 写入 /snapshot/live（独立快照集）：冻结演示快照 {cmb,icbc,ccb} 与其 manifest.sources 的
-     * sha256 指纹零改动；本工具只「追加」新页与新信源，页码从 live 现有最大页码 +1 顺序分配。
-     * 落盘后立刻重建 live 的运行时索引并追加信源注册表 → C1/C2 引用核验与 N3 数值核验即刻可用。
+     * snapshot_commit 工具：抓取产物落盘为快照页 + sha256 注册进信源注册表。
+     * 参数校验后统一走 commitSource —— 与 workbench 本地文档导入共用同一落盘注册纪律门。
      */
     private static ObjectNode snapshotCommit(JsonNode args, Path snapshotDir,
                                              CheckerHttpServer.SnapshotHttpResolver resolver,
                                              List<SourceEntry> sources) throws IOException {
-        synchronized (ToolGateway.class) { // 并发提交互斥（manifest 读改写 + 页码分配）
-            String url = args.path("url").asText("").trim();
-            String title = args.path("title").asText("").trim();
-            if (url.isEmpty()) {
-                return err("bad_request", "arguments.url 必填");
+        String url = args.path("url").asText("").trim();
+        String title = args.path("title").asText("").trim();
+        if (url.isEmpty()) {
+            return err("bad_request", "arguments.url 必填");
+        }
+        if (title.isEmpty()) {
+            return err("bad_request", "arguments.title 必填");
+        }
+        String authority = args.path("authority").asText("TERTIARY_AGGREGATED").trim().toUpperCase();
+        try {
+            SourceAuthority.valueOf(authority);
+        } catch (IllegalArgumentException e) {
+            return err("bad_request", "authority 无效: " + authority
+                    + "（可用: PRIMARY_OFFICIAL / SECONDARY_INSTITUTIONAL / TERTIARY_AGGREGATED）");
+        }
+        JsonNode pagesIn = args.path("pages");
+        if (!pagesIn.isArray() || pagesIn.isEmpty()) {
+            return err("bad_request", "arguments.pages 必填且为数组: [{\"text\": \"页文本\", \"origin_page\": 原始页码?}]");
+        }
+        List<String> bodies = new ArrayList<>();
+        List<Integer> originPages = new ArrayList<>();
+        for (int i = 0; i < pagesIn.size(); i++) {
+            JsonNode p = pagesIn.get(i);
+            String text = p.path("text").asText("");
+            if (text.isBlank()) {
+                return err("bad_request", "pages[" + i + "].text 为空");
             }
-            if (title.isEmpty()) {
-                return err("bad_request", "arguments.title 必填");
+            if (!text.endsWith("\n")) {
+                text = text + "\n";
             }
-            String authority = args.path("authority").asText("TERTIARY_AGGREGATED").trim().toUpperCase();
-            try {
-                SourceAuthority.valueOf(authority);
-            } catch (IllegalArgumentException e) {
-                return err("bad_request", "authority 无效: " + authority
-                        + "（可用: PRIMARY_OFFICIAL / SECONDARY_INSTITUTIONAL / TERTIARY_AGGREGATED）");
-            }
-            JsonNode pagesIn = args.path("pages");
-            if (!pagesIn.isArray() || pagesIn.isEmpty()) {
-                return err("bad_request", "arguments.pages 必填且为数组: [{\"text\": \"页文本\", \"origin_page\": 原始页码?}]");
-            }
-            List<String> bodies = new ArrayList<>();
-            List<Integer> originPages = new ArrayList<>();
-            for (int i = 0; i < pagesIn.size(); i++) {
-                JsonNode p = pagesIn.get(i);
-                String text = p.path("text").asText("");
-                if (text.isBlank()) {
-                    return err("bad_request", "pages[" + i + "].text 为空");
-                }
-                if (!text.endsWith("\n")) {
-                    text = text + "\n";
-                }
-                bodies.add(text);
-                originPages.add(p.path("origin_page").asInt(0) > 0 ? p.path("origin_page").asInt() : i + 1);
-            }
+            bodies.add(text);
+            originPages.add(p.path("origin_page").asInt(0) > 0 ? p.path("origin_page").asInt() : i + 1);
+        }
+        return commitSource(LIVE_BANK, url, title, authority, bodies, originPages,
+                "snapshot_commit 工具实时抓取落盘（MCP 工具层）：抓取产物经 sha256 注册后方可引用",
+                snapshotDir, resolver, sources);
+    }
 
-            Path liveDir = snapshotDir.resolve(LIVE_BANK);
+    /**
+     * 本地文档导入（workbench「导入资料」）与 snapshot_commit 共用的落盘注册核心。
+     *
+     * 写入 /snapshot/{bank}（导入与抓取统一落 live 独立快照集）：冻结演示快照 {cmb,icbc,ccb}
+     * 与其 manifest.sources 的 sha256 指纹零改动；只「追加」新页与新信源，页码从该快照集
+     * 现有最大页码 +1 顺序分配。落盘后立刻重建运行时索引并追加信源注册表 → C1/C2 引用核验
+     * 与 N3 数值核验即刻可用（fail-closed 纪律门，本地导入与联网抓取同规，无需重启容器）。
+     */
+    static ObjectNode commitSource(String bank, String url, String title, String authority,
+                                   List<String> bodies, List<Integer> originPages, String note,
+                                   Path snapshotDir, CheckerHttpServer.SnapshotHttpResolver resolver,
+                                   List<SourceEntry> sources) throws IOException {
+        synchronized (ToolGateway.class) { // 并发提交互斥（manifest 读改写 + 页码分配）
+            Path liveDir = snapshotDir.resolve(bank);
             Path pagesDir = liveDir.resolve("pages");
             Files.createDirectories(pagesDir);
             Path manifestF = liveDir.resolve("manifest.json");
@@ -410,7 +423,7 @@ final class ToolGateway {
                     pg.put("digest", manifest.path("page_digests").path(String.valueOf(p)).asText(""));
                     i++;
                 }
-                return okSnapshot(existedSrc.path("source_id").asText(), title, authority, url,
+                return okSnapshot(bank, existedSrc.path("source_id").asText(), title, authority, url,
                         contentSha, allocated, true);
             }
 
@@ -442,7 +455,7 @@ final class ToolGateway {
             for (JsonNode pg : allocated) {
                 pagesArr.add(pg.path("snapshot_page").asInt());
             }
-            srcNode.put("note", "snapshot_commit 工具实时抓取落盘（MCP 工具层）：抓取产物经 sha256 注册后方可引用");
+            srcNode.put("note", note);
             srcArr.add(srcNode);
             ObjectNode digests = (ObjectNode) manifest.get("page_digests");
             for (JsonNode pg : allocated) {
@@ -453,26 +466,26 @@ final class ToolGateway {
                     StandardCharsets.UTF_8);
 
             // 运行时注册：重建 live 快照索引 + 信源注册表追加（核验器即刻可见，无需重启）
-            CheckerHttpServer.BankSnap live = new CheckerHttpServer.BankSnap(liveDir, LIVE_BANK);
-            resolver.banks.put(LIVE_BANK, live);
+            CheckerHttpServer.BankSnap live = new CheckerHttpServer.BankSnap(liveDir, bank);
+            resolver.banks.put(bank, live);
             for (String sha : live.sourcePages.keySet()) {
-                resolver.sourceBank.put(sha, LIVE_BANK);
+                resolver.sourceBank.put(sha, bank);
             }
             // SourceEntry 契约为 7 字段注册表形态；note 仅随 manifest 落盘，运行时注册前剥离
             ObjectNode regNode = srcNode.deepCopy();
             regNode.remove("note");
             sources.add(CheckerHttpServer.MAPPER.treeToValue(regNode, SourceEntry.class));
 
-            return okSnapshot(sourceId, title, authority, url, contentSha, allocated, false);
+            return okSnapshot(bank, sourceId, title, authority, url, contentSha, allocated, false);
         }
     }
 
-    /** snapshot_commit 统一响应（新注册 / 幂等读回共用）。 */
-    private static ObjectNode okSnapshot(String sourceId, String title, String authority, String url,
+    /** 落盘注册统一响应（snapshot_commit 工具 / 本地文档导入共用；新注册 / 幂等读回同构）。 */
+    static ObjectNode okSnapshot(String bank, String sourceId, String title, String authority, String url,
             String contentSha, ArrayNode allocated, boolean already) {
         ObjectNode ok = base("snapshot_commit");
         ok.put("ok", true);
-        ok.put("bank", LIVE_BANK);
+        ok.put("bank", bank);
         ok.put("source_id", sourceId);
         ok.put("title", title);
         ok.put("authority", authority);
@@ -480,11 +493,117 @@ final class ToolGateway {
         ok.put("content_sha256", contentSha);
         ok.set("snapshot_pages", allocated);
         ok.put("already_registered", already);
-        ok.put("snapshot_dir", "/snapshot/" + LIVE_BANK);
+        ok.put("snapshot_dir", "/snapshot/" + bank);
         ok.put("note", already
                 ? "同内容信源已注册（幂等读回 manifest 既有登记，未写入任何新页文件）"
-                : "已落盘 /snapshot/live 并注册进信源注册表：引用核验 C1/C2 即刻可用；冻结快照（cmb/icbc/ccb）零改动");
+                : "已落盘 /snapshot/" + bank + " 并注册进信源注册表：引用核验 C1/C2 即刻可用；冻结快照（cmb/icbc/ccb）零改动");
         return ok;
+    }
+
+    // ———————————————————— 本地文档导入（workbench 资料导入通道）————————————————————
+
+    /**
+     * 本地导入文件解析（不落盘，落盘统一走 commitSource）：
+     *  · pdf —— PDFBox 逐页抽取（与 pdf_extract 同引擎，单文件最多 PDF_PAGES_PER_CALL 页）；
+     *  · 文本类（txt/md/json/…）—— UTF-8 解码，按段落边界切成 ≤2500 字符的快照页。
+     * 返回 {ok, error?, kind, total_pages?, pages:[{text, origin_page}]}。
+     */
+    static ObjectNode parseUploadFile(String filename, byte[] bytes) {
+        ObjectNode out = CheckerHttpServer.MAPPER.createObjectNode();
+        String name = filename == null ? "" : filename.toLowerCase();
+        if (name.endsWith(".pdf")) {
+            try (PDDocument doc = Loader.loadPDF(bytes)) {
+                PDFTextStripper stripper = new PDFTextStripper();
+                stripper.setSortByPosition(true);
+                int total = doc.getNumberOfPages();
+                int cap = Math.min(total, PDF_PAGES_PER_CALL);
+                ArrayNode pages = out.putArray("pages");
+                for (int p = 1; p <= cap; p++) {
+                    stripper.setStartPage(p);
+                    stripper.setEndPage(p);
+                    String text = stripper.getText(doc);
+                    if (text == null || text.isBlank()) {
+                        continue;
+                    }
+                    ObjectNode pg = pages.addObject();
+                    pg.put("text", text.strip());
+                    pg.put("origin_page", p);
+                }
+                out.put("kind", "pdf");
+                out.put("total_pages", total);
+                if (pages.isEmpty()) {
+                    out.put("ok", false);
+                    out.put("error", "PDF 未抽取到任何文本（可能是扫描件）");
+                } else {
+                    out.put("ok", true);
+                    if (total > cap) {
+                        out.put("truncated", "PDF 共 " + total + " 页，单次最多导入 " + cap + " 页");
+                    }
+                }
+                return out;
+            } catch (Exception e) {
+                out.put("ok", false);
+                out.put("error", "PDF 解析失败: " + e.getMessage());
+                return out;
+            }
+        }
+        String text = new String(bytes, StandardCharsets.UTF_8);
+        if (text.startsWith("﻿")) {
+            text = text.substring(1);
+        }
+        if (text.contains("\u0000")) {
+            out.put("ok", false);
+            out.put("error", "不支持的二进制文件类型（仅支持 pdf / txt / md / json 等文本文件）");
+            return out;
+        }
+        if (text.isBlank()) {
+            out.put("ok", false);
+            out.put("error", "文件内容为空");
+            return out;
+        }
+        List<String> chunks = splitTextPages(text, 2500);
+        ArrayNode pages = out.putArray("pages");
+        for (int i = 0; i < chunks.size(); i++) {
+            ObjectNode pg = pages.addObject();
+            pg.put("text", chunks.get(i));
+            pg.put("origin_page", i + 1);
+        }
+        out.put("ok", true);
+        out.put("kind", "text");
+        out.put("total_pages", chunks.size());
+        return out;
+    }
+
+    /** 文本分页：优先按空行段落边界聚合成 ≤cap 字符的页，超长段落硬切。 */
+    private static List<String> splitTextPages(String text, int cap) {
+        List<String> pages = new ArrayList<>();
+        StringBuilder cur = new StringBuilder();
+        for (String para : text.strip().split("\\n\\s*\\n")) {
+            String p = para.strip();
+            while (p.length() > cap) { // 超长段落（如单行 JSON）硬切
+                int cut = p.lastIndexOf('\n', cap);
+                if (cut < cap / 2) {
+                    cut = cap;
+                }
+                pages.add(p.substring(0, cut).strip());
+                p = p.substring(cut).strip();
+            }
+            if (p.isEmpty()) {
+                continue;
+            }
+            if (cur.length() > 0 && cur.length() + p.length() + 2 > cap) {
+                pages.add(cur.toString());
+                cur.setLength(0);
+            }
+            if (cur.length() > 0) {
+                cur.append("\n\n");
+            }
+            cur.append(p);
+        }
+        if (cur.length() > 0) {
+            pages.add(cur.toString());
+        }
+        return pages;
     }
 
     private static ObjectNode emptyLiveManifest() {

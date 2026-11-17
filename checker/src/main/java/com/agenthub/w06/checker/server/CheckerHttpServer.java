@@ -13,6 +13,9 @@
  *  GET  /v1/tools                        MCP 风格联网工具网关：工具注册表（deploy/tools.json 配置驱动）
  *  POST /v1/tools/call                   统一工具调用 {tool_name, arguments}：
  *                                       web_search / web_fetch / pdf_extract / snapshot_commit（0.3.5）
+ *  POST /v1/documents/import             本地文档导入（workbench「导入资料」）：{files|text, title?,
+ *                                       authority?, url?} → 落盘 live 快照集 + sha256 注册进信源
+ *                                       注册表（与 snapshot_commit 同纪律门，即刻可引用核验，无需重启）
  *  GET  /demo/{positive|error}-artifact.json  演示工件（受控样例）
  *  GET  /demo/reference-answer.json      W01 标准答案
  *  POST /v1/artifacts/digest             工件规范化 digest（Jackson 重序列化字节 → sha256）
@@ -422,6 +425,10 @@ public final class CheckerHttpServer {
             respond(ex, 200, ToolGateway.call(toolBody, snapshotDir, resolver, sources));
             return;
         }
+        if ("/v1/documents/import".equals(path) && "POST".equals(method)) {
+            handleDocumentImport(ex, snapshotDir, resolver, sources);
+            return;
+        }
         if (path.startsWith("/demo/") && "GET".equals(method)) {
             String name = path.substring("/demo/".length());
             if (!List.of("positive-artifact.json", "error-artifact.json",
@@ -634,6 +641,188 @@ public final class CheckerHttpServer {
         return n;
     }
 
+    /**
+     * 本地文档导入（workbench「导入资料」/对话粘贴通道）：与 MCP snapshot_commit 同一纪律门。
+     * 文件解析（pdf→PDFBox 逐页抽取；文本→段落分页）后经 ToolGateway.commitSource 落盘
+     * /snapshot/live 并注册进信源注册表 → 引用核验 C1/C2 与数值核验 N3 即刻接受，
+     * 冻结三银行快照零改动，无需重启容器。
+     * 请求：{title?, authority?, url?, files:[{filename, content_base64}], text?}
+     *      （files 与 text 至少其一；pdf/txt/md/json，单文件 PDF ≤20 页，文本按 2500 字符分页）
+     */
+    private static void handleDocumentImport(HttpExchange ex, Path snapshotDir,
+                                             SnapshotHttpResolver resolver,
+                                             List<SourceEntry> sources) throws IOException {
+        JsonNode body = MAPPER.readTree(ex.getRequestBody());
+        String title = body.path("title").asText("").trim();
+        String authority = body.path("authority").asText("PRIMARY_OFFICIAL").trim().toUpperCase();
+        try {
+            com.agenthub.w06.contract.SourceAuthority.valueOf(authority);
+        } catch (IllegalArgumentException e) {
+            respond(ex, 400, errorNode("bad_request", "authority 无效: " + authority
+                    + "（可用: PRIMARY_OFFICIAL / SECONDARY_INSTITUTIONAL / TERTIARY_AGGREGATED）"));
+            return;
+        }
+        String url = body.path("url").asText("").trim();
+        JsonNode filesIn = body.path("files");
+        List<Map.Entry<String, byte[]>> files = new ArrayList<>();
+        if (filesIn.isArray()) {
+            for (JsonNode fIn : filesIn) {
+                String fn = fIn.path("filename").asText("document.txt");
+                String b64 = fIn.path("content_base64").asText("");
+                if (b64.isBlank()) {
+                    continue;
+                }
+                byte[] bytes;
+                try {
+                    bytes = java.util.Base64.getMimeDecoder().decode(b64);
+                } catch (IllegalArgumentException e) {
+                    bytes = new byte[0]; // 交给 parseUploadFile 报「内容为空」
+                }
+                files.add(Map.entry(fn, bytes));
+            }
+        }
+        String pasted = body.path("text").asText("");
+        if (!pasted.isBlank()) {
+            files.add(Map.entry("对话粘贴补充资料.txt", pasted.getBytes(StandardCharsets.UTF_8)));
+        }
+        if (files.isEmpty()) {
+            respond(ex, 400, errorNode("bad_request",
+                    "缺少导入内容：files:[{filename, content_base64}] 或 text 必填其一"));
+            return;
+        }
+        ArrayNode imported = MAPPER.createArrayNode();
+        ArrayNode errors = MAPPER.createArrayNode();
+        for (Map.Entry<String, byte[]> f : files) {
+            String filename = f.getKey();
+            ObjectNode parsed = ToolGateway.parseUploadFile(filename, f.getValue());
+            if (!parsed.path("ok").asBoolean()) {
+                ObjectNode e = errors.addObject();
+                e.put("filename", filename);
+                e.put("error", parsed.path("error").asText("解析失败"));
+                continue;
+            }
+            String base = filename.substring(filename.lastIndexOf('/') + 1)
+                    .substring(filename.lastIndexOf('\\') + 1);
+            String srcTitle = title.isEmpty() ? base
+                    : (files.size() == 1 ? title : title + "（" + base + "）");
+            List<String> bodies = new ArrayList<>();
+            List<Integer> originPages = new ArrayList<>();
+            for (JsonNode pg : parsed.path("pages")) {
+                bodies.add(pg.path("text").asText());
+                originPages.add(pg.path("origin_page").asInt());
+            }
+            ObjectNode committed = ToolGateway.commitSource(ToolGateway.LIVE_BANK,
+                    url.isEmpty() ? "upload:local/" + base : url,
+                    srcTitle, authority, bodies, originPages,
+                    "用户本地导入（workbench 资料导入通道）：与联网抓取同经 sha256 注册纪律门",
+                    snapshotDir, resolver, sources);
+            ObjectNode item = imported.addObject();
+            item.put("filename", filename);
+            if (parsed.hasNonNull("total_pages")) {
+                item.put("parsed_pages", parsed.path("total_pages").asInt());
+            }
+            item.set("commit", committed);
+        }
+        if (imported.isEmpty()) {
+            ObjectNode e = errorNode("import_failed", "没有文件导入成功");
+            e.set("errors", errors);
+            respond(ex, 400, e);
+            return;
+        }
+        ObjectNode out = MAPPER.createObjectNode();
+        out.put("ok", true);
+        out.put("bank", ToolGateway.LIVE_BANK);
+        out.put("snapshot_dir", "/snapshot/" + ToolGateway.LIVE_BANK);
+        out.set("imported", imported);
+        out.set("errors", errors);
+        out.put("note", "导入完成：资料已落盘 live 快照集并注册进信源注册表，引用核验 C1/C2 即刻接受；"
+                + "生成报告时可直接引用这些资料（已挂载为 [C-n] 可引用论断）。");
+        respond(ex, 200, out);
+    }
+
+    /**
+     * 用户导入资料挂载（live 快照集 → 工件引用）：把已注册导入资料的每一页登记为可引用论断
+     * （digest/page/excerpt 三元组由服务端按落盘文本生成，excerpt 逐字取自页文本 → L1 确定性
+     * 核验天然通过；claim_text 与 excerpt 一致 → L2 支持度判定为 SUPPORTED），并挂到首个
+     * 分析节的 claim_ids 使其进入写作任务书的引用清单与快照页原文——writer-agent 可直接
+     * 以 [C-n] 引用用户导入的资料。无导入资料时工件原样返回。
+     */
+    private static AnnualReportArtifacts attachImportedClaims(AnnualReportArtifacts art,
+                                                              SnapshotHttpResolver resolver,
+                                                              List<String> analysisIds) {
+        BankSnap live = resolver.banks.get(ToolGateway.LIVE_BANK);
+        if (live == null || live.sourcesNode.isEmpty() || analysisIds.isEmpty()) {
+            return art;
+        }
+        int next = 1;
+        for (Citation c : art.citations()) {
+            var m = java.util.regex.Pattern.compile("C-(\\d+)").matcher(c.claimId());
+            if (m.matches()) {
+                next = Math.max(next, Integer.parseInt(m.group(1)) + 1);
+            }
+        }
+        List<Citation> added = new ArrayList<>();
+        outer:
+        for (JsonNode src : live.sourcesNode) {
+            for (JsonNode pno : src.path("pages")) {
+                int page = pno.asInt();
+                String text = live.byPageNumber.get(page);
+                if (text == null || text.isBlank()) {
+                    continue;
+                }
+                String excerpt = pickExcerpt(text);
+                Citation c = new Citation("C-" + next, excerpt,
+                        sha256(text), page, excerpt, sha256(excerpt));
+                if (!"SUPPORTED".equals(CitationChecker.assessSupport(c).name())) {
+                    continue; // 摘录缺数字/实体支撑的页不挂载，避免语义核验灰区
+                }
+                next++;
+                added.add(c);
+                if (added.size() >= 12) {
+                    break outer; // 单次任务导入引用上限，防任务书上下文膨胀
+                }
+            }
+            if (added.size() >= 12) {
+                break;
+            }
+        }
+        if (added.isEmpty()) {
+            return art;
+        }
+        List<Citation> citations = new ArrayList<>(art.citations());
+        citations.addAll(added);
+        List<String> newIds = added.stream().map(Citation::claimId).toList();
+        List<ReportSection> sections = new ArrayList<>();
+        boolean attached = false;
+        for (ReportSection s : art.sections()) {
+            List<String> ids = s.claimIds();
+            if (!attached && analysisIds.contains(s.sectionId())) {
+                ids = new ArrayList<>(ids);
+                ids.addAll(newIds);
+                attached = true;
+            }
+            sections.add(new ReportSection(s.sectionId(), s.title(), s.body(), ids));
+        }
+        return new AnnualReportArtifacts(art.taskId(), art.company(), art.reportPeriod(),
+                art.generatedAt(), art.metrics(), citations, sections, art.charts());
+    }
+
+    /** 引用摘录选取：优先取含数字的 160 字窗口（保证 L2 确定性支持度判定通过），否则页首 120 字。 */
+    private static String pickExcerpt(String text) {
+        String t = text.strip();
+        if (t.length() <= 160) {
+            return t;
+        }
+        var m = java.util.regex.Pattern.compile("\\d").matcher(t);
+        if (m.find()) {
+            int idx = m.start();
+            int start = Math.max(0, Math.min(idx - 20, t.length() - 160));
+            int end = Math.min(t.length(), start + 160);
+            return t.substring(start, end).strip();
+        }
+        return t.substring(0, 120).strip();
+    }
+
     // ———————————————————— 报告库（任务历史）与 Agent Hub ————————————————————
 
     /** 骨架配置（0.3.4 泛化）：节序/role/责任 agent/静态正文模板的唯一事实源 = STATIC_DIR/report-structure.json。 */
@@ -698,6 +887,16 @@ public final class CheckerHttpServer {
             }
         }
 
+        // 用户导入资料（live 快照集）→ 挂载为可引用论断（digest/page/excerpt 服务端生成，
+        // fail-closed 纪律不变）：brief/long_form 均可引用；无导入资料时工件原样返回
+        List<String> analysisIds = new ArrayList<>();
+        for (ReportSection sec : art.sections()) {
+            if ("analysis".equals(sectionRole.getOrDefault(sec.sectionId(), "analysis"))) {
+                analysisIds.add(sec.sectionId());
+            }
+        }
+        art = attachImportedClaims(art, resolver, analysisIds);
+
         // long_form 模式（0.3.7 架构分工）：Java 只做确定性编排——组装任务书（纯数据）、
         // 解析 [S-n] 成稿、调度核验与反思回路；任务分解与成稿由 openjiuwen deep agent
         // （writer-agent）依据 annual-report 技能方法论自主完成；框架按 sessionId 维护
@@ -720,6 +919,11 @@ public final class CheckerHttpServer {
         ArrayNode det1 = s1.withArray("details");
         for (JsonNode src : snap.sourcesNode) {
             det1.add(src.path("title").asText("（未命名信源）") + " — " + src.path("pages").size() + " 页");
+        }
+        BankSnap liveSnap = resolver.banks.get(ToolGateway.LIVE_BANK);
+        if (liveSnap != null && liveSnap.sourcesNode.size() > 0) {
+            det1.add("用户导入资料 " + liveSnap.sourcesNode.size() + " 份（live 快照集已注册，"
+                    + "已挂载为可引用论断）: " + liveSnap.sourcesNode.path(0).path("title").asText("") + " 等");
         }
         det1.add("指标索引 " + art.metrics().size() + " 项，口径与单位以指标字典为准");
         if (!ToolGateway.REGISTRY.isEmpty()) {
@@ -862,7 +1066,8 @@ public final class CheckerHttpServer {
 
         // 1) 任务书分派：agent 自主分解章节写作任务并成稿（框架 task planning + 会话记忆）
         String draft = AgentChatClient.chat(
-                buildTaskBook(art, snap, sectionRole, sectionAgent, analysisIds), sessionId);
+                buildTaskBook(art, snap, resolver.banks.get(ToolGateway.LIVE_BANK),
+                        sectionRole, sectionAgent, analysisIds), sessionId);
         if (draft == null) {
             rounds.add("agent 不可达，本次回退模板正文（可稍后重试）");
             return new LongFormOutcome(art, rounds);
@@ -926,7 +1131,7 @@ public final class CheckerHttpServer {
      * 加载技能与 references/long-form-writing.md）；任务书只注入骨架派生的节清单、
      * 指标表、引用清单、快照页原文，以及 Java 解析所需的输出协议。
      */
-    private static String buildTaskBook(AnnualReportArtifacts art, BankSnap snap,
+    private static String buildTaskBook(AnnualReportArtifacts art, BankSnap snap, BankSnap liveSnap,
             Map<String, String> sectionRole, Map<String, String> sectionAgent, List<String> analysisIds) {
         StringBuilder sb = new StringBuilder();
         sb.append("【长文写作任务书】\n");
@@ -983,9 +1188,12 @@ public final class CheckerHttpServer {
         for (var c : art.citations()) {
             if (wantedClaims.contains(c.claimId())) citedPages.add(c.page());
         }
-        sb.append("快照页原文（数据来源，仅供引用）：\n");
+        sb.append("快照页原文（数据来源，仅供引用；含用户导入资料的 live 快照页）：\n");
         for (int pageNum : citedPages) {
             String pageText = snap.byPageNumber.get(pageNum);
+            if (pageText == null && liveSnap != null) { // 导入资料页在 live 快照集内
+                pageText = liveSnap.byPageNumber.get(pageNum);
+            }
             if (pageText != null) {
                 String trimmed = pageText.length() > 800 ? pageText.substring(0, 800) + "…" : pageText;
                 sb.append("--- 第").append(pageNum).append("页 ---\n").append(trimmed).append("\n");

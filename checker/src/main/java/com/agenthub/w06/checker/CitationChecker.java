@@ -146,7 +146,7 @@ public final class CitationChecker {
      * - SUPPORTED：其余
      * 语义级灰区由 Critic agent 兜底（本方法只做可确定性判定的部分）。
      */
-    static CitationSupport assessSupport(Citation c) {
+    public static CitationSupport assessSupport(Citation c) {
         String claim = c.claimText() == null ? "" : c.claimText();
         String excerpt = c.evidenceExcerpt() == null ? "" : c.evidenceExcerpt();
         java.util.Set<String> claimNums = numbersOf(claim);
