@@ -797,7 +797,7 @@ async function startGeneration(correct) {
   addMsg("editor-in-chief",
     "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。启动六工位流水线（查数 → 分析 → 图表 → 写作 → 核验 → 主编），各工位按骨架配置分派……");
   // 六工位流水线：播报内容全部来自服务端 stages[]（headline/details），前端只渲染不编造
-  const p = await jpost("/v1/pipeline/run", { bank: chat.bank });
+  const p = await jpost("/v1/pipeline/run", { bank: chat.bank, task_id: chat.taskId });
   if (!p.ok || !p.data || !p.data.stages) {
     addMsg("editor-in-chief", '<span style="color:var(--destructive)">流水线执行失败：HTTP ' + (p.status || "—") + " " + esc((p.data && p.data.error) || "") + "</span>");
     setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);

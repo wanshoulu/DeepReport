@@ -672,6 +672,7 @@ public final class CheckerHttpServer {
         JsonNode body = MAPPER.readTree(ex.getRequestBody());
         String bank = body.path("bank").asText(resolver.defaultBank);
         String mode = body.path("mode").asText("brief");
+        String taskId = body.path("task_id").asText("");
         BankSnap snap = resolver.scope(bank);
         Path f = snap.dir.resolve("positive-artifact.json");
         if (!Files.isRegularFile(f)) {
@@ -787,18 +788,33 @@ public final class CheckerHttpServer {
                 + (cit.violations().isEmpty() ? "" : "，违规 " + cit.violations().size() + " 条"));
         stages.add(s5);
 
+        // 交付登记：产物 upsert 进报告库——对话流传入预登记 task_id 则沿用该编号，
+        // 直跑（curl/脚本）则自动指派；报告生成后即从报告库（GET /v1/tasks）可见。
+        boolean passed = "PASSED".equals(String.valueOf(num.status()))
+                && "PASSED".equals(String.valueOf(cit.status()));
+        ObjectNode regMeta = MAPPER.createObjectNode();
+        regMeta.put("status", passed ? "GENERATED" : "FAILED");
+        regMeta.put("summary", ("long_form".equals(mode) ? "长文流水线（writer-agent 成稿）：" : "简报流水线：")
+                + art.company() + " " + art.reportPeriod()
+                + "，两项核验 " + (passed ? "PASSED，待具名批准" : "FAILED，已拦截"));
+        ObjectNode taskRec = registerTask(taskId, regMeta, art);
+        String finalTaskId = taskRec.path("task_id").asText();
+        String digest = taskRec.path("artifact_digest").asText();
+
         // 6) 主编：汇总 + 批准指引（批准绑定工件内容指纹）
-        String digest = "sha256:" + sha256(MAPPER.writeValueAsBytes(art));
         ObjectNode s6 = stageNode("consolidation", "主编", "editor-in-chief", "汇总核验结论并出具批准指引");
         s6.withArray("details").add("工件内容指纹 " + digest + "（规模：" + artifactBrief(art) + "）");
-        s6.withArray("details").add("批准指引：POST /v1/approvals?task_id=…（approver 具名；批准绑定内容指纹，工件一改批准即失效）");
+        s6.withArray("details").add("批准指引：POST /v1/approvals?task_id=" + finalTaskId
+                + "（approver 具名；批准绑定内容指纹，工件一改批准即失效）");
         stages.add(s6);
 
         ObjectNode out = MAPPER.createObjectNode();
+        out.put("task_id", finalTaskId);
         out.put("bank", snap.bank);
         out.put("company", art.company());
         out.put("report_period", art.reportPeriod());
         out.put("artifact_digest", digest);
+        out.set("artifact", MAPPER.valueToTree(TASK_ARTIFACTS.get(finalTaskId)));
         out.set("checks", checksNode(num, cit));
         out.set("stages", stages);
         respond(ex, 200, out);
@@ -1189,7 +1205,7 @@ public final class CheckerHttpServer {
         return t;
     }
 
-    /** 报告库登记：服务端指派任务编号、同步工件 task_id、计算规范化 digest（upsert 语义）。 */
+    /** 报告库登记：请求体 {task:{…}, artifact:{…}}，服务端指派/沿用编号后 upsert（POST /v1/tasks）。 */
     private static void handleTaskRegister(HttpExchange ex) throws IOException {
         JsonNode body;
         try {
@@ -1202,39 +1218,54 @@ public final class CheckerHttpServer {
             respond(ex, 400, errorNode("bad_request", "请求体须为 {task:{…}, artifact:{…}}"));
             return;
         }
-        JsonNode metaIn = body.path("task");
-        String id = metaIn.path("task_id").asText("");
-        if (id.isBlank()) {
-            id = String.format("TASK-2025-AR-%03d", TASK_SEQ.incrementAndGet());
-        }
-        ObjectNode artNode = (ObjectNode) body.path("artifact").deepCopy();
-        artNode.put("task_id", id);
         AnnualReportArtifacts artifact;
         try {
-            artifact = MAPPER.treeToValue(artNode, AnnualReportArtifacts.class);
+            artifact = MAPPER.treeToValue(body.path("artifact").deepCopy(), AnnualReportArtifacts.class);
         } catch (Exception e) {
             respond(ex, 400, errorNode("bad_request", "工件反序列化失败: " + e.getMessage()));
             return;
         }
-        String digest = "sha256:" + sha256(MAPPER.writeValueAsBytes(artifact));
+        JsonNode metaIn = body.path("task");
+        ObjectNode task = registerTask(metaIn.path("task_id").asText(""), metaIn, artifact);
+        respond(ex, 200, task.deepCopy());
+    }
+
+    /**
+     * 报告库 upsert 登记（对话流登记与流水线产物落库共用同一入口）：沿用传入编号，
+     * 未传则自动指派；工件内 task_id 与登记编号同步；计算规范化 digest 写入任务记录。
+     *
+     * @param id       期望任务编号（空则自动指派 TASK-2025-AR-%03d）
+     * @param metaIn   任务元数据（status/summary；null 时按 GENERATED 登记）
+     * @param artifact 交付工件
+     * @return 登记后的任务记录（TASKS 内引用）
+     */
+    private static ObjectNode registerTask(String id, JsonNode metaIn, AnnualReportArtifacts artifact)
+            throws IOException {
+        if (id == null || id.isBlank()) {
+            id = String.format("TASK-2025-AR-%03d", TASK_SEQ.incrementAndGet());
+        }
+        ObjectNode artNode = (ObjectNode) MAPPER.valueToTree(artifact);
+        artNode.put("task_id", id);
+        AnnualReportArtifacts synced = MAPPER.treeToValue(artNode, AnnualReportArtifacts.class);
+        String digest = "sha256:" + sha256(MAPPER.writeValueAsBytes(synced));
         ObjectNode task = TASKS.get(id);
         if (task == null) {
             task = MAPPER.createObjectNode();
             task.put("task_id", id);
             task.put("created_at", Instant.now().toString());
         }
-        task.put("company", artifact.company());
-        task.put("report_period", artifact.reportPeriod());
-        task.put("status", metaIn.path("status").asText("GENERATED"));
+        task.put("company", synced.company());
+        task.put("report_period", synced.reportPeriod());
+        task.put("status", metaIn == null ? "GENERATED" : metaIn.path("status").asText("GENERATED"));
         task.put("artifact_digest", digest);
         task.put("updated_at", Instant.now().toString());
-        String summary = metaIn.path("summary").asText("");
+        String summary = metaIn == null ? "" : metaIn.path("summary").asText("");
         if (!summary.isBlank()) {
             task.put("summary", summary);
         }
         TASKS.put(id, task);
-        TASK_ARTIFACTS.put(id, artifact);
-        respond(ex, 200, task.deepCopy());
+        TASK_ARTIFACTS.put(id, synced);
+        return task;
     }
 
     /** 两项核验结果的结构化摘要（供任务记录与批准记录内嵌）。 */
