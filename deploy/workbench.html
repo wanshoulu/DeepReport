@@ -218,6 +218,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
   border-top: 1px solid var(--card-border); background: var(--bg); min-height: 52px; align-items: center;
 }
 .quick-row:empty { display: none; }
+.quick-hint { font-size: 12px; color: var(--muted); margin-right: 2px; white-space: nowrap; }
 .chat-input { display: flex; gap: 10px; padding: 12px 20px 16px; border-top: 1px solid var(--card-border); }
 .chat-input input {
   flex: 1; font: inherit; font-size: 13.5px; border: 1px solid var(--border);
@@ -691,7 +692,7 @@ async function importPasted(text) {
       return;
     }
     addDocResultMsg(r.data, "补充资料已落盘 live 快照集并注册进信源注册表：");
-    setQuick([{ label: "资料齐备，开始编制", cls: "primary", fn: startClarify }]);
+    setQuick([{ label: "资料齐备，开始编制", cls: "primary", fn: startClarify }], "确认无误后开始，也可在下方补充资料：");
   } catch (e) {
     addMsg("material-agent", "补充资料注册异常：" + esc(String(e)));
   }
@@ -756,9 +757,10 @@ function addMsg(agentId, html) {
 }
 
 let QUICK_FNS = [];
-function setQuick(btns) {
+function setQuick(btns, hint) {
   QUICK_FNS = btns.map(b => b.fn);
-  $("#quick-row").innerHTML = btns.map((b, i) =>
+  $("#quick-row").innerHTML = (hint ? '<span class="quick-hint">' + esc(hint) + "</span>" : "")
+    + btns.map((b, i) =>
     '<button class="btn sm ' + (b.cls || "") + '" data-q="' + i + '">' + esc(b.label) + "</button>").join("");
 }
 $("#quick-row").addEventListener("click", e => {
@@ -777,7 +779,7 @@ function greet() {
     + "首先请选择编制主体（支持多家银行的年报快照）。");
   const opts = (state.banks.length ? state.banks.filter(b => b.bank !== "live") : [{ bank: "cmb", company: "招商银行" }])
     .map(b => ({ label: b.company + " · 2025 年度", cls: b.bank === "cmb" ? "primary" : "", fn: () => pickBank(b) }));
-  setQuick(opts);
+  setQuick(opts, "点击选择编制主体：");
 }
 
 async function pickBank(b) {
@@ -801,7 +803,7 @@ async function pickBank(b) {
       + "· 信源 <b>" + m.sources.length + "</b> 份（" + esc(b.company) + "公开披露年报落盘快照，content_sha256 已登记）<br>"
       + "· 快照页 P" + pages + " · 指标索引 " + Object.keys(m.metric_index).length + " 项 · 释义 " + (m.entities || []).length + " 条<br>"
       + "如需补充资料可直接粘贴文本（将登记为编制依据），或点击下方按钮开始编制。");
-    setQuick([{ label: "资料齐备，开始编制", cls: "primary", fn: startClarify }]);
+    setQuick([{ label: "资料齐备，开始编制", cls: "primary", fn: startClarify }], "确认无误后开始，也可在下方补充资料：");
   } catch (e) {
     addMsg("material-agent", '<span style="color:var(--destructive)">信源装载失败：' + esc(e.message) + "</span>");
     setQuick([{ label: "重试装载", cls: "primary", fn: () => pickBank(b) }]);
@@ -841,7 +843,7 @@ async function startClarify() {
   setQuick([
     { label: "个百分点（披露惯例）", cls: "primary", fn: () => answerClarify(true) },
     { label: "百分比 %（演示拦截路径）", fn: () => answerClarify(false) }
-  ]);
+  ], "选择变动表述口径：");
 }
 
 function answerClarify(correct) {
