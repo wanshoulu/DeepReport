@@ -1,0 +1,32 @@
+{
+  "$comment": "报告类型画像——投研/投顾报告。与年报共用同一个 checker 内核与工件契约，只换配置，不改代码。",
+  "report_type": "research",
+  "display_name": "投研投顾报告",
+  "description": "个股/行业/基金研究：估值、盈利、成长性指标，来源为研报、公告、行情与数据库，参考研报引用规范。",
+  "subject_kind": "security",
+  "subject_label": "研究标的",
+  "default_subject": "示例标的",
+
+  "metric_profile": "equity_research",
+  "required_metrics": [
+    "REVENUE", "NET_PROFIT", "GROSS_MARGIN", "ROE", "PE_RATIO", "EPS"
+  ],
+  "derived_rules_ref": "source/config/report-profiles/metrics/equity_research.json",
+
+  "support_lexicon": {
+    "subject_words": ["营业收入", "营收", "净利润", "毛利率", "净利率", "ROE", "净资产收益率", "市盈率", "PE", "每股收益", "EPS", "订单", "市占率", "同比", "环比"],
+    "period_words": ["2025", "2024", "Q1", "Q2", "Q3", "Q4", "本季度", "上年同期", "TTM", "报告期"],
+    "unit_words": ["亿元", "万元", "元", "%", "倍", "百分点", "次"]
+  },
+
+  "skeleton_ref": "source/config/report-profiles/skeletons/research.json",
+  "skill_set": ["equity-research"],
+  "task_book": {
+    "goal": "为以下研究标的撰写投研报告正文（数据驱动、观点有据）",
+    "min_chars_per_section": 1200,
+    "style": "投研书面语：本报告期/我们判断/风险提示；每个观点附数据来源",
+    "citation_protocol": "[来源:机构-页码]"
+  },
+  "evidence_locator": "page_or_row",
+  "note": "证明内核泛化：换指标词典+骨架+语体即可支持新报告类型，Java checker 零改动。"
+}

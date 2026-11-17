@@ -1,0 +1,32 @@
+{
+  "$comment": "报告类型画像——客户分析报告。证明系统能写非财务、非年报类报告。",
+  "report_type": "client_analysis",
+  "display_name": "客户分析报告",
+  "description": "客户群/用户运营分析：满意度、续费率、客单价、留存等指标，来源为 CRM、埋点日志、调研问卷，locator 为记录行/时间段。",
+  "subject_kind": "customer_segment",
+  "subject_label": "客户群",
+  "default_subject": "示例客户群",
+
+  "metric_profile": "client_analytics",
+  "required_metrics": [
+    "SATISFACTION", "RETENTION_RATE", "ARPU", "NPS", "ACTIVE_USERS"
+  ],
+  "derived_rules_ref": "source/config/report-profiles/metrics/client_analytics.json",
+
+  "support_lexicon": {
+    "subject_words": ["满意度", "续费率", "留存率", "客单价", "ARPU", "NPS", "净推荐值", "活跃用户", "复购率", "转化率", "流失率", "客户数"],
+    "period_words": ["2025", "2024", "本月", "本季度", "本期", "上月", "报告期"],
+    "unit_words": ["分", "%", "元", "人次", "人", "百分点"]
+  },
+
+  "skeleton_ref": "source/config/report-profiles/skeletons/client_analysis.json",
+  "skill_set": ["client-analytics"],
+  "task_book": {
+    "goal": "为以下客户群撰写客户分析报告正文（结构清晰、结论可追溯）",
+    "min_chars_per_section": 1000,
+    "style": "分析报告书面语：本期/较上期/用户反馈；结论附数据来源",
+    "citation_protocol": "[数据来源:字段名=值]"
+  },
+  "evidence_locator": "row",
+  "note": "验证彻底泛化：无'页'概念，locator 为数据表行；指标与年报完全不同。"
+}

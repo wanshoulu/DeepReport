@@ -1,0 +1,29 @@
+{
+  "$comment": "投研指标字典——与 metric-registry.json 同构，供 checker 泛化加载。数字仍照抄原文、派生值来自脚本。",
+  "version": "1.0.0",
+  "report_type": "research",
+  "metrics": {
+    "REVENUE":      { "name_zh": "营业收入", "expected_unit": "亿元", "definition": "合并口径营业收入", "derived": null },
+    "NET_PROFIT":   { "name_zh": "净利润", "expected_unit": "亿元", "definition": "归母净利润", "derived": null },
+    "GROSS_MARGIN": {
+      "name_zh": "毛利率", "expected_unit": "%",
+      "definition": "(营业收入-营业成本)/营业收入*100",
+      "derived": {
+        "formula": "(REVENUE - 营业成本) / REVENUE * 100",
+        "base_keyword": "营业成本", "base_page_of": "REVENUE",
+        "tolerance_pp": 0.5, "on_base_missing": "WARNING"
+      }
+    },
+    "ROE":          { "name_zh": "净资产收益率", "expected_unit": "%", "definition": "净利润/平均净资产", "derived": null },
+    "PE_RATIO":     { "name_zh": "市盈率", "expected_unit": "倍", "definition": "市值/归母净利润(TTM)", "derived": null },
+    "EPS":          { "name_zh": "每股收益", "expected_unit": "元", "definition": "归母净利润/总股本", "derived": null }
+  },
+  "yoy_subjects": ["REVENUE", "NET_PROFIT", "EPS"],
+  "delta_unit_rules": {
+    "rate_metrics": ["GROSS_MARGIN", "ROE"],
+    "rate_delta_word": "百分点",
+    "amount_metrics": ["REVENUE", "NET_PROFIT"],
+    "amount_delta_word": "亿元"
+  },
+  "period_rules": { "prior_period": "上年同期", "yoy_tolerance_pp": 0.1 }
+}

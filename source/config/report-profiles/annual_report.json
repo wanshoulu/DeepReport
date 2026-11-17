@@ -1,0 +1,33 @@
+{
+  "$comment": "报告类型画像（Report Profile）——年报。四层可插拔资产的任务模板层+检查规则层。系统不再把年报写死在代码里，而是通过本配置驱动。",
+  "report_type": "annual_report",
+  "display_name": "银行年度报告",
+  "description": "商业银行年度经营报告：以法定披露年报为信源，八项监管指标为骨架，正式年报语体。",
+  "subject_kind": "company",
+  "subject_label": "银行",
+  "default_subject": "招商银行",
+
+  "metric_profile": "banking_8",
+  "required_metrics": [
+    "OPERATING_REVENUE", "NET_PROFIT_ATTRIBUTABLE", "NET_INTEREST_MARGIN",
+    "COST_INCOME_RATIO", "NPL_BALANCE", "NPL_RATIO", "PROVISION_COVERAGE", "CET1_RATIO"
+  ],
+  "derived_rules_ref": "skills/annual-report/assets/metric-registry.json",
+
+  "support_lexicon": {
+    "subject_words": ["营业收入", "净利润", "归母净利润", "净息差", "成本收入比", "不良贷款率", "不良率", "不良贷款余额", "拨备覆盖率", "核心一级资本充足率", "资本充足率"],
+    "period_words": ["2025", "2024", "年度报告", "报告期内", "本期", "上年", "截至报告期末"],
+    "unit_words": ["亿元", "万元", "百分点", "基点", "%", "倍"]
+  },
+
+  "skeleton_ref": "source/config/report-structure.json",
+  "skill_set": ["annual-report", "banking-domain", "metric-dictionary"],
+  "task_book": {
+    "goal": "为以下主体撰写年度报告完整章节正文（正式年报口径，非简报）",
+    "min_chars_per_section": 1500,
+    "style": "正式年报书面语：本行/报告期内/截至报告期末",
+    "citation_protocol": "[C-n]"
+  },
+  "evidence_locator": "page",
+  "note": "年报保留全部既有行为，作为向后兼容基线。"
+}

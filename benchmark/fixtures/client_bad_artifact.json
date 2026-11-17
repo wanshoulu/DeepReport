@@ -1,0 +1,52 @@
+{
+  "task_id": "C-1",
+  "subject": "高价值客户群",
+  "report_type": "client_analysis",
+  "metrics": [
+    {
+      "key": "SATISFACTION",
+      "value": "92",
+      "unit": "%",
+      "period": "本期",
+      "page": 1,
+      "source_document_digest": "d1",
+      "evidence_excerpt_digest": "e1"
+    },
+    {
+      "key": "RETENTION_RATE",
+      "value": "85",
+      "unit": "%",
+      "period": "本期",
+      "page": 1,
+      "source_document_digest": "d1",
+      "evidence_excerpt_digest": "e2"
+    },
+    {
+      "key": "ARPU",
+      "value": "9999",
+      "unit": "元",
+      "period": "本期",
+      "page": 2,
+      "source_document_digest": "d2",
+      "evidence_excerpt_digest": "e3"
+    },
+    {
+      "key": "NPS",
+      "value": "40",
+      "unit": "分",
+      "period": "本期",
+      "page": 1,
+      "source_document_digest": "d1",
+      "evidence_excerpt_digest": "e4"
+    },
+    {
+      "key": "ACTIVE_USERS",
+      "value": "120",
+      "unit": "人",
+      "period": "本期",
+      "page": 2,
+      "source_document_digest": "d2",
+      "evidence_excerpt_digest": "e5"
+    }
+  ]
+}

@@ -4,7 +4,9 @@
 
 ## 项目简介
 
-Report Agent 面向银行年报等强监管、强溯源的长报告编制场景：从落盘的原始材料出发，经取数、指标抽取、确定性核验、结构化成稿、具名审批，产出**可溯源、可核验、可审计**的完整报告。
+Report Agent 面向强监管、强溯源的长报告编制场景：从落盘的原始材料出发，经取数、指标抽取、确定性核验、结构化成稿、具名审批，产出**可溯源、可核验、可审计**的完整报告。
+
+**支持多报告类型**：报告结构、领域技能、指标字典、检查规则四类资产全部外置为配置，通过 `reportType` 切换。内置三种画像——`annual_report`（银行年报，向后兼容基线）、`research`（投研投顾）、`client_analysis`（客户分析）。新增报告类型 = 加一份 profile 配置，核心代码零改动。泛化设计与验证见 [`reviews/generalization-and-l2-fix-1117.md`](reviews/generalization-and-l2-fix-1117.md)。
 
 它要解决的不是「让模型写得更快」，而是长报告交付里三个 harder 问题：
 
@@ -28,24 +30,31 @@ Report Agent 面向银行年报等强监管、强溯源的长报告编制场景�
 | **证据摘录 / evidence_excerpt** | 引用指向的原文片段，必须在来源页文本中字面命中，其 sha256 进引用三元组 |
 | **工具** | 系统对外暴露的能力：`web_search` / `web_fetch` / `pdf_extract` / `snapshot_commit` / `table_extract` / `table_analyze` |
 
+## 核验能力（可复现评测）
+
+- **L2 引用支持度**：语境绑定判定（数值前最近主体词匹配），修复「营收 0.85%」误命中「不良率 0.85%」的语境错配；主体词表从报告类型配置注入，无银行名词硬编码。
+- **评测基准**：`python benchmark/eval_checkers.py` —— 15 例标注样本，精确匹配 15/15，precision/recall/F1 = 1.0，误报率/漏报率 = 0（明确标注用例上）；1 例语义等价诚实标注需模型层。结果见 `benchmark/results.json`。
+- **通用数值核验**：`skills/verify_metrics_generic.py` 从指标字典读规则，同一套代码核验投研与客户分析指标；负例（错单位/伪造数字）照样 BLOCKING。
+
 ## 与同类产品的定位差异
 
 市面主流报告智能体（OpenAI Deep Research / Perplexity / Manus / Hebbia / STORM / GPT Researcher）各有侧重，但没有一家同时做到「长文 + 句级可溯 + 失败阻断」。本项目的取舍：
 
-- **强项**：引用字面核验 + 指纹绑定、fail-closed 门禁、27 章长文交付闭环、三权分立确定性调度；
-- **已知差距**：数据源广度（无付费/登录态源接入）、数据汇总分析深度（表格抽取为轻量实现）、交付形态（仅 HTML/JSON，无 PDF/Word/PPT）、章节为固定骨架而非动态研究规划。
+- **强项**：引用字面核验 + 语境绑定 + 指纹绑定、fail-closed 门禁、27 章长文交付闭环、配置驱动的多报告类型；
+- **已知差距**：数据源广度（无付费/登录态源接入）、数据汇总分析深度（表格抽取为轻量实现）、交付形态（仅 HTML/JSON，无 PDF/Word/PPT）、语义等价判定需模型层。
 
-逐维度、带来源的对比见 [`reviews/w06-competitive-analysis-vs-report-agents-1117.md`](reviews/w06-competitive-analysis-vs-report-agents-1117.md)。
+逐维度、带来源的对比见 [`reviews/w06-competitive-analysis-vs-report-agents-1117.md`](reviews/w06-competitive-analysis-vs-report-agents-1117.md)（含第 7 节代码级深度差距）。
 
 ## 目录结构
 
 | 目录 | 内容 |
 |---|---|
 | `source/w06-annual-report-agent/` | Maven 工程：`agent-orchestrator` / `agents` / `checker` 三模块，41 个 Java 文件（线上实跑版） |
-| `source/config/` | `tools.json`（6 工具注册）、`report-structure.json`（28 节骨架） |
-| `skills/` | `annual-report`（成稿方法论与核验夹具）、`orchestrator-skill`（主编知识包） |
+| `source/config/` | `tools.json`、`report-structure.json`、`report-profiles/`（三种报告类型画像 + 指标字典 + 骨架） |
+| `skills/` | `annual-report`、`orchestrator-skill`、`verify_metrics_generic.py`（通用数值核验） |
 | `frontend/workbench.html` | 工作台：对话 / 资产库 / 报告库三页 |
-| `reviews/` | 架构全景、实现审视、技能合理性、差距分析、对标调研等 7 篇 |
+| `benchmark/` | `eval_checkers.py`（评测基准）、`results.json`、`fixtures/`（投研/客户分析样本） |
+| `reviews/` | 架构全景、对标调研、代码级差距、泛化与 L2 修复等 |
 | `artifacts/` | 工行 2025 年报成品 HTML + `gen_report_v2.py` 渲染脚本 |
 
 ## 运行方式（最小）
@@ -88,8 +97,10 @@ curl -X POST 'http://<host>:18083/v1/approvals?approver=Audit' -H 'Content-Type:
 
 ## 近期迭代方向
 
-1. **P0** 数据汇总：`table_extract` 从单页升级为跨文档批量抽取 + 统一表结构，让三家银行都有真实数据表；
-2. **P0** 取数广度：MCP 加来源白名单参数，接 1–2 个真实金融数据源，把「信源不足用工具补」变成可复现能力；
-3. **P1** 核验产品化：把 NumericChecker / CitationChecker 封装为 MCP server 对外暴露——别人出报告让你自己核对，我们出报告自带可机读核验结论。
+1. **P0** 泛化收尾：让 `CheckerHttpServer.buildTaskBook()` 消费 `report-profiles` 的 task_book/skeleton/skill_set，实现任务书与章节骨架按类型切换；把 `MetricKey` 从 enum 重构为值对象，合并 Java/Python 两条数值核验路径；
+2. **P0** L2 模型层：接 NLI/语义蕴含判定处理语义等价（ROE↔净资产收益率），强化 CriticAgent 结论与工件指纹的绑定；
+3. **P0** 数据汇总：`table_extract` 从单页升级为跨文档批量抽取 + 统一表结构；
+4. **P0** 取数广度：MCP 加来源白名单参数，接 1–2 个真实金融数据源；
+5. **P1** 核验产品化：把核验器封装为 MCP server 对外暴露——别人出报告让你自己核对，我们出报告自带可机读核验结论。
 
 > 本仓由 W06 工作包演化而来，早期评审请求与架构审视保留在 `reviews/` 与 `REVIEW-REQUEST.md` 供追溯。

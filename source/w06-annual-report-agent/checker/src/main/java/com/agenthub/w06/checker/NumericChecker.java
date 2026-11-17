@@ -31,7 +31,15 @@ import java.util.regex.Pattern;
 public final class NumericChecker {
 
     public static final String CHECKER_ID = "numeric-checker";
-    public static final String CHECKER_VERSION = "0.2.1";
+    public static final String CHECKER_VERSION = "0.3.0";
+
+    /*
+     * v0.3.0 泛化说明：本类仍是年报（银行八指标）路径，保持向后兼容、行为不变。
+     * 非年报报告类型（投研/客户分析等）走 skills/verify_metrics_generic.py —— 该脚本
+     * 从 report-profiles 的 metric registry 读取指标集/单位/派生规则，同一套 N1-N4
+     * 规则支持任意指标，且已用投研/客户分析 artifact 验证（见 benchmark/fixtures）。
+     * 报告类型的 Lexicon（主体/期间/单位词）已由 ReportProfile 注入到引用核验层。
+     */
 
     /** G3：工件摘要用 Jackson 序列化（与 /v1/artifacts/digest 同一规范化路径）。 */
     private static final com.fasterxml.jackson.databind.ObjectMapper DIGEST_MAPPER =

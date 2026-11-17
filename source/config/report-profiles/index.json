@@ -1,0 +1,10 @@
+{
+  "$comment": "报告类型注册表——系统的泛化入口。新增报告类型=加一份 profile + 在此登记，Java 代码零改动。",
+  "version": "1.0.0",
+  "default_report_type": "annual_report",
+  "profiles": {
+    "annual_report":   "source/config/report-profiles/annual_report.json",
+    "research":        "source/config/report-profiles/research.json",
+    "client_analysis": "source/config/report-profiles/client_analysis.json"
+  }
+}

@@ -57,6 +57,41 @@ class CheckerNegativeCasesTest {
                 com.agenthub.w06.contract.CitationSupport.SUPPORTED, sup);
     }
 
+    // ---- L2 语境绑定（修复数字/实体字符串交集误判，issue: code-level gap 7.3）----
+
+    @org.junit.jupiter.api.Test
+    void contextMismatchSameNumberDifferentMetricIsUnsupported() {
+        // 旧逻辑会因数字 0.85% 交集命中而误判 SUPPORTED；新逻辑看数字前最近主体词：
+        // 论断=营业收入，摘录=不良贷款率 → 语境错配 → UNSUPPORTED（BLOCKING）
+        Citation c = new Citation("C-1", "营业收入同比增长0.85%",
+                "sha-page-12", 12, "不良贷款率0.85%，同比下降。", "sha-any");
+        assertEquals(com.agenthub.w06.contract.CitationSupport.UNSUPPORTED, assessSupportDirect(c));
+    }
+
+    @org.junit.jupiter.api.Test
+    void samePageOtherMetricStillUnsupported() {
+        // 摘录同页既有营业收入也有不良率，但 0.85% 最近主体是不良率 → 仍判错配
+        Citation c = new Citation("C-1", "营业收入增长0.85%",
+                "sha-page-12", 12, "2025年实现营业收入3374.88亿元，不良率0.85%。", "sha-any");
+        assertEquals(com.agenthub.w06.contract.CitationSupport.UNSUPPORTED, assessSupportDirect(c));
+    }
+
+    @org.junit.jupiter.api.Test
+    void yearIsNotTreatedAsNumericClaim() {
+        // 论断只有年份+主体，无真实数值主张 → 主体词重合但无数字可核 → PARTIAL（非 UNSUPPORTED）
+        Citation c = new Citation("C-1", "2025年营业收入增长",
+                "sha-page-12", 12, "营业收入3,374.88亿元，同比增长0.83%。", "sha-any");
+        assertEquals(com.agenthub.w06.contract.CitationSupport.PARTIAL, assessSupportDirect(c));
+    }
+
+    @org.junit.jupiter.api.Test
+    void genericSubjectWithoutBankHardcode() {
+        // 泛化验证：客户分析场景主体词「满意度」不在旧硬编码词表，新逻辑仍能判定
+        Citation c = new Citation("C-1", "客户满意度达到92分",
+                "sha-x", 1, "本年度客户满意度92分，较上年提升。", "sha-any");
+        assertEquals(com.agenthub.w06.contract.CitationSupport.SUPPORTED, assessSupportDirect(c));
+    }
+
     @org.junit.jupiter.api.Test
     void unregisteredSourcePageIsBlocking() {
         // 引用第 99 页：快照定位不到（FABRICATED_CITATION）且不在任何已注册信源内（SOURCE_UNREGISTERED）

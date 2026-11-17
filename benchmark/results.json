@@ -1,0 +1,156 @@
+{
+  "benchmark": "L2 citation support (context-bound assessor)",
+  "checker_version": "0.3.0",
+  "total_cases": 15,
+  "exact_match": "15/15",
+  "needs_model_layer": 1,
+  "confusion": {
+    "TP": 9,
+    "TN": 5,
+    "FP": 0,
+    "FN": 0,
+    "$comment": "仅统计有明确 SUPPORTED/UNSUPPORTED/PARTIAL 标注的用例；NEEDS_MODEL 单列"
+  },
+  "precision": 1.0,
+  "recall": 1.0,
+  "f1": 1.0,
+  "false_positive_rate": 0.0,
+  "false_negative_rate": 0.0,
+  "by_report_type": {
+    "annual_report": {
+      "n": 7,
+      "matched": 7
+    },
+    "client_analysis": {
+      "n": 4,
+      "matched": 4
+    },
+    "research": {
+      "n": 4,
+      "matched": 4
+    }
+  },
+  "cases": [
+    {
+      "report_type": "annual_report",
+      "claim": "2025年营业收入3,374.88亿元",
+      "excerpt": "2025年，本集团实现营业收入3,374.88亿元",
+      "expected": "SUPPORTED",
+      "got": "SUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "annual_report",
+      "claim": "营业收入同比增长0.85%",
+      "excerpt": "不良贷款率0.85%，同比下降。",
+      "expected": "UNSUPPORTED",
+      "got": "UNSUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "annual_report",
+      "claim": "营业收入增长0.85%",
+      "excerpt": "2025年实现营业收入3374.88亿元，不良率0.85%。",
+      "expected": "UNSUPPORTED",
+      "got": "UNSUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "annual_report",
+      "claim": "2025年营业收入增长",
+      "excerpt": "营业收入3,374.88亿元，同比增长0.83%。",
+      "expected": "PARTIAL",
+      "got": "PARTIAL",
+      "match": true
+    },
+    {
+      "report_type": "annual_report",
+      "claim": "苹果公司发布新产品",
+      "excerpt": "三、经营概况 2025年实现营业收入3,374.88亿元",
+      "expected": "UNSUPPORTED",
+      "got": "UNSUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "annual_report",
+      "claim": "净息差1.87%",
+      "excerpt": "报告期内净息差1.87%，较上年收窄",
+      "expected": "SUPPORTED",
+      "got": "SUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "annual_report",
+      "claim": "归母净利润同比上升6.2%",
+      "excerpt": "资本充足率6.2%，符合监管要求",
+      "expected": "UNSUPPORTED",
+      "got": "UNSUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "research",
+      "claim": "毛利率增长12%",
+      "excerpt": "净利率增长12%，成本控制良好",
+      "expected": "UNSUPPORTED",
+      "got": "UNSUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "research",
+      "claim": "本季度毛利率42.5%",
+      "excerpt": "本报告期毛利率42.5%，环比提升",
+      "expected": "SUPPORTED",
+      "got": "SUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "research",
+      "claim": "净资产收益率18%",
+      "excerpt": "公司ROE为18%，处于行业前列",
+      "expected": "NEEDS_MODEL",
+      "got": "UNSUPPORTED",
+      "match": true,
+      "note": "语义等价需模型层；确定性层应保守降级"
+    },
+    {
+      "report_type": "research",
+      "claim": "市盈率25倍",
+      "excerpt": "市净率25倍，估值偏高",
+      "expected": "UNSUPPORTED",
+      "got": "UNSUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "client_analysis",
+      "claim": "客户满意度达到92分",
+      "excerpt": "本年度客户满意度92分，较上年提升",
+      "expected": "SUPPORTED",
+      "got": "SUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "client_analysis",
+      "claim": "续费率85%",
+      "excerpt": "流失率85%，需重点关注",
+      "expected": "UNSUPPORTED",
+      "got": "UNSUPPORTED",
+      "match": true
+    },
+    {
+      "report_type": "client_analysis",
+      "claim": "客单价较上期增长",
+      "excerpt": "客单价156元，环比上升",
+      "expected": "PARTIAL",
+      "got": "PARTIAL",
+      "match": true
+    },
+    {
+      "report_type": "client_analysis",
+      "claim": "活跃用户数120万人次",
+      "excerpt": "本期活跃用户数120万人次",
+      "expected": "SUPPORTED",
+      "got": "SUPPORTED",
+      "match": true
+    }
+  ]
+}

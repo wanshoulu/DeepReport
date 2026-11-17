@@ -1,0 +1,22 @@
+{
+  "report_type": "research",
+  "checker": "verify_metrics_generic",
+  "status": "WAITING_HUMAN",
+  "metrics_checked": 6,
+  "registry_metrics": [
+    "REVENUE",
+    "NET_PROFIT",
+    "GROSS_MARGIN",
+    "ROE",
+    "PE_RATIO",
+    "EPS"
+  ],
+  "violations": [
+    {
+      "rule": "BASE_UNRESOLVED",
+      "target": "GROSS_MARGIN",
+      "detail": "复算基数「营业成本」未在页内定位，降级人工",
+      "severity": "WARNING"
+    }
+  ]
+}

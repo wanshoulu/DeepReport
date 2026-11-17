@@ -1,0 +1,17 @@
+{
+  "$comment": "客户分析报告章节骨架。",
+  "report_type": "client_analysis",
+  "section_order": ["S-1","S-2","S-3","S-4","S-5","S-6","S-7"],
+  "sections": {
+    "S-1": { "title": "分析摘要", "type": "summary", "min_chars": 500 },
+    "S-2": { "title": "客户群画像与口径", "type": "background", "min_chars": 900 },
+    "S-3": { "title": "满意度与体验分析", "type": "analysis", "min_chars": 1200 },
+    "S-4": { "title": "留存与续费分析", "type": "analysis", "min_chars": 1200 },
+    "S-5": { "title": "价值贡献(客单价/ARPU)", "type": "analysis", "min_chars": 1000 },
+    "S-6": { "title": "问题诊断与建议", "type": "recommendation", "min_chars": 1000 },
+    "S-7": { "title": "数据来源与口径说明", "type": "disclosure", "min_chars": 400 }
+  },
+  "static_bodies": {
+    "S-7": "数据来源于 CRM 与埋点日志，指标口径以本报告中'数据来源与口径说明'为准。"
+  }
+}

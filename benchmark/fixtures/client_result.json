@@ -1,0 +1,14 @@
+{
+  "report_type": "client_analysis",
+  "checker": "verify_metrics_generic",
+  "status": "PASSED",
+  "metrics_checked": 5,
+  "registry_metrics": [
+    "SATISFACTION",
+    "RETENTION_RATE",
+    "ARPU",
+    "NPS",
+    "ACTIVE_USERS"
+  ],
+  "violations": []
+}

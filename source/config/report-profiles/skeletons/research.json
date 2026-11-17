@@ -1,0 +1,18 @@
+{
+  "$comment": "投研报告章节骨架——按调研的四层抽象，任务模板随报告类型切换。",
+  "report_type": "research",
+  "section_order": ["S-1","S-2","S-3","S-4","S-5","S-6","S-7","S-8"],
+  "sections": {
+    "S-1": { "title": "投资摘要与核心观点", "type": "summary", "min_chars": 600 },
+    "S-2": { "title": "公司/行业概况", "type": "background", "min_chars": 1000 },
+    "S-3": { "title": "财务表现与成长性", "type": "analysis", "min_chars": 1500 },
+    "S-4": { "title": "盈利能力与质量", "type": "analysis", "min_chars": 1200 },
+    "S-5": { "title": "估值分析", "type": "analysis", "min_chars": 1200 },
+    "S-6": { "title": "催化剂与风险", "type": "risk", "min_chars": 1000 },
+    "S-7": { "title": "数据来源与口径说明", "type": "disclosure", "min_chars": 400 },
+    "S-8": { "title": "免责声明", "type": "disclaimer", "min_chars": 200 }
+  },
+  "static_bodies": {
+    "S-8": "本报告仅供参考，不构成任何投资建议。数据来源于公开披露，力求准确但不保证完整。"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$comment": "客户分析指标字典——非财务场景，验证 checker 规则完全数据驱动。",
+  "version": "1.0.0",
+  "report_type": "client_analysis",
+  "metrics": {
+    "SATISFACTION":  { "name_zh": "客户满意度", "expected_unit": "分", "definition": "问卷均分(5分制或百分制，按来源标注)", "derived": null },
+    "RETENTION_RATE":{ "name_zh": "客户续费率", "expected_unit": "%", "definition": "续约客户数/到期客户数*100", "derived": null },
+    "ARPU":          { "name_zh": "客单价", "expected_unit": "元", "definition": "总收入/活跃客户数", "derived": null },
+    "NPS":           { "name_zh": "净推荐值", "expected_unit": "分", "definition": "推荐者占比-贬损者占比", "derived": null },
+    "ACTIVE_USERS":  { "name_zh": "活跃用户数", "expected_unit": "人", "definition": "报告期内有有效行为的去重用户", "derived": null }
+  },
+  "yoy_subjects": ["RETENTION_RATE", "ARPU", "ACTIVE_USERS"],
+  "delta_unit_rules": {
+    "rate_metrics": ["RETENTION_RATE"],
+    "rate_delta_word": "百分点",
+    "amount_metrics": ["ARPU", "ACTIVE_USERS"],
+    "amount_delta_word": "元"
+  },
+  "period_rules": { "prior_period": "上期", "yoy_tolerance_pp": 0.1 }
+}

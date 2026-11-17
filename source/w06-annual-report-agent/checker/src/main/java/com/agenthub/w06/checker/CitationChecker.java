@@ -29,7 +29,16 @@ import java.util.Set;
 public final class CitationChecker {
 
     public static final String CHECKER_ID = "citation-checker";
-    public static final String CHECKER_VERSION = "0.2.1";
+    public static final String CHECKER_VERSION = "0.3.0";
+
+    /** 支持度评估器：可通过 Lexicon 注入报告类型专属词典；默认用通用词典。 */
+    private final SemanticSupportAssessor assessor;
+
+    public CitationChecker() { this(null); }
+
+    public CitationChecker(SemanticSupportAssessor.Lexicon lexicon) {
+        this.assessor = new SemanticSupportAssessor(lexicon);
+    }
 
     public CheckResult check(AnnualReportArtifacts draft, NumericChecker.SnapshotTextResolver resolver) {
         return check(draft, resolver, java.util.List.of());
@@ -89,14 +98,14 @@ public final class CitationChecker {
                 continue;
             }
 
-            // 支持度三级判定（确定性部分）
-            CitationSupport support = assessSupport(c);
+            // 支持度三级判定（语境绑定，修复数字/实体字符串交集的语境错配误判）
+            CitationSupport support = assessor.assess(c.claimText(), c.evidenceExcerpt());
             switch (support) {
                 case PARTIAL -> violations.add(v("PARTIAL_SUPPORT", c.claimId(),
-                        "摘录与论断相关但支撑不完整（数字命中但口径/期间未同时覆盖）→ 建议人工复核",
+                        "摘录相关但支撑不完整（数值主体/口径/期间未同时覆盖，或仅主体词重合无数值可核）→ 转人工复核",
                         Severity.WARNING));
                 case UNSUPPORTED -> violations.add(v("UNSUPPORTED_CLAIM", c.claimId(),
-                        "摘录不含论断中的任何数字或关键实体 → 不支撑", Severity.BLOCKING));
+                        "摘录在数值同语境内不含论断的主体词与数值（语境错配或完全不支撑）", Severity.BLOCKING));
                 case SUPPORTED -> { /* 通过 */ }
             }
 
@@ -140,60 +149,14 @@ public final class CitationChecker {
     }
 
     /**
-     * 确定性支持度判定：
-     * - UNSUPPORTED：摘录与论断的数字交集为空 且 关键实体（公司名/指标名）交集为空
-     * - PARTIAL：有数字交集但论断含期间词（年/度/季）而摘录无对应期间数字对
-     * - SUPPORTED：其余
-     * 语义级灰区由 Critic agent 兜底（本方法只做可确定性判定的部分）。
+     * 兼容入口（测试与其他调用点）：委托给语境绑定的评估器。
+     * 判定规则见 SemanticSupportAssessor。默认用通用词典，无银行/报告类型硬编码。
      */
     public static CitationSupport assessSupport(Citation c) {
-        String claim = c.claimText() == null ? "" : c.claimText();
-        String excerpt = c.evidenceExcerpt() == null ? "" : c.evidenceExcerpt();
-        java.util.Set<String> claimNums = numbersOf(claim);
-        java.util.Set<String> excerptNums = numbersOf(excerpt);
-        boolean numOverlap = !claimNums.isEmpty()
-                && claimNums.stream().anyMatch(excerptNums::contains);
-        boolean entityOverlap = containsAny(claim, excerpt);
-        if (!numOverlap && !entityOverlap) {
-            return CitationSupport.UNSUPPORTED;
-        }
-        // 论断含期间年份（2024/2025等）但摘录中无该年份 → PARTIAL
-        java.util.Set<String> claimYears = yearsOf(claim);
-        if (!claimYears.isEmpty() && claimYears.stream().noneMatch(excerpt::contains)) {
-            return CitationSupport.PARTIAL;
-        }
-        return CitationSupport.SUPPORTED;
+        return DEFAULT_ASSESSOR.assess(c.claimText(), c.evidenceExcerpt());
     }
 
-    private static java.util.Set<String> numbersOf(String text) {
-        java.util.Set<String> nums = new java.util.HashSet<>();
-        java.util.regex.Matcher m = java.util.regex.Pattern
-                .compile("\\d+(?:,\\d{3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?").matcher(text);
-        while (m.find()) {
-            nums.add(m.group().replace(",", ""));
-        }
-        return nums;
-    }
-
-    private static java.util.Set<String> yearsOf(String text) {
-        java.util.Set<String> years = new java.util.HashSet<>();
-        java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?:19|20)\\d{2}").matcher(text);
-        while (m.find()) {
-            years.add(m.group());
-        }
-        return years;
-    }
-
-    private static boolean containsAny(String claim, String excerpt) {
-        // 关键实体抽查：公司名/常见指标词在摘录中出现
-        String[] entities = {"招商银行", "本集团", "营业收入", "净利润", "不良", "拨备", "净息差", "资本充足"};
-        boolean claimHas = false, excerptHas = false;
-        for (String e : entities) {
-            if (claim.contains(e)) claimHas = true;
-            if (excerpt.contains(e)) excerptHas = true;
-        }
-        return claimHas && excerptHas;
-    }
+    private static final SemanticSupportAssessor DEFAULT_ASSESSOR = new SemanticSupportAssessor();
 
     static String sha256(String s) {
         try {
