@@ -431,6 +431,39 @@ public final class CheckerHttpServer {
             handlePipelineStatus(ex);
             return;
         }
+        if ("/v1/report-types".equals(path) && "GET".equals(method)) {
+            ObjectNode out = MAPPER.createObjectNode();
+            ArrayNode types = out.putArray("types");
+            if (PROFILE_INDEX != null) {
+                JsonNode profiles = PROFILE_INDEX.path("profiles");
+                for (java.util.Iterator<String> it = profiles.fieldNames(); it.hasNext(); ) {
+                    String rt = it.next();
+                    ObjectNode t = types.addObject();
+                    t.put("report_type", rt);
+                    // index 里 profiles 值可能是路径串——元数据从画像文件补全（route 作用域有 staticDir）
+                    JsonNode meta = profiles.path(rt);
+                    if (meta.isTextual()) {
+                        try {
+                            Path pf = staticDir.resolve("profile-" + rt + ".json");
+                            if (Files.isRegularFile(pf)) meta = MAPPER.readTree(pf.toFile());
+                        } catch (IOException ignore) { }
+                    }
+                    t.put("display_name", meta.path("display_name").asText(rt));
+                    t.put("description", meta.path("description").asText(""));
+                    t.put("subject_label", meta.path("subject_label").asText("编制主体"));
+                    t.put("available", PIPELINE_PROFILES.containsKey(rt));
+                }
+            } else {
+                ObjectNode t = types.addObject();
+                t.put("report_type", "annual_report");
+                t.put("display_name", "年度经营简报");
+                t.put("description", "银行年报快照编制（单画像模式）");
+                t.put("subject_label", "编制主体");
+                t.put("available", STRUCTURE != null);
+            }
+            respond(ex, 200, out);
+            return;
+        }
         if ("/v1/tools".equals(path) && "GET".equals(method)) {
             respond(ex, 200, ToolGateway.list());
             return;
@@ -849,6 +882,41 @@ public final class CheckerHttpServer {
     /** 骨架配置（0.3.4 泛化）：节序/role/责任 agent/静态正文模板的唯一事实源 = STATIC_DIR/report-structure.json。 */
     private static JsonNode STRUCTURE;
 
+    /** 多报告类型画像（0.4 泛化）：report_type → 适配后的骨架。来源 = report-profiles/index.json 登记。 */
+    static final Map<String, ObjectNode> PIPELINE_PROFILES = new LinkedHashMap<>();
+    static JsonNode PROFILE_INDEX;
+
+    /** role→agent 推导（语言级语义映射，与报告类型无关；profile 可用 analyst 字段覆盖 analysis 类）。 */
+    private static String agentForRole(String role, String analyst) {
+        if (role == null) return analyst != null ? analyst : "finance-analyst";
+        switch (role) {
+            case "analysis": return analyst != null ? analyst : "finance-analyst";
+            case "summary": case "background": case "context": return "editor-in-chief";
+            case "writing": return "writer-agent";
+            default: return "disclosure-officer"; // risk/disclosure/disclaimer/static
+        }
+    }
+
+    /** 把 profile 骨架（title/type/min_chars schema）适配为 pipeline 消费的年报骨架形态
+     *  （label/role/agent schema）。纯字段映射，无报告类型特判。 */
+    private static ObjectNode adaptSkeleton(JsonNode skel, JsonNode profile) {
+        ObjectNode out = MAPPER.createObjectNode();
+        out.set("section_order", skel.path("section_order").deepCopy());
+        ObjectNode sections = out.putObject("sections");
+        String analyst = profile == null ? null : profile.path("analyst").asText(null);
+        for (java.util.Iterator<String> it = skel.path("sections").fieldNames(); it.hasNext(); ) {
+            String id = it.next();
+            JsonNode s = skel.path("sections").path(id);
+            ObjectNode n = sections.putObject(id);
+            String type = s.path("type").asText("analysis");
+            n.put("label", s.path("title").asText(id));
+            n.put("role", type);
+            n.put("agent", agentForRole(type, analyst));
+            if (s.has("min_chars")) n.put("min_chars", s.path("min_chars").asInt());
+        }
+        return out;
+    }
+
     private static void loadReportStructure(Path staticDir) {
         Path f = staticDir.resolve("report-structure.json");
         if (!Files.isRegularFile(f)) {
@@ -857,8 +925,37 @@ public final class CheckerHttpServer {
         }
         try {
             STRUCTURE = MAPPER.readTree(f.toFile());
+            PIPELINE_PROFILES.put("annual_report", (ObjectNode) STRUCTURE);
         } catch (IOException e) {
             System.out.println("WARN: report-structure.json 解析失败: " + e);
+        }
+        // 多画像登记（report-profiles/index.json）：骨架按各自 schema 适配后入注册表。
+        // 适配规则是结构性的（字段重命名 + role→agent 推导），新增报告类型 = 加配置，零代码改动。
+        Path idx = staticDir.resolve("profiles-index.json");
+        if (!Files.isRegularFile(idx)) {
+            System.out.println("INFO: profiles-index.json 未部署，单画像（annual_report）模式");
+            return;
+        }
+        try {
+            PROFILE_INDEX = MAPPER.readTree(idx.toFile());
+            JsonNode profiles = PROFILE_INDEX.path("profiles");
+            for (java.util.Iterator<String> it = profiles.fieldNames(); it.hasNext(); ) {
+                String rt = it.next();
+                if (PIPELINE_PROFILES.containsKey(rt)) continue;
+                // profiles 值可能是画像对象（display_name/analyst…）或路径串——后者读独立画像文件
+                JsonNode profNode = profiles.path(rt);
+                Path profFile = staticDir.resolve("profile-" + rt + ".json");
+                if (profNode.isTextual() && Files.isRegularFile(profFile)) {
+                    profNode = MAPPER.readTree(profFile.toFile());
+                }
+                Path skel = staticDir.resolve("skeletons").resolve(rt + ".json");
+                if (!Files.isRegularFile(skel)) continue;
+                JsonNode skelNode = MAPPER.readTree(skel.toFile());
+                PIPELINE_PROFILES.put(rt, adaptSkeleton(skelNode, profNode));
+            }
+            System.out.println("Pipeline profiles loaded: " + PIPELINE_PROFILES.keySet());
+        } catch (IOException e) {
+            System.out.println("WARN: profiles-index.json 解析失败: " + e);
         }
     }
 
@@ -901,7 +998,8 @@ public final class CheckerHttpServer {
             final String fBank = bank, fMode = mode, fTaskId = taskId;
             RUN_POOL.submit(() -> {
                 try {
-                    ObjectNode result = runPipelineCollect(fBank, fMode, fTaskId, runId, resolver, sources);
+                    String fReportType = body.path("report_type").asText("annual_report");
+                    ObjectNode result = runPipelineCollect(fBank, fMode, fTaskId, runId, fReportType, resolver, sources);
                     ObjectNode s = RUN_STATES.get(runId);
                     s.put("status", "SUCCEEDED");
                     s.put("task_id", result.path("task_id").asText(""));
@@ -926,9 +1024,10 @@ public final class CheckerHttpServer {
             return;
         }
         // 同步路径：直接执行并返回完整结果
+        String reportType = body.path("report_type").asText("annual_report");
         ObjectNode out;
         try {
-            out = runPipelineCollect(bank, mode, taskId, null, resolver, sources);
+            out = runPipelineCollect(bank, mode, taskId, null, reportType, resolver, sources);
         } catch (Exception e) {
             respond(ex, 500, errorNode("pipeline_error", String.valueOf(e.getMessage())));
             return;
@@ -940,17 +1039,34 @@ public final class CheckerHttpServer {
     private static ObjectNode runPipelineCollect(String bank, String mode, String taskId, String runId,
                                                  SnapshotHttpResolver resolver,
                                                  List<SourceEntry> sources) throws Exception {
+        return runPipelineCollect(bank, mode, taskId, runId, "annual_report", resolver, sources);
+    }
+
+    private static ObjectNode runPipelineCollect(String bank, String mode, String taskId, String runId,
+                                                 String reportType,
+                                                 SnapshotHttpResolver resolver,
+                                                 List<SourceEntry> sources) throws Exception {
+        // 骨架按报告类型选择：登记画像优先，未登记回退年报（行为向后兼容）
+        JsonNode structure = PIPELINE_PROFILES.containsKey(reportType)
+                ? PIPELINE_PROFILES.get(reportType) : STRUCTURE;
+        JsonNode activeStructure = structure != null ? structure : STRUCTURE;
         BankSnap snap = resolver.scope(bank);
         Path f = snap.dir.resolve("positive-artifact.json");
-        if (!Files.isRegularFile(f)) {
+        AnnualReportArtifacts art;
+        if (Files.isRegularFile(f)) {
+            art = MAPPER.treeToValue(MAPPER.readTree(f.toFile()), AnnualReportArtifacts.class);
+        } else if (!"annual_report".equals(reportType)) {
+            // 非年报类型：不从预置快照正例出发，而从骨架生成空模板工件——
+            // 节序/标题/role 全来自骨架配置（数据驱动），指标/引用由资料装载与核验阶段填充。
+            art = emptyArtifactFromSkeleton(activeStructure, snap, reportType);
+        } else {
             throw new IllegalStateException("artifact_missing: 银行快照缺少正例工件 " + snap.bank);
         }
-        AnnualReportArtifacts art = MAPPER.treeToValue(MAPPER.readTree(f.toFile()), AnnualReportArtifacts.class);
 
         // 节 → 责任 agent / role 映射自骨架配置（不写死「第几节归谁」）
         Map<String, String> sectionAgent = new LinkedHashMap<>();
         Map<String, String> sectionRole = new LinkedHashMap<>();
-        var secIt = STRUCTURE.path("sections").fields();
+        var secIt = activeStructure.path("sections").fields();
         while (secIt.hasNext()) {
             var e = secIt.next();
             sectionAgent.put(e.getKey(), e.getValue().path("agent").asText("editor-in-chief"));
@@ -1113,6 +1229,31 @@ public final class CheckerHttpServer {
         out.set("checks", checksNode(num, cit));
         out.set("stages", stages);
         return out;
+    }
+
+    /** 非年报类型：从骨架生成空模板工件（数据驱动，零硬编码内容）。 */
+    private static AnnualReportArtifacts emptyArtifactFromSkeleton(JsonNode structure, BankSnap snap,
+                                                                   String reportType) {
+        java.util.List<com.agenthub.w06.contract.ReportSection> sections = new ArrayList<>();
+        java.util.List<java.util.Map<String, Object>> charts = new ArrayList<>();
+        JsonNode order = structure.path("section_order");
+        java.util.Iterator<JsonNode> it = order.iterator();
+        while (it.hasNext()) {
+            String id = it.next().asText();
+            JsonNode s = structure.path("sections").path(id);
+            java.util.Map<String, Object> sec = new LinkedHashMap<>();
+            sec.put("section_id", id);
+            sec.put("title", s.path("label").asText(id));
+            sec.put("body", "");
+            sec.put("claim_ids", new ArrayList<String>());
+            sections.add(MAPPER.convertValue(sec, com.agenthub.w06.contract.ReportSection.class));
+        }
+        return new AnnualReportArtifacts(
+                "TASK-" + reportType.toUpperCase() + "-" + System.currentTimeMillis() % 100000,
+                snap.company, snap.reportPeriod == null || snap.reportPeriod.isBlank()
+                        ? "编制中" : snap.reportPeriod,
+                java.time.LocalDate.now().toString(),
+                new ArrayList<>(), new ArrayList<>(), sections, charts);
     }
 
     /** stage 上报（upsert 语义）：同名节点替换（占位→真实完成态），新名追加。

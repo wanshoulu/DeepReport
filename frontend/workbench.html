@@ -778,9 +778,18 @@ function greet() {
     + "资料装载 → 口径澄清 → 分节成稿 → 确定性核验 → 具名批准交付。<br>"
     + "两种方式开始：① 选择下方预置主体（银行年报快照，开箱即用）；"
     + "② 直接输入「写一份关于 XX 的报告」——若预置库没有该主体，导入其资料（上传 pdf/txt/md 或粘贴文本）后即可编制。");
+  const rt = (state.reportTypes || []).find(t => t.report_type === chat.reportType);
   const opts = (state.banks.length ? state.banks.filter(b => b.bank !== "live") : [{ bank: "cmb", company: "招商银行" }])
-    .map(b => ({ label: b.company + " · 2025 年度", cls: b.bank === "cmb" ? "primary" : "", fn: () => pickBank(b) }));
-  setQuick(opts, "点击选择编制主体：");
+    .map(b => ({ label: b.company, cls: b.bank === "cmb" ? "primary" : "", fn: () => pickBank(b) }));
+  opts.push({ label: "导入资料主体", fn: () => pickBank({ bank: "live", company: "导入资料主体" }) });
+  // 类型切换按钮：除当前类型外全部列出（数据驱动，来自 /v1/report-types）
+  (state.reportTypes || []).filter(t => t.report_type !== chat.reportType)
+    .forEach(t => opts.push({ label: "切换为" + t.display_name, fn: () => {
+      chat.reportType = t.report_type;
+      addMsg("editor-in-chief", "报告类型已切换为「" + t.display_name + "」（" + (t.description || "") + "）。请选择编制主体：");
+      greet();
+    } }));
+  setQuick(opts, "报告类型：" + (rt ? rt.display_name : "年度经营简报") + " · 点击选择编制主体：");
 }
 
 /** 从自由输入中按预置主体公司名做包含式匹配（数据驱动，非硬编码名单）。
@@ -953,7 +962,7 @@ async function startGeneration(correct) {
   addMsg("editor-in-chief",
     "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。启动六工位流水线（查数 → 分析 → 图表 → 写作 → 核验 → 主编），各工位按骨架配置分派……");
   // 六工位流水线：播报内容全部来自服务端 stages[]（headline/details），前端只渲染不编造
-  const p = await jpost("/v1/pipeline/run", { bank: chat.bank, task_id: chat.taskId });
+  const p = await jpost("/v1/pipeline/run", { bank: chat.bank, task_id: chat.taskId, report_type: chat.reportType || "annual_report" });
   if (!p.ok || !p.data || !p.data.stages) {
     addMsg("editor-in-chief", '<span style="color:var(--destructive)">流水线执行失败：HTTP ' + (p.status || "—") + " " + esc((p.data && p.data.error) || "") + "</span>");
     setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
@@ -1092,6 +1101,7 @@ async function approveDelivery() {
 function resetChat() {
   $("#chat-log").innerHTML = "";
   chat.stage = "greet"; chat.bank = "cmb"; chat.artifact = null; chat.taskId = null;
+  chat.reportType = "annual_report";
   greet();
 }
 
@@ -1108,6 +1118,16 @@ function handleFreeInput(text) {
   if (/演示/.test(text)) { addMsg("editor-in-chief", "已为您打开验收演示（也可在资产库底部展开入口）。"); switchTab("demo"); return; }
   /* 阶段意图 */
   if (chat.stage === "greet") {
+    // 报告类型识别：按 /v1/report-types 的 display_name+description 做包含式匹配（数据驱动）
+    for (const t of (state.reportTypes || [])) {
+      if (t.report_type === chat.reportType) continue;
+      const words = (t.display_name + " " + t.description).replace(/[，。；、]/g, " ").split(/\s+/).filter(w => w.length >= 2);
+      if (words.some(w => text.includes(w))) {
+        chat.reportType = t.report_type;
+        addMsg("editor-in-chief", "已识别报告类型：「" + t.display_name + "」。");
+        break;
+      }
+    }
     if (/你好|您好|hi|hello/i.test(text)) {
       addMsg("editor-in-chief", "您好！请选择编制主体（可点击下方快捷按钮）。");
     } else if (pickSubjectFromText(text)) {
@@ -1837,7 +1857,7 @@ async function startAgentRun(bank) {
   // 异步流水线：启动拿 run_id → 轮询 /v1/pipeline/status → 节点随服务端完成逐个点亮。
   // 轮询源是服务端真实 stages 增量（每工位完成即上报），前端只渲染不编造。
   try {
-    const resp = await jpost("/v1/pipeline/run?async=1", { bank: bank || "cmb", async: true });
+    const resp = await jpost("/v1/pipeline/run?async=1", { bank: bank || "cmb", async: true, report_type: bank === "live" ? (chat.reportType || "annual_report") : "annual_report" });
     const t = resp && resp.data ? resp.data : resp;
     if (!t || !t.run_id) throw new Error((t && t.message) || "运行启动失败");
     const runId = t.run_id;
@@ -2453,6 +2473,11 @@ async function init() {
     state.artifact = clone(positive);
     state.citeArtifact = state.artifact;
     state.banks = Array.isArray(banks) ? banks : [];
+    jget("/v1/report-types").then(r => {
+      if (r.ok && r.data && Array.isArray(r.data.types)) {
+        state.reportTypes = r.data.types.filter(t => t.available);
+      }
+    }).catch(() => {});
     /* 各银行快照 manifest 并行装载（对话流按所选银行取指标索引/释义） */
     const mans = await Promise.all(state.banks.map(b =>
       jget("/v1/snapshot/manifest?bank=" + b.bank).then(m => [b.bank, m]).catch(() => [b.bank, manifest])));
