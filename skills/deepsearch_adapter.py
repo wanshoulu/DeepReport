@@ -27,9 +27,27 @@ from pathlib import Path
 NUMBER_RE = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?%?")
 YEAR_RE = re.compile(r"^(?:19|20)\d{2}$")
 
+# 中文数量单位换算表（万/亿 → 统一为"万"口径比较），泛化：只认语言级单位字
+_CN_UNIT_SCALE = {"万": 1.0, "亿": 10000.0}
+
 
 def norm_num(s: str) -> str:
-    return s.replace(",", "").rstrip("%")
+    """归一化数值字符串：去千分位/百分号；识别中文单位（亿/万）并换算为同一口径。
+    "-3,758万" → -3758；"-0.3758亿" → -3758（亿=10000万）。"""
+    t = s.replace(",", "").rstrip("%")
+    m = re.search(r"(亿|万)$", t)
+    scale = 1.0
+    if m:
+        scale = _CN_UNIT_SCALE[m.group(1)]
+        t = t[: m.start()]
+    try:
+        v = float(t)
+        v *= scale
+        v = round(v, 6)  # 消浮点误差（-0.3758亿×10000 → -3758.0000000000005）
+        # 整数则去小数点（-3758.0 → -3758），保留浮点精度
+        return str(int(v)) if v == int(v) else str(v)
+    except ValueError:
+        return t
 
 
 # 量词类词：只描述数字的性质（"占比从29.0%"），不是数字的主体；
@@ -78,6 +96,9 @@ def assess_support(claim: str, excerpt: str, subjects, periods=("2025", "2024", 
     claims = []
     for m in NUMBER_RE.finditer(claim):
         num = m.group()
+        # 中文单位并入（"14.31亿"的 match 是"14.31"，单位在 match 外）
+        if claim[m.end():m.end() + 1] in ("亿", "万"):
+            num = num + claim[m.end()]
         if YEAR_RE.match(norm_num(num)):
             continue  # 年份是期间词
         # 有意义数值主张：排除列表序号（"1. **"形态）与表号（"表7-1"）
@@ -87,6 +108,10 @@ def assess_support(claim: str, excerpt: str, subjects, periods=("2025", "2024", 
             continue  # markdown 列表序号（序号数字在前, 判定须看数字之后）
         if re.search(r"表\s*$", before) or re.search(r"表\s*\d+\s*-\s*$", before):
             continue  # 表号（表7-1 的 '7' 与 '1' 两段都要跳过）
+        # 型号编号：字母前缀+数字（FH-909 / CH-92A / WJ-700），是标识符不是量值
+        # 分隔符可为 "-" 或 "/"（FH-909/FH-98），须回看字母+分隔符组合，防误伤"10%-"式文本
+        if re.search(r"[A-Za-z][-/]$", before) or re.search(r"^[A-Za-z]", num):
+            continue
         if not re.search(r"\d", num):
             continue
         claims.append((nearest_subject(before, subjects), num))
@@ -101,9 +126,35 @@ def assess_support(claim: str, excerpt: str, subjects, periods=("2025", "2024", 
         # 负数双记法（claim "-390.93" vs 原文会计括号 "(390.93)"）取绝对值归一
         target = norm_num(num).lstrip("-")
         hit = None
-        all_hits = [m for m in NUMBER_RE.finditer(excerpt) if norm_num(m.group()).lstrip("-") == target]
+        def _norm_hit(m):
+            """摘录侧 match 归一：数字后的中文单位（亿/万）并入换算口径。"""
+            nxt = excerpt[m.end():m.end() + 1]
+            return norm_num(m.group() + nxt) if nxt in ("亿", "万") else norm_num(m.group())
+
+        def _eq(target_s: str, hit_s: str) -> bool:
+            """数值相等判定：严格相等，或单位换算引入的四舍五入相对误差 <0.5%
+            （"143,063万元" vs "14.31亿"：143100 vs 143063，差0.026%）。"""
+            if target_s == hit_s:
+                return True
+            try:
+                a, b = abs(float(target_s)), abs(float(hit_s))
+                return a > 0 and abs(a - b) / a < 0.005
+            except ValueError:
+                return False
+
+        all_hits = [m for m in NUMBER_RE.finditer(excerpt) if _eq(target, _norm_hit(m).lstrip("-"))]
         if all_hits:
             hit = all_hits[0]
+        if hit is None:
+            # 双口径回退：claim 侧单位已并入 target（如"3,707.66亿"→37076600），
+            # 但摘录可能写同数字不带单位（表格"3,707.66"）——回退裸数字口径比较
+            # 剥离单位字得裸数字口径（num 可能已并入"亿/万"，须拆出再归一）
+            bare_target = norm_num(re.sub(r"(亿|万)$", "", num)).lstrip("-")
+            if bare_target != target:
+                all_hits = [m for m in NUMBER_RE.finditer(excerpt)
+                            if _eq(bare_target, _norm_hit(m).lstrip("-"))]
+                if all_hits:
+                    hit = all_hits[0]
         if hit is None:
             # % 主张降级裸数字匹配（原文表格百分比常不带 % 号，如 "55.6"）；
             # 同时做去尾零宽松匹配（"7.10%" vs 原文 "7.1"）
@@ -112,7 +163,7 @@ def assess_support(claim: str, excerpt: str, subjects, periods=("2025", "2024", 
             if "." in bare:
                 candidates.append(bare.rstrip("0").rstrip("."))
             for cand in candidates:
-                cand_hits = [m for m in NUMBER_RE.finditer(excerpt) if norm_num(m.group()) == cand]
+                cand_hits = [m for m in NUMBER_RE.finditer(excerpt) if _eq(cand, _norm_hit(m))]
                 if cand_hits:
                     hit = cand_hits[0]
                     # 注意: 不改 is_percent —— 百分比主张由原始形态决定, 免主体归属
@@ -408,13 +459,20 @@ def main():
         sev = "WARNING" if args.orphan_warning else "BLOCKING"
         violations.append(("ORPHAN_NUMBER", "*", f"{orphan} 个数值无引用支撑", sev))
 
-    # A5: 章节完整性（N8）
+    # A5: 章节完整性（N8）：模板章 ⊆ 产出章。模板标题可能带编号也可能不带，
+    # DeepSearch 产出会自动加编号 —— 比较时统一去掉编号前缀。
     if args.template_file:
         tpl = Path(args.template_file).read_text(encoding="utf-8")
-        tpl_heads = [m.group(2).strip().split(". ", 1)[-1]
-                     for m in re.finditer(r"^#\s+\d+\.\s*(.+)$", tpl, re.M)]
-        out_heads = [s["title"].split(". ", 1)[-1] for s in parsed["sections"]
-                     if re.match(r"^\d+\.\s", s["title"] or "")]
+        tpl_heads = []
+        for m in re.finditer(r"^#\s+(?:\d+\.\s*)?(.+)$", tpl, re.M):
+            h = m.group(1).strip()
+            if h and h not in ("目录", "摘要") and not h.startswith("表"):
+                tpl_heads.append(h)
+        out_heads = []
+        for s in parsed["sections"]:
+            h = re.sub(r"^\d+\.\s*", "", s["title"] or "").strip()
+            if h and re.match(r"^\d+\.\s", s["title"] or ""):
+                out_heads.append(h)
         missing = [h for h in tpl_heads if h not in out_heads]
         if missing:
             violations.append(("SECTION_MISSING", "*",
