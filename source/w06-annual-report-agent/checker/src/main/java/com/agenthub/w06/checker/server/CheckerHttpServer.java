@@ -44,6 +44,7 @@ package com.agenthub.w06.checker.server;
 
 import com.agenthub.w06.checker.CitationChecker;
 import com.agenthub.w06.checker.NumericChecker;
+import com.agenthub.w06.checker.MetricExtractor;
 import com.agenthub.w06.contract.AnnualReportArtifacts;
 import com.agenthub.w06.contract.DataTable;
 import com.agenthub.w06.contract.CheckResult;
@@ -1110,6 +1111,60 @@ public final class CheckerHttpServer {
             snap = resolver.scope(bank);
         }
 
+        // 指标抽取工位：工件 metrics 为空（模板工件）时从快照页文本按名称模式抽取八指标。
+        // 诚信约束：只取与期望单位一致的原文口径；抽不到的指标显式 NOT_FOUND（N1 满足/N3 豁免/N4 跳过）。
+        if (art.metrics() == null || art.metrics().isEmpty()) {
+            // 主体过滤：live 快照集可能混杂多主体信源（导入材料/DeepSearch 产物/其他机构节选），
+            // 指标抽取只信「标题含主体核心名」的信源——拿公司名做包含式匹配（数据驱动，非主体名单）。
+            // 公司名取核心段（去"股份有限公司"等后缀），如 "中国工商银行股份有限公司"→"工商银行"。
+            String companyCore = snap.company == null ? "" : snap.company
+                    .replaceAll("(股份|有限|集团)*公司$", "").trim();
+            Set<Integer> subjectPages = new java.util.TreeSet<>();
+            if (!companyCore.isEmpty() && snap.sourcesNode != null) {
+                for (JsonNode src : snap.sourcesNode) {
+                    String title = src.path("title").asText("");
+                    if (title.contains(companyCore)) {
+                        for (JsonNode pg : src.path("pages")) {
+                            subjectPages.add(pg.asInt());
+                        }
+                    }
+                }
+            }
+            // 过滤空回退：主体名与信源标题匹配不到（如 live 主体名是容器名而非报告主体）。
+            // 回退顺序：①标题含"年度报告/年报"的信源（报告正主优先于背景资料）②PRIMARY_OFFICIAL。
+            // live 快照集是多主体混合库——招行节选也是 PRIMARY，只按 authority 回退仍会串主体。
+            if (subjectPages.isEmpty()) {
+                for (JsonNode src : snap.sourcesNode) {
+                    String title = src.path("title").asText("");
+                    if (title.contains("年度报告") || title.contains("年报")) {
+                        for (JsonNode pg : src.path("pages")) subjectPages.add(pg.asInt());
+                    }
+                }
+            }
+            if (subjectPages.isEmpty()) {
+                for (JsonNode src : snap.sourcesNode) {
+                    if (!"PRIMARY_OFFICIAL".equals(src.path("authority").asText(""))) continue;
+                    for (JsonNode pg : src.path("pages")) subjectPages.add(pg.asInt());
+                }
+            }
+            ArrayNode metricPages = MAPPER.createArrayNode();
+            for (Integer pg : subjectPages) {
+                String text = snap.byPageNumber.get(pg);
+                if (text == null) continue;
+                ObjectNode mp = metricPages.addObject();
+                mp.put("digest", pageDigestFor(snap, pg));
+                mp.put("page", pg);
+                mp.put("text", text);
+            }
+            List<MetricValue> extracted = MetricExtractor.extract(metricPages, snap.reportPeriod);
+            art = new AnnualReportArtifacts(art.taskId(), art.company(), art.reportPeriod(),
+                    art.generatedAt(), extracted, art.citations(), art.sections(), art.charts());
+            long real = extracted.stream().filter(m -> !"NOT_FOUND".equals(m.value())).count();
+            System.out.println("Metric extraction: " + real + "/" + extracted.size()
+                    + " metrics resolved | subjectPages=" + subjectPages.size()
+                    + " companyCore=" + companyCore);
+        }
+
         // 节 → 责任 agent / role 映射自骨架配置（不写死「第几节归谁」）
         Map<String, String> sectionAgent = new LinkedHashMap<>();
         Map<String, String> sectionRole = new LinkedHashMap<>();
@@ -1302,6 +1357,14 @@ public final class CheckerHttpServer {
                         ? "编制中" : snap.reportPeriod,
                 java.time.LocalDate.now().toString(),
                 new ArrayList<>(), new ArrayList<>(), sections, charts);
+    }
+
+    /** 页码 → 信源 digest（指标/表格抽取共用证据三元组）。 */
+    private static String pageDigestFor(BankSnap snap, int page) {
+        for (Map.Entry<String, java.util.Set<Integer>> e : snap.sourcePages.entrySet()) {
+            if (e.getValue().contains(page)) return e.getKey();
+        }
+        return "sha256:page-" + page;
     }
 
     /** stage 上报（upsert 语义）：同名节点替换（占位→真实完成态），新名追加。
