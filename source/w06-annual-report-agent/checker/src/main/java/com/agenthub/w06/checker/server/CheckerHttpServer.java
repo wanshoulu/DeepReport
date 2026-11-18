@@ -1001,10 +1001,11 @@ public final class CheckerHttpServer {
             st.put("started_at", java.time.Instant.now().toString());
             RUN_STATES.put(runId, st);
             final String fBank = bank, fMode = mode, fTaskId = taskId;
+            final String fSubjectHint = body.path("subject_hint").asText("");
             RUN_POOL.submit(() -> {
                 try {
                     String fReportType = body.path("report_type").asText("annual_report");
-                    ObjectNode result = runPipelineCollect(fBank, fMode, fTaskId, runId, fReportType, resolver, sources);
+                    ObjectNode result = runPipelineCollect(fBank, fMode, fTaskId, runId, fReportType, fSubjectHint, resolver, sources);
                     ObjectNode s = RUN_STATES.get(runId);
                     s.put("status", "SUCCEEDED");
                     s.put("task_id", result.path("task_id").asText(""));
@@ -1030,9 +1031,10 @@ public final class CheckerHttpServer {
         }
         // 同步路径：直接执行并返回完整结果
         String reportType = body.path("report_type").asText("annual_report");
+        String subjectHint = body.path("subject_hint").asText("");
         ObjectNode out;
         try {
-            out = runPipelineCollect(bank, mode, taskId, null, reportType, resolver, sources);
+            out = runPipelineCollect(bank, mode, taskId, null, reportType, subjectHint, resolver, sources);
         } catch (Exception e) {
             respond(ex, 500, errorNode("pipeline_error", String.valueOf(e.getMessage())));
             return;
@@ -1049,6 +1051,13 @@ public final class CheckerHttpServer {
 
     private static ObjectNode runPipelineCollect(String bank, String mode, String taskId, String runId,
                                                  String reportType,
+                                                 SnapshotHttpResolver resolver,
+                                                 List<SourceEntry> sources) throws Exception {
+        return runPipelineCollect(bank, mode, taskId, runId, reportType, "", resolver, sources);
+    }
+
+    private static ObjectNode runPipelineCollect(String bank, String mode, String taskId, String runId,
+                                                 String reportType, String subjectHint,
                                                  SnapshotHttpResolver resolver,
                                                  List<SourceEntry> sources) throws Exception {
         // 骨架按报告类型选择：登记画像优先，未登记回退年报（行为向后兼容）
@@ -1072,7 +1081,9 @@ public final class CheckerHttpServer {
         // 引擎不可达/产出为空时不阻断——live 导入资料仍是编制依据（降级路径）。
         if (!"annual_report".equals(reportType)) {
             try {
-                String intent = snap.company + " " + reportType
+                String subjectForSearch = (subjectHint != null && !subjectHint.isBlank())
+                        ? subjectHint : snap.company;
+                String intent = subjectForSearch + " " + reportType
                         + " 深度检索研究：经营概况、财务表现、行业格局、风险";
                 com.fasterxml.jackson.databind.JsonNode dsResp = ToolGateway.call(
                         MAPPER.createObjectNode()
@@ -1117,7 +1128,10 @@ public final class CheckerHttpServer {
             // 主体过滤：live 快照集可能混杂多主体信源（导入材料/DeepSearch 产物/其他机构节选），
             // 指标抽取只信「标题含主体核心名」的信源——拿公司名做包含式匹配（数据驱动，非主体名单）。
             // 公司名取核心段（去"股份有限公司"等后缀），如 "中国工商银行股份有限公司"→"工商银行"。
-            String companyCore = snap.company == null ? "" : snap.company
+            // subject_hint 显式指定编制主体时优先于快照主体名（live 混合库场景必须显式传）
+            String subjectBase = (subjectHint != null && !subjectHint.isBlank())
+                    ? subjectHint : (snap.company == null ? "" : snap.company);
+            String companyCore = subjectBase
                     .replaceAll("(股份|有限|集团)*公司$", "").trim();
             Set<Integer> subjectPages = new java.util.TreeSet<>();
             if (!companyCore.isEmpty() && snap.sourcesNode != null) {
