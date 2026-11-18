@@ -95,6 +95,16 @@ public final class CheckerHttpServer {
     static final Map<String, AnnualReportArtifacts> TASK_ARTIFACTS = new HashMap<>();  // task_id -> 交付工件
     static final AtomicInteger TASK_SEQ = new AtomicInteger(2);                       // 启动预置 001–004，preload 后新任务从 005 递增
 
+    // ———— 实时运行状态（右侧面板轮询源）：run_id → {status, stages[], current, error} ————
+    // stages 由流水线各工位完成时增量写入；RUNNING 节点由 current 字段标注。
+    static final Map<String, ObjectNode> RUN_STATES = new java.util.concurrent.ConcurrentHashMap<>();
+    static final java.util.concurrent.ExecutorService RUN_POOL =
+            java.util.concurrent.Executors.newFixedThreadPool(2, r -> {
+                Thread t = new Thread(r, "pipeline-run");
+                t.setDaemon(true);
+                return t;
+            });
+
     // Agent Hub：运行时（已注册，可动态加载）+ 市场目录（可安装注册）
     static final Map<String, ObjectNode> AGENT_RUNTIME = new LinkedHashMap<>();
     static final Map<String, ObjectNode> AGENT_CATALOG = new LinkedHashMap<>();
@@ -415,6 +425,10 @@ public final class CheckerHttpServer {
         }
         if ("/v1/pipeline/run".equals(path) && "POST".equals(method)) {
             handlePipelineRun(ex, resolver, sources);
+            return;
+        }
+        if (path.startsWith("/v1/pipeline/status") && "GET".equals(method)) {
+            handlePipelineStatus(ex);
             return;
         }
         if ("/v1/tools".equals(path) && "GET".equals(method)) {
@@ -859,6 +873,7 @@ public final class CheckerHttpServer {
      * 六工位受控生成流水线（确定性重放，无 LLM）：查数 → 分析 → 图表 → 写作 → 核验 → 主编。
      * 分派/标题/节序全部来自骨架配置与工件数据，服务端零机构特判；换银行=换数据配置。
      */
+    /** 异步启动入口：async=1 立即返回 run_id；否则保持同步行为（旧调用方零破坏）。 */
     private static void handlePipelineRun(HttpExchange ex, SnapshotHttpResolver resolver,
                                           List<SourceEntry> sources) throws IOException {
         if (STRUCTURE == null) {
@@ -869,11 +884,66 @@ public final class CheckerHttpServer {
         String bank = body.path("bank").asText(resolver.defaultBank);
         String mode = body.path("mode").asText("brief");
         String taskId = body.path("task_id").asText("");
+        boolean asyncMode = body.path("async").asBoolean(false)
+                || "1".equals(parseQuery(ex.getRequestURI().getRawQuery()).getOrDefault("async", ""));
+
+        if (asyncMode) {
+            String runId = "RUN-" + System.currentTimeMillis();
+            ObjectNode st = MAPPER.createObjectNode();
+            st.put("run_id", runId);
+            st.put("status", "RUNNING");
+            st.put("bank", bank);
+            st.put("mode", mode);
+            st.put("current", "");
+            st.putArray("stages");
+            st.put("started_at", java.time.Instant.now().toString());
+            RUN_STATES.put(runId, st);
+            final String fBank = bank, fMode = mode, fTaskId = taskId;
+            RUN_POOL.submit(() -> {
+                try {
+                    ObjectNode result = runPipelineCollect(fBank, fMode, fTaskId, runId, resolver, sources);
+                    ObjectNode s = RUN_STATES.get(runId);
+                    s.put("status", "SUCCEEDED");
+                    s.put("task_id", result.path("task_id").asText(""));
+                    s.put("artifact_digest", result.path("artifact_digest").asText(""));
+                    s.put("company", result.path("company").asText(""));
+                    s.put("report_period", result.path("report_period").asText(""));
+                    s.set("stages", result.path("stages").deepCopy());
+                    s.set("checks", result.path("checks").deepCopy());
+                    s.put("finished_at", java.time.Instant.now().toString());
+                } catch (Exception e) {
+                    ObjectNode s = RUN_STATES.get(runId);
+                    s.put("status", "FAILED");
+                    s.put("error", String.valueOf(e.getMessage()));
+                    s.put("finished_at", java.time.Instant.now().toString());
+                }
+            });
+            ObjectNode ack = MAPPER.createObjectNode();
+            ack.put("run_id", runId);
+            ack.put("status", "RUNNING");
+            ack.put("bank", bank);
+            respond(ex, 200, ack);
+            return;
+        }
+        // 同步路径：直接执行并返回完整结果
+        ObjectNode out;
+        try {
+            out = runPipelineCollect(bank, mode, taskId, null, resolver, sources);
+        } catch (Exception e) {
+            respond(ex, 500, errorNode("pipeline_error", String.valueOf(e.getMessage())));
+            return;
+        }
+        respond(ex, 200, out);
+    }
+
+    /** 流水线主体（供同步/异步共用）。runId 非空时按 stage 完成度增量上报 RUN_STATES。 */
+    private static ObjectNode runPipelineCollect(String bank, String mode, String taskId, String runId,
+                                                 SnapshotHttpResolver resolver,
+                                                 List<SourceEntry> sources) throws Exception {
         BankSnap snap = resolver.scope(bank);
         Path f = snap.dir.resolve("positive-artifact.json");
         if (!Files.isRegularFile(f)) {
-            respond(ex, 404, errorNode("artifact_missing", "银行快照缺少正例工件: " + snap.bank));
-            return;
+            throw new IllegalStateException("artifact_missing: 银行快照缺少正例工件 " + snap.bank);
         }
         AnnualReportArtifacts art = MAPPER.treeToValue(MAPPER.readTree(f.toFile()), AnnualReportArtifacts.class);
 
@@ -914,6 +984,8 @@ public final class CheckerHttpServer {
         // 会话记忆，续写与反思修订轮在同一会话内进行。
         LongFormOutcome lf = null;
         if ("long_form".equals(mode)) {
+            // 慢工位预上报：LLM 写作分钟级，先让面板看到"写作·执行中"
+            reportStageRunning(runId, "写作", "writer-agent", "writer-agent 编制中（任务分解 → 成稿 → 反思）");
             lf = runLongForm(art, snap, sectionRole, sectionAgent, resolver, sources, dataTables);
             art = lf.artifacts();
         }
@@ -944,6 +1016,7 @@ public final class CheckerHttpServer {
                     + " —— 外部素材须 snapshot_commit 落盘注册后方可引用");
         }
         stages.add(s1);
+        reportStage(runId, s1);
 
         // 2) 分析：逐指标洞察（值·单位·同比口径），口径文案由 DeltaUnit 承载
         ObjectNode s2 = stageNode("analysis", "分析", String.join(", ", analysts), "逐指标洞察（值 · 单位 · 同比口径）");
@@ -959,6 +1032,7 @@ public final class CheckerHttpServer {
             det2.add(ins.toString());
         }
         stages.add(s2);
+        reportStage(runId, s2);
 
         // 3) 图表：类型/标题/挂载节随图表数据文件，chart-agent 只渲染不改数
         ObjectNode s3 = stageNode("chart", "图表", "chart-agent", "内联 SVG 图表绘制与挂载校验");
@@ -968,6 +1042,7 @@ public final class CheckerHttpServer {
                     + " → 挂载 " + ch.get("section_id"));
         }
         stages.add(s3);
+        reportStage(runId, s3);
 
         // 4) 写作：成稿执行统一归 writer-agent（openjiuwen deep agent）；骨架 sectionAgent
         //    表示各节分析洞察的责任 agent（Stage 2 分析工位），两者职责互补不冲突。
@@ -992,6 +1067,7 @@ public final class CheckerHttpServer {
                     + " · 正文 " + sec.body().length() + " 字 · 引用 " + sec.claimIds().size() + " 条");
         }
         stages.add(s4);
+        reportStage(runId, s4);
 
         // 5) 核验：真实跑两项确定性核验（N1-N7 / C1-C2）
         CheckResult num = NUMERIC.check(art, resolver.scopedFor(art));
@@ -1002,6 +1078,7 @@ public final class CheckerHttpServer {
         s5.withArray("details").add("引用核验 " + cit.status()
                 + (cit.violations().isEmpty() ? "" : "，违规 " + cit.violations().size() + " 条"));
         stages.add(s5);
+        reportStage(runId, s5);
 
         // 交付登记：产物 upsert 进报告库——对话流传入预登记 task_id 则沿用该编号，
         // 直跑（curl/脚本）则自动指派；报告生成后即从报告库（GET /v1/tasks）可见。
@@ -1022,6 +1099,7 @@ public final class CheckerHttpServer {
         s6.withArray("details").add("批准指引：POST /v1/approvals?task_id=" + finalTaskId
                 + "（approver 具名；批准绑定内容指纹，工件一改批准即失效）");
         stages.add(s6);
+        reportStage(runId, s6);
 
         ObjectNode out = MAPPER.createObjectNode();
         out.put("task_id", finalTaskId);
@@ -1034,7 +1112,66 @@ public final class CheckerHttpServer {
         out.set("artifact", artifactOut);
         out.set("checks", checksNode(num, cit));
         out.set("stages", stages);
-        respond(ex, 200, out);
+        return out;
+    }
+
+    /** stage 上报（upsert 语义）：同名节点替换（占位→真实完成态），新名追加。
+     *  供右侧面板轮询逐节点点亮；current 始终指向最新上报节点。 */
+    private static void reportStage(String runId, ObjectNode stage) {
+        if (runId == null) return;
+        ObjectNode s = RUN_STATES.get(runId);
+        if (s == null) return;
+        synchronized (s) {
+            com.fasterxml.jackson.databind.node.ArrayNode arr = s.withArray("stages");
+            String name = stage.path("name").asText("");
+            boolean replaced = false;
+            for (int i = 0; i < arr.size(); i++) {
+                if (name.equals(arr.get(i).path("name").asText(""))) {
+                    arr.set(i, stage.deepCopy());
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) arr.add(stage.deepCopy());
+            s.put("current", name);
+        }
+    }
+
+    /** 慢工位（LLM 写作等）预上报 RUNNING 占位，使面板在长耗时执行期间即显示进行中状态。 */
+    private static void reportStageRunning(String runId, String name, String agent, String headline) {
+        if (runId == null) return;
+        ObjectNode s = RUN_STATES.get(runId);
+        if (s == null) return;
+        synchronized (s) {
+            boolean exists = false;
+            for (com.fasterxml.jackson.databind.JsonNode n : s.withArray("stages")) {
+                if (name.equals(n.path("name").asText(""))) { exists = true; break; }
+            }
+            if (!exists) {
+                ObjectNode p = MAPPER.createObjectNode();
+                p.put("stage_id", "writing");
+                p.put("name", name);
+                p.put("agent", agent);
+                p.put("headline", headline);
+                p.put("status", "RUNNING");
+                s.withArray("stages").add(p);
+                s.put("current", name);
+            }
+        }
+    }
+
+    /** 运行状态查询：GET /v1/pipeline/status?run_id=...（全量 stages 快照 + status）。 */
+    private static void handlePipelineStatus(HttpExchange ex) throws IOException {
+        Map<String, String> q = parseQuery(ex.getRequestURI().getRawQuery());
+        String runId = q.getOrDefault("run_id", "");
+        ObjectNode s = RUN_STATES.get(runId);
+        if (s == null) {
+            respond(ex, 404, errorNode("run_not_found", "未知 run_id: " + runId));
+            return;
+        }
+        synchronized (s) {
+            respond(ex, 200, s.deepCopy());
+        }
     }
 
     // ------------------------------------------------------------------

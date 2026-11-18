@@ -1771,24 +1771,70 @@ let RUN_PANEL = { trace: null, view: "timeline", timer: null, openNodes: new Set
 function fmtMs(ms) { return ms < 1000 ? ms + "ms" : (ms / 1000).toFixed(1) + "s"; }
 
 async function startAgentRun(bank) {
-  renderRunPanelLoading();
+  // 异步流水线：启动拿 run_id → 轮询 /v1/pipeline/status → 节点随服务端完成逐个点亮。
+  // 轮询源是服务端真实 stages 增量（每工位完成即上报），前端只渲染不编造。
   try {
-    // 走 pipeline/run（六工位受控流水线）→ 前端组装运行轨迹（nodes 供运行面板/执行图消费）
-    const resp = await jpost("/v1/pipeline/run", { bank: bank || "cmb" });
+    const resp = await jpost("/v1/pipeline/run?async=1", { bank: bank || "cmb", async: true });
     const t = resp && resp.data ? resp.data : resp;
-    if (!t || !t.stages) throw new Error((t && t.message) || "运行启动失败");
-    const nodes = t.stages.map(st => ({
-      id: st.stage_id, title: st.name + " · " + (st.agent || ""),
-      status: "SUCCEEDED", elapsed_ms: st.elapsed_ms || 0,
-      output: (st.details || []).join("；").slice(0, 300)
-    }));
+    if (!t || !t.run_id) throw new Error((t && t.message) || "运行启动失败");
+    const runId = t.run_id;
+    // 骨架节点（status=RUNNING），由轮询结果按服务端权威 stage 名逐个替换为真实完成态
+    const SKELETON = [
+      { name: "查数", agent: "material-agent" },
+      { name: "分析", agent: "analysis-agents" },
+      { name: "图表", agent: "chart-agent" },
+      { name: "写作", agent: "writer-agent" },
+      { name: "核验", agent: "numeric-checker, citation-checker" },
+      { name: "主编", agent: "editor-in-chief" },
+    ];
     RUN_PANEL.trace = {
-      run_id: t.task_id, status: "SUCCEEDED",
-      nodes,
-      checks: t.checks, digest: t.artifact_digest
+      run_id: runId, status: "RUNNING", bank,
+      nodes: SKELETON.map(s => ({
+        id: s.name, title: s.name + " · " + s.agent,
+        status: "RUNNING", elapsed_ms: 0, output: "",
+        type: s.name === "核验" ? "CHECKER" : s.name === "主编" ? "GATEKEEP" : "AGENT",
+      })),
     };
     renderRunPanel();
-    toast("运行 " + t.task_id + " 已完成：双核验 " + (t.checks ? t.checks.numeric.status + "/" + t.checks.citation.status : "—"));
+    const poll = async () => {
+      try {
+        const r = await jget("/v1/pipeline/status?run_id=" + encodeURIComponent(runId));
+        const d = r.data;
+        if (!d) throw new Error("状态查询失败");
+        const doneStages = d.stages || [];
+        // 服务端 name 是权威：按名匹配骨架节点并替换为真实完成态
+        for (const st of doneStages) {
+          const node = RUN_PANEL.trace.nodes.find(n => n.title.startsWith(st.name));
+          if (node && node.status !== "SUCCEEDED") {
+            node.status = "SUCCEEDED";
+            node.elapsed_ms = st.elapsed_ms || 0;
+            node.output = (st.details || []).join("；").slice(0, 300);
+            node.skill_used = st.agent || "";
+          }
+        }
+        const cur = RUN_PANEL.trace.nodes.find(n => n.status !== "SUCCEEDED");
+        RUN_PANEL.trace.current = cur ? cur.title : "";
+        if (d.status === "SUCCEEDED" || d.status === "FAILED") {
+          RUN_PANEL.trace.status = d.status;
+          RUN_PANEL.trace.checks = d.checks;
+          RUN_PANEL.trace.task_id = d.task_id;
+          RUN_PANEL.trace.digest = d.artifact_digest;
+          RUN_PANEL.trace.nodes.forEach(n => {
+            if (n.status === "RUNNING") n.status = d.status === "SUCCEEDED" ? "SUCCEEDED" : "FAILED";
+          });
+          renderRunPanel();
+          toast(d.status === "SUCCEEDED"
+            ? "运行完成：双核验 " + (d.checks ? d.checks.numeric.status + "/" + d.checks.citation.status : "—")
+            : "运行失败：" + (d.error || "未知错误"));
+          return;
+        }
+        renderRunPanel();
+        setTimeout(poll, 1000);
+      } catch (e) {
+        renderRunPanelError(e.message);
+      }
+    };
+    setTimeout(poll, 800);
   } catch (e) {
     renderRunPanelError(e.message);
   }
@@ -1817,8 +1863,12 @@ function renderRunPanel() {
   p.className = "run-panel";
   const nodes = t.nodes || [];
   const ok = nodes.filter(n => n.status === "SUCCEEDED").length;
+  const liveBar = t.status === "RUNNING"
+    ? '<div class="rp-live-bar"><span class="rp-dot"></span>执行中 · 当前工位：' + esc(t.current || "…")
+      + "（" + ok + "/" + nodes.length + " 完成）</div>"
+    : "";
   const st = { SUCCEEDED: ["✓", "var(--success)"], RUNNING: ["◐", "#3b7bf5"], FAILED: ["✕", "#d64545"] }[t.status] || ["?", "var(--muted)"];
-  let html = '<div class="rp-head"><h3>Agent 运行 <span style="font-size:11px;color:var(--muted);font-weight:400" class="mono">' + esc(t.run_id) + " · " + esc(t.task_id) + "</span>"
+  let html = liveBar + '<div class="rp-head"><h3>Agent 运行 <span style="font-size:11px;color:var(--muted);font-weight:400" class="mono">' + esc(t.run_id) + " · " + esc(t.task_id) + "</span>"
     + '<span style="color:' + st[1] + ';font-size:12px">' + st[0] + " " + esc(t.status) + "</span></h3>"
     + '<div class="rp-stats">'
     + '<div class="rp-stat"><div class="v">' + nodes.length + '</div><div class="k">节点</div></div>'
