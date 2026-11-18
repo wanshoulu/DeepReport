@@ -1,6 +1,6 @@
 # Report Agent（通用长报告智能体）
 
-> **数据可溯、数字可核验的长报告智能体——一个通用内核，配一组可插拔的领域资产。**
+> **产品名 DeepReport · 数据可溯、数字可核验的长报告智能体——一个通用内核，配一组可插拔的领域资产。**
 
 ## 项目简介
 
@@ -73,7 +73,7 @@ Report Agent 面向**强监管、强溯源的长报告编制**：从落盘的原
 | `source/w06-annual-report-agent/` | Maven 工程：`agent-orchestrator` / `agents` / `checker` 三模块，41 个 Java 文件（年报参考实现，正向领域无关内核重构） |
 | `source/config/` | `tools.json`、`report-structure.json`、`report-profiles/`（三种报告类型画像 + 指标字典 + 骨架） |
 | `skills/` | `annual-report`、`orchestrator-skill`、`verify_metrics_generic.py`（通用数值核验） |
-| `frontend/workbench.html` | 工作台：对话 / 资产库 / 报告库三页 |
+| `frontend/workbench.html` | DeepReport 工作台：报告编制 / 资产库 / 报告库三页 |
 | `benchmark/` | `eval_checkers.py`（评测基准）、`results.json`、`fixtures/`（投研/客户分析样本） |
 | `reviews/` | 架构全景、对标调研、代码级差距、泛化与 L2 修复等 |
 | `artifacts/` | 工行 2025 年报成品 HTML + `gen_report_v2.py` 渲染脚本（完整版在 `annual-report` 分支） |

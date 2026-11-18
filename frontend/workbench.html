@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>W06 年报工作台 · 年度经营简报（多银行）</title>
+<title>DeepReport · 受控报告编制工作台</title>
 <style>
 /* ———— SkillHub 设计 token（与 skill hub 站点同源）———— */
 :root {
@@ -503,14 +503,14 @@ details summary::marker { color: var(--muted); }
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="brand-mark">W06</span>年报工作台<span class="brand-en">Annual Report Workbench</span></div>
+  <div class="brand"><span class="brand-mark">DR</span>DeepReport<span class="brand-en">Controlled Report Workbench</span></div>
   <div class="top-status">
     <span id="health-badge" class="badge neutral">连接中…</span>
     <span class="mono" id="health-ver"></span>
   </div>
 </header>
 <nav class="tabs" id="tabs">
-  <button class="tab active" data-view="chat">对话</button>
+  <button class="tab active" data-view="chat">报告编制</button>
   <button class="tab" data-view="assets">资产库</button>
   <button class="tab" data-view="reports">报告库</button>
 </nav>
@@ -1508,7 +1508,7 @@ async function renderAssets() {
     + '<div class="src-grid">' + srcCards + "</div>"
     + '<div class="group-h">本地导入资料 <span class="g-tag">live 快照集 · ' + docSources.length
     + " 份 · 与联网抓取同纪律门（sha256 注册后即可引用核验）</span></div>"
-    + (docCards || '<div class="kv">暂无导入资料 —— 对话页「导入资料」可上传 pdf/txt/md/json，落盘注册后即刻可被报告引用。</div>')
+    + (docCards || '<div class="kv">暂无导入资料 —— 报告编制页「导入资料」可上传 pdf/txt/md/json，落盘注册后即刻可被报告引用。</div>')
     + '<div class="group-h">核验规则知识 <span class="g-tag">数值 N1–N7 + 引用 C1–C2</span></div>'
     + '<div class="asset-grid cols-2">' + ruleTiles + "</div>"
     + '<div class="group-h">释义知识 <span class="g-tag">entities</span></div>'
