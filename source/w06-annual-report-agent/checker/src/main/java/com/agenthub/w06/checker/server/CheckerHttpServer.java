@@ -93,6 +93,7 @@ public final class CheckerHttpServer {
     // 报告库（任务历史，内存态：容器存活期内刷新不丢）
     static final Map<String, ObjectNode> TASKS = new LinkedHashMap<>();               // task_id -> 任务记录
     static final Map<String, AnnualReportArtifacts> TASK_ARTIFACTS = new HashMap<>();  // task_id -> 交付工件
+    static final Map<String, ArrayNode> TASK_TABLES = new HashMap<>();                 // task_id -> 结构化数据表（工件 record 无此字段，旁挂）
     static final AtomicInteger TASK_SEQ = new AtomicInteger(2);                       // 启动预置 001–004，preload 后新任务从 005 递增
 
     // ———— 实时运行状态（右侧面板轮询源）：run_id → {status, stages[], current, error} ————
@@ -536,7 +537,10 @@ public final class CheckerHttpServer {
             }
             ObjectNode out = MAPPER.createObjectNode();
             out.set("task", task.deepCopy());
-            out.set("artifact", MAPPER.valueToTree(artifact));
+            ObjectNode artOut = MAPPER.valueToTree(artifact);
+            ArrayNode tbl = TASK_TABLES.get(id);  // 数据表旁挂存储合并（record 无 tables 字段）
+            if (tbl != null && !tbl.isEmpty()) artOut.set("tables", tbl.deepCopy());
+            out.set("artifact", artOut);
             respond(ex, 200, out);
             return;
         }
@@ -1055,12 +1059,11 @@ public final class CheckerHttpServer {
         AnnualReportArtifacts art;
         if (Files.isRegularFile(f)) {
             art = MAPPER.treeToValue(MAPPER.readTree(f.toFile()), AnnualReportArtifacts.class);
-        } else if (!"annual_report".equals(reportType)) {
-            // 非年报类型：不从预置快照正例出发，而从骨架生成空模板工件——
-            // 节序/标题/role 全来自骨架配置（数据驱动），指标/引用由资料装载与核验阶段填充。
-            art = emptyArtifactFromSkeleton(activeStructure, snap, reportType);
         } else {
-            throw new IllegalStateException("artifact_missing: 银行快照缺少正例工件 " + snap.bank);
+            // 工件缺失（如 live 主体）：统一从骨架生成空模板工件——
+            // 节序/标题/role 全来自骨架配置（数据驱动），指标/引用由资料装载与核验阶段填充。
+            // 年报不再特判预置正例：live + 完整材料 + 年报骨架 = 真编制路径（等价性回归的基础）。
+            art = emptyArtifactFromSkeleton(activeStructure, snap, reportType);
         }
 
         // 深度搜索联动（非年报类型）：以"主体 + 报告类型"为意图调 DeepSearch 引擎检索研究，
@@ -1252,6 +1255,7 @@ public final class CheckerHttpServer {
         ObjectNode taskRec = registerTask(taskId, regMeta, art);
         String finalTaskId = taskRec.path("task_id").asText();
         String digest = taskRec.path("artifact_digest").asText();
+        if (dataTables != null && !dataTables.isEmpty()) TASK_TABLES.put(finalTaskId, dataTables.deepCopy());
 
         // 6) 主编：汇总 + 批准指引（批准绑定工件内容指纹）
         ObjectNode s6 = stageNode("consolidation", "主编", "editor-in-chief", "汇总核验结论并出具批准指引");
@@ -1489,8 +1493,10 @@ public final class CheckerHttpServer {
         rounds.add("写作轮：任务书分派（会话 " + sessionId + "），agent 产出 "
                 + bodies.size() + "/" + analysisIds.size() + " 节");
 
-        // 2) 缺节续写：输出截断或漏节时由同一会话续写（框架记忆支撑），最多 4 轮
-        for (int round = 1; round <= 4; round++) {
+        // 2) 缺节续写：输出截断或漏节时由同一会话续写（框架记忆支撑）。
+        // 轮次上限动态 = 缺节数 + 2（每轮至少补 1 节即可收敛；固定 4 轮在完整年报 21 缺节场景远不够）
+        int maxContinueRounds = Math.min(analysisIds.size() + 2, 16);
+        for (int round = 1; round <= maxContinueRounds; round++) {
             List<String> missing = new ArrayList<>();
             for (String id : analysisIds) {
                 if (!bodies.containsKey(id)) missing.add(id);
@@ -1673,9 +1679,15 @@ public final class CheckerHttpServer {
 
     /** 缺节续写指令（输出协议不变；同一会话内 agent 可见此前任务书与成稿）。 */
     private static String buildContinueDirective(List<String> missing) {
+        // 分批指令：一次要求多节（agent 每轮常只回 1 节 → 明确要求批量输出以减少轮数）
+        int batch = Math.min(missing.size(), 4);
+        String head = String.join("、", missing.subList(0, batch));
+        String rest = missing.size() > batch
+                ? "\n本轮完成后仍有 " + (missing.size() - batch) + " 节待续（" + String.join("、", missing.subList(batch, missing.size())) + "）。"
+                : "";
         return "上一轮输出不完整，缺少章节：" + String.join("、", missing) + "\n"
-                + "请按任务书继续完成缺失章节的写作，只输出缺失章节的块，"
-                + "输出协议不变（块首行只写 [S-n]，正文从下一行开始）。";
+                + "请按任务书继续完成缺失章节的写作。本轮必须一次性输出以下 " + batch + " 节：" + head + rest + "\n"
+                + "只输出缺失章节的块，输出协议不变（块首行只写 [S-n]，正文从下一行开始）。";
     }
 
     /** 核验违规反馈（反思修订轮输入）：违规清单 + 修订契约。 */
