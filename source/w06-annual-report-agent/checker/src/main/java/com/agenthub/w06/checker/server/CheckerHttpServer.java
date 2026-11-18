@@ -1063,6 +1063,50 @@ public final class CheckerHttpServer {
             throw new IllegalStateException("artifact_missing: 银行快照缺少正例工件 " + snap.bank);
         }
 
+        // 深度搜索联动（非年报类型）：以"主体 + 报告类型"为意图调 DeepSearch 引擎检索研究，
+        // 产物经 snapshot_commit 落盘注册（sha256 纪律门）后即刻可被引用核验接受。
+        // 引擎不可达/产出为空时不阻断——live 导入资料仍是编制依据（降级路径）。
+        if (!"annual_report".equals(reportType)) {
+            try {
+                String intent = snap.company + " " + reportType
+                        + " 深度检索研究：经营概况、财务表现、行业格局、风险";
+                com.fasterxml.jackson.databind.JsonNode dsResp = ToolGateway.call(
+                        MAPPER.createObjectNode()
+                                .put("tool_name", "deepsearch_research")
+                                .set("arguments", MAPPER.createObjectNode().put("query", intent)),
+                        snap.dir, resolver, sources);
+                com.fasterxml.jackson.databind.JsonNode dataNode = dsResp.path("data");
+                String md = (dataNode != null && !dataNode.isMissingNode()
+                        ? dataNode.path("report_md") : dsResp.path("report_md")).asText("");
+                if (md.length() > 500) {
+                    // HTML 产物剥标签成纯文本页（8000 字符/页切分）
+                    String text = md.replaceAll("(?s)<style.*?</style>", "")
+                            .replaceAll("(?s)<script.*?</script>", "")
+                            .replaceAll("<[^>]+>", "\n")
+                            .replaceAll("\n{2,}", "\n").trim();
+                    ArrayNode pages = MAPPER.createArrayNode();
+                    for (int i = 0; i * 8000 < text.length(); i++) {
+                        ObjectNode p = pages.addObject();
+                        p.put("text", text.substring(i * 8000, Math.min(text.length(), (i + 1) * 8000)));
+                    }
+                    ToolGateway.call(MAPPER.createObjectNode()
+                            .put("tool_name", "snapshot_commit")
+                            .set("arguments", MAPPER.createObjectNode()
+                                    .put("url", "deepsearch://" + reportType + "-" + System.currentTimeMillis())
+                                    .put("title", "DeepSearch 检索研究：" + snap.company)
+                                    .put("authority", "TERTIARY_AGGREGATED")
+                                    .set("pages", pages)), snap.dir, resolver, sources);
+                    System.out.println("DeepSearch bridge: research artifact committed, pages=" + pages.size());
+                } else {
+                    System.out.println("WARN deepsearch bridge: empty report (chars=" + md.length() + "), degrade to live materials");
+                }
+            } catch (Exception e) {
+                System.out.println("WARN deepsearch bridge: " + e.getMessage());
+            }
+            // 重新取 BankSnap：commitSource 已重建 live 快照索引（含 DeepSearch 产物）
+            snap = resolver.scope(bank);
+        }
+
         // 节 → 责任 agent / role 映射自骨架配置（不写死「第几节归谁」）
         Map<String, String> sectionAgent = new LinkedHashMap<>();
         Map<String, String> sectionRole = new LinkedHashMap<>();

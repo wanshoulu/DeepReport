@@ -51,6 +51,9 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class ToolGateway {
+
+    static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
     /** 搜索引擎直连域名（www.bing.com 会 302 到 cn.bing.com，直连国内版更稳）。 */
     private static final String BING_ENDPOINT = "https://cn.bing.com/search?q=%s&mkt=zh-CN";
     private static final String DDG_ENDPOINT = "https://html.duckduckgo.com/html/?q=%s";
@@ -128,6 +131,7 @@ final class ToolGateway {
                 case "snapshot_commit" -> snapshotCommit(argsOf(body), snapshotDir, resolver, sources);
                 case "table_extract" -> TableTools.extract(argsOf(body), resolver);
                 case "table_analyze" -> TableTools.analyze(argsOf(body), resolver);
+                case "deepsearch_research" -> deepsearchResearch(argsOf(body));
                 default -> err("unknown_tool", "工具已在注册表但无执行器: " + tool);
             };
         } catch (Exception e) {
@@ -137,6 +141,137 @@ final class ToolGateway {
 
     private static JsonNode argsOf(JsonNode body) {
         return body.path("arguments");
+    }
+
+    // ———————————————————— deepsearch_research ————————————————————
+
+    /** DeepSearch 引擎深度检索：调 run_brief SSE 接口，收集报告正文与检索线索。
+     *  端点/超时从 tools.json default_args 读取；无 key 时引擎按材料兜底，不阻断流程。 */
+    private static ObjectNode deepsearchResearch(JsonNode args) {
+        String query = args.path("query").asText("").trim();
+        if (query.isEmpty()) {
+            return err("bad_request", "arguments.query 必填");
+        }
+        ObjectNode def = REGISTRY.get("deepsearch_research");
+        String base = def == null ? "http://localhost:8000"
+                : def.path("default_args").path("base_url").asText("http://localhost:8000");
+        int maxWaitMs = def == null ? 180000 : def.path("default_args").path("max_wait_ms").asInt(180000);
+        String url = base.replaceAll("/$", "") + "/api/v1/agent/deepsearch/run_brief/";
+        long deadline = System.currentTimeMillis() + maxWaitMs;
+        try {
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                    .version(java.net.http.HttpClient.Version.HTTP_1_1)  // 引擎对 HTTP/2 upgrade 处理异常，强制 1.1
+                    .connectTimeout(java.time.Duration.ofSeconds(10)).build();
+            // space_id / 引擎ID 从工具配置读取（default_args.space_id / web_search_config_id）——
+            // 配置驱动，引擎注册变化不改代码
+            String spaceId = def == null ? "s0"
+                    : def.path("default_args").path("space_id").asText("s0");
+            int engineId = def == null ? 1
+                    : def.path("default_args").path("web_search_config_id").asInt(1);
+            // llm_config 从环境变量读取（LLM_API_KEY/LLM_BASE_URL/LLM_MODEL——与引擎部署一致），
+            // 键必须是 agent 角色名（general/plan_understanding/...），结构经引擎 AgentConfig 校验
+            // 环境变量优先；否则读共享卷 /snapshot/llm.env（KEY=VALUE 行式，与引擎部署同源）
+            String llmKey = System.getenv().getOrDefault("LLM_API_KEY", "");
+            String llmBase = System.getenv().getOrDefault("LLM_BASE_URL", "");
+            String llmModel = System.getenv().getOrDefault("LLM_MODEL", "");
+            if (llmKey.isEmpty() || llmBase.isEmpty()) {
+                try {
+                    java.nio.file.Path envFile = java.nio.file.Path.of("/snapshot/llm.env");
+                    if (java.nio.file.Files.isRegularFile(envFile)) {
+                        for (String line : java.nio.file.Files.readAllLines(envFile)) {
+                            int eq = line.indexOf('=');
+                            if (eq <= 0) continue;
+                            String k = line.substring(0, eq).trim();
+                            String v = line.substring(eq + 1).trim();
+                            if (k.equals("LLM_API_KEY") && llmKey.isEmpty()) llmKey = v;
+                            else if (k.equals("LLM_BASE_URL") && llmBase.isEmpty()) llmBase = v;
+                            else if (k.equals("LLM_MODEL") && llmModel.isEmpty()) llmModel = v;
+                        }
+                    }
+                } catch (Exception ignore) { }
+            }
+            if (llmModel.isEmpty()) llmModel = "qwen3.7-flash";
+            java.util.Map<String, Object> llmConfig = new java.util.HashMap<>();
+            if (!llmKey.isEmpty() && !llmBase.isEmpty()) {
+                llmConfig.put("general", java.util.Map.of(
+                        "model_name", llmModel,
+                        "model_type", "openai",
+                        "base_url", llmBase,
+                        "api_key", llmKey));
+            }
+            java.util.Map<String, Object> reqMap = new java.util.HashMap<>();
+            reqMap.put("space_id", spaceId);
+            reqMap.put("conversation_id", "w06-" + System.currentTimeMillis());
+            reqMap.put("message", query);
+            reqMap.put("workflow_human_in_the_loop", false);
+            reqMap.put("search_mode", "research");
+            reqMap.put("info_collector_search_method", "web");
+            reqMap.put("web_search_config", java.util.Map.of("web_search_config_id", engineId));
+            if (!llmConfig.isEmpty()) reqMap.put("llm_config", llmConfig);
+            String reqJson = MAPPER.writeValueAsString(reqMap);
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "text/event-stream")
+                    .timeout(java.time.Duration.ofMillis(maxWaitMs))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(reqJson))
+                    .build();
+            StringBuilder report = new StringBuilder();
+            ArrayNode leads = MAPPER.createArrayNode();
+            int[] events = {0};
+            java.net.http.HttpResponse<java.util.stream.Stream<String>> resp =
+                    client.send(req, java.net.http.HttpResponse.BodyHandlers.ofLines());
+            if (resp.statusCode() != 200) {
+                // 非 200：引擎返回普通 JSON 错误体（非 SSE）——读全量内容供诊断
+                String errBody = resp.body().limit(50).reduce("", (a, b) -> a + b);
+                return err("engine_reject", "引擎 HTTP " + resp.statusCode() + ": "
+                        + errBody.substring(0, Math.min(errBody.length(), 400)));
+            }
+            java.util.stream.Stream<String> lines = resp.body();
+            final boolean[] done = {false};
+            lines.takeWhile(l -> System.currentTimeMillis() < deadline && !done[0]).forEach(line -> {
+                if (!line.startsWith("data:")) return;
+                String payload = line.substring(5).trim();
+                if (payload.isEmpty() || "[DONE]".equals(payload)) { done[0] = true; return; }
+                try {
+                    com.fasterxml.jackson.databind.JsonNode d = MAPPER.readTree(payload);
+                    events[0]++;
+                    String agent = d.path("agent").asText("");
+                    String content = d.path("content").asText("");
+                    String mt = d.path("message_type").asText("");
+                    if ("end".equals(agent) && content.length() > 200) {
+                        // professional 模式：end 事件直接携带终稿
+                        String md = content;
+                        if (md.startsWith("{")) {
+                            try {
+                                md = MAPPER.readTree(md).path("response_content").asText(md);
+                            } catch (Exception ignore) { }
+                        }
+                        report.setLength(0);
+                        report.append(md);
+                        done[0] = true;
+                    } else if (agent.endsWith("sub_reporter") && "message_chunk".equals(mt)
+                            && content.length() > 0) {
+                        // brief 模式：终稿 = sub_reporter 流式 chunk 拼接（终稿无独立 end 事件）
+                        report.append(content);
+                    } else if ("collector_summary".equals(agent) && content.length() > 20) {
+                        leads.add(content.length() > 300 ? content.substring(0, 300) : content);
+                    }
+                } catch (Exception ignore) { }
+            });
+            ObjectNode ok = base("deepsearch_research");
+            ok.put("engine", base);
+            ok.put("events", events[0]);
+            ok.put("report_chars", report.length());
+            if (report.length() > 0) ok.put("report_md", report.toString());
+            ok.set("lead_lines", leads);
+            if (report.length() == 0) {
+                ok.put("note", "引擎未产出报告正文（搜索通道未配置/超时/流被截断）；lead_lines 含采集线索");
+            }
+            return ok;
+        } catch (Exception e) {
+            return err("engine_error", "DeepSearch 调用失败: " + rootMessage(e));
+        }
     }
 
     // ———————————————————— web_search ————————————————————

@@ -209,6 +209,28 @@
           73
         ]
       }
+    },
+    {
+      "tool_id": "deepsearch_research",
+      "name": "deepsearch_research 深度检索研究",
+      "description": "调 DeepSearch 引擎对给定主题做深度检索研究（联网搜索 + 资料融合 + 报告生成），返回报告正文与采集线索。产物经 snapshot_commit 落盘注册后方可引用。搜索通道未配置时引擎按已导入材料兜底产出。",
+      "params": [
+        {
+          "name": "query",
+          "type": "string",
+          "required": true,
+          "desc": "检索研究意图（主体 + 关注维度）"
+        }
+      ],
+      "default_args": {
+        "base_url": "http://172.17.0.1:8000",
+        "max_wait_ms": 300000,
+        "space_id": "s0",
+        "web_search_config_id": 1
+      },
+      "sample_args": {
+        "query": "中核核电 经营概况与财务表现"
+      }
     }
   ]
 }
