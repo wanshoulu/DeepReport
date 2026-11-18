@@ -774,21 +774,83 @@ $("#quick-row").addEventListener("click", e => {
 function greet() {
   chat.stage = "greet";
   addMsg("editor-in-chief",
-    "您好，我是主编编排 Agent（editor-in-chief）。这里由多专业 agent 协同完成年度经营简报的编制：<br>"
+    "您好，我是主编编排 Agent（editor-in-chief）。这里由多专业 agent 协同完成报告编制：<br>"
     + "资料装载 → 口径澄清 → 分节成稿 → 确定性核验 → 具名批准交付。<br>"
-    + "首先请选择编制主体（支持多家银行的年报快照）。");
+    + "两种方式开始：① 选择下方预置主体（银行年报快照，开箱即用）；"
+    + "② 直接输入「写一份关于 XX 的报告」——若预置库没有该主体，导入其资料（上传 pdf/txt/md 或粘贴文本）后即可编制。");
   const opts = (state.banks.length ? state.banks.filter(b => b.bank !== "live") : [{ bank: "cmb", company: "招商银行" }])
     .map(b => ({ label: b.company + " · 2025 年度", cls: b.bank === "cmb" ? "primary" : "", fn: () => pickBank(b) }));
   setQuick(opts, "点击选择编制主体：");
 }
 
+/** 从自由输入中按预置主体公司名做包含式匹配（数据驱动，非硬编码名单）。
+ *  命中即受理并返回 true；未命中返回 false。 */
+function pickSubjectFromText(text) {
+  const banks = (state.banks || []).filter(b => b.bank && b.bank !== "live");
+  for (const b of banks) {
+    // 公司名可能带后缀（"招商银行股份有限公司"），取核心名做匹配
+    const core = (b.company || "").replace(/(股份|有限|集团)*公司$/, "");
+    if (core && text.includes(core)) { pickBank(b); return true; }
+    // bank 标识匹配（如 "cmb"/"icbc"）
+    if (b.bank && new RegExp("\\b" + b.bank + "\\b", "i").test(text)) { pickBank(b); return true; }
+  }
+  return false;
+}
+
+/** 未知主体引导：检查 live 快照是否已有导入资料，有则提供"以导入资料编制"入口；
+ *  没有则引导上传/粘贴。不承诺当前不支持的能力。 */
+function guideUnknownSubject(text) {
+  addMsg("editor-in-chief",
+    "收到：「" + esc(text) + "」。该主体不在预置快照库（当前预置："
+    + (state.banks || []).filter(b => b.bank !== "live").map(b => b.company).join("、")
+    + "）。<br>通用编制路径：<b>导入该主体的资料</b>（上传 pdf/txt/md/json 或直接粘贴文本）"
+    + "→ 资料落盘注册（sha256 纪律门）→ 即可作为编制依据。");
+  // 探测 live 快照是否已有资料（有则直接提供编制入口）
+  jget("/v1/snapshot/manifest?bank=live").then(m => {
+    const cnt = m && m.data && (m.data.sources || (m.data.manifest && Object.keys(m.data.manifest))).length || 0;
+    if (cnt > 0) {
+      addMsg("editor-in-chief", "检测到已导入资料 " + cnt + " 份（live 快照集）。可直接基于已导入资料编制：");
+      setQuick([{ label: "以已导入资料编制", cls: "primary", fn: () => pickBank({ bank: "live", company: "导入资料主体" }) },
+                { label: "先导入更多资料", fn: () => addMsg("editor-in-chief", "请点击输入框旁「导入资料」上传文件，或直接粘贴文本。") }]);
+    } else {
+      setQuick([{ label: "知道了，去导入", fn: () => addMsg("editor-in-chief", "请点击输入框旁「导入资料」上传文件，或直接粘贴文本；导入成功后回复「开始编制」即可。") }]);
+    }
+  }).catch(() => {
+    setQuick([{ label: "知道了，去导入", fn: () => addMsg("editor-in-chief", "请点击输入框旁「导入资料」上传文件，或直接粘贴文本。") }]);
+  });
+}
+
 async function pickBank(b) {
   setQuick([]);
   chat.bank = b.bank;
-  addMsg("user", "选择编制主体：" + b.company + "，报告期 2025 年度。");
-  addMsg("editor-in-chief", "已受理：" + b.company + " 2025 年度经营简报。转交资料管理 Agent 装载信源快照。");
+  addMsg("user", "选择编制主体：" + b.company + (b.bank === "live" ? "（基于导入资料）" : "，报告期 2025 年度") + "。");
+  addMsg("editor-in-chief", "已受理：" + b.company + "。转交资料管理 Agent 装载信源快照。");
   chat.stage = "material";
   addMsg("material-agent", "正在装载信源快照……");
+  // live 主体：资料来自用户导入（/v1/documents/import 落盘注册），无预置 46 页快照/manifest
+  if (b.bank === "live") {
+    try {
+      const m = await jget("/v1/snapshot/manifest?bank=live");
+      const manifest = m && m.data ? (m.data.manifest || m.data) : {};
+      const srcCount = (manifest.sources && manifest.sources.length)
+        || (m && m.data && m.data.sources && m.data.sources.length) || 0;
+      if (!srcCount) {
+        addMsg("material-agent",
+          "live 快照集当前为空。请点击输入框旁「导入资料」上传 pdf/txt/md/json，"
+          + "或直接粘贴文本——落盘注册（sha256）成功后回复「开始编制」。");
+        setQuick([{ label: "我已导入，重新装载", cls: "primary", fn: () => pickBank(b) }]);
+        return;
+      }
+      addMsg("material-agent",
+        "信源装载完成：<br>· live 快照集信源 <b>" + srcCount + "</b> 份（用户导入资料，content_sha256 已登记）<br>"
+        + "如需补充资料可直接粘贴文本，或点击下方按钮开始编制。");
+      setQuick([{ label: "资料齐备，开始编制", cls: "primary", fn: startClarify }], "确认无误后开始：");
+    } catch (e) {
+      addMsg("material-agent", '<span style="color:var(--destructive)">live 快照装载失败：' + esc(e.message) + "</span>");
+      setQuick([{ label: "重试装载", cls: "primary", fn: () => pickBank(b) }]);
+    }
+    return;
+  }
   try {
     if (!state.y2024s[b.bank]) {
       const p46 = await jget("/v1/snapshot/pages/46?bank=" + b.bank);
@@ -1048,14 +1110,15 @@ function handleFreeInput(text) {
   if (chat.stage === "greet") {
     if (/你好|您好|hi|hello/i.test(text)) {
       addMsg("editor-in-chief", "您好！请选择编制主体（可点击下方快捷按钮）。");
-    } else if (/工商/.test(text)) {
-      pickBank(state.banks.find(x => x.bank === "icbc") || { bank: "icbc", company: "中国工商银行" });
-    } else if (/建设/.test(text)) {
-      pickBank(state.banks.find(x => x.bank === "ccb") || { bank: "ccb", company: "中国建设银行" });
-    } else if (/确认|招商|2025/.test(text)) {
-      pickBank(state.banks.find(x => x.bank === "cmb") || { bank: "cmb", company: "招商银行" });
+    } else if (pickSubjectFromText(text)) {
+      /* 命中预置主体（公司名/标识包含式匹配），pickSubjectFromText 内部已受理 */
+    } else if (/写|编|出|生成|做/.test(text) && /报告|简报|分析|研究/.test(text)) {
+      /* 请求编制但主体未命中预置库 → 引导导入资料路径（不硬编码主体名单） */
+      guideUnknownSubject(text);
     } else {
-      addMsg("editor-in-chief", "请先选择编制主体：招商银行 / 中国工商银行 / 中国建设银行 · 2025 年度（可点击下方快捷按钮）。");
+      addMsg("editor-in-chief",
+        "请选择编制主体（点击下方快捷按钮），或直接输入「写一份关于 XX 的报告」："
+        + "预置库没有的主体，导入其资料后即可编制。");
     }
   } else if (chat.stage === "material") {
     if (/齐备|开始|编制/.test(text)) { startClarify(); }
