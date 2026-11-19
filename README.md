@@ -54,6 +54,7 @@
 | 632 条引用 → SUPPORTED 227 / PARTIAL 404 / UNSUPPORTED **1** | 2026-11-18，Phase 1 适配层对 Phase 0 报告逐条判定；唯一 BLOCKING 是模型从外部知识带入、材料中不存在的"风险加权资产 282,699.48 亿" |
 | 164,429 字符、632 个 `checked_citation`、409 行表格、约 25 分钟 | 2026-11-18，Phase 0 材料模式 E2E；109 页工行快照分 28 块 + 28 节模板，模型 `qwen3.7-flash` |
 | 航天飞鸿投研 v5：30,281 字 / 47 标题 / 100 引用（72 放行 / 28 复核 / 0 编造），约 8 分钟 | 2026-11-18，5 块用户材料 + 8 节模板；门禁 PASSED，见 `artifacts/航天飞鸿投研报告.md` |
+| 非预置主题实测：8 节仅 3 节有正文（5,393 字）、8 项指标全 `NOT_FOUND`、仅 1 条引用，双检仍 PASSED | 2026-11-19，`bank=live` + `research` + `long_form` + `subject_hint=金融银行风控技术方案`，耗时 293.0s、6/6 工位；这是一次**失败案例**，暴露门禁不校验完整性，完整取证见下方「已知限制」 |
 | 15 例标注样本精确匹配 15/15，precision/recall/F1 = 1.0 | `benchmark/eval_checkers.py`，**15 例为本项目自构标注用例**，非公开基准；1 例语义等价诚实标注需模型层，结果见 `benchmark/results.json` |
 
 同类系统的公开基准可用于对照，但**本项目尚未在公开基准上评测**：GPT Researcher 在 DeepResearchGym 的引用精度 85.36% / 报告 83.70% / 覆盖 64.67%，STORM 在 NAACL 2024 报告引用召回 84.8% / 精度 85.2%。逐项对比与源码级差距见 [`docs/opensource-comparison-and-plan.md`](docs/opensource-comparison-and-plan.md) 与 [`reviews/w06-competitive-analysis-vs-report-agents-1117.md`](reviews/w06-competitive-analysis-vs-report-agents-1117.md)。
@@ -97,6 +98,8 @@ curl 'http://<host>:18083/v1/pipeline/status?run_id=<上一步返回的 run_id>'
 
 ## 已知限制
 
+- **门禁只判编造、不判完整性（当前最严重）**：2026-11-19 用非预置主题「金融银行风控技术方案研究报告」实测，8 节里 5 节空白、8 项指标全 `NOT_FOUND`、仅 1 条引用，numeric 与 citation 双检仍返回 `PASSED`。`NOT_FOUND` 被 N1 豁免、空节不触发任何规则，因此一份实质为空的报告会被放行。需要补章节覆盖率 / 证据密度的 completeness 规则。
+- **非预置报告类型静默回退**：`research` 骨架是投研八节，但指标字典仍是年报八项；`subject_hint` 只作用于指标抽取与深搜意图，不覆盖 `company` / `task_id` / 报告标题，实测把快照库名"W06 联网抓取快照库"当成了研究标的（正文称"W06银行"）。未登记类型应显式报错或要求先建 profile，而不是悄悄套用旧骨架。
 - 已登记的报告类型只有 `annual_report` / `research` / `client_analysis`；技术方案、尽调、行业研究需先新增 profile。
 - 任务类型识别目前是**词表匹配**，不是 LLM 意图识别；非年报类型的写作工位对空模板的 LLM 填充仍在补齐。
 - 真实搜索 key 未配置（占位 key），联网检索不可用；当前端到端验证全部走"材料模式"。
