@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  W06 Annual Report Agent — parent POM
+  DeepReport / W06 Annual Report Agent — parent POM (reference implementation)
   依赖 openJiuwen agent-solution 固定快照 bf702bc95064d3491cf8b374f54d271363d84230。
   版本号与上游 common/pom.xml 对齐（见 versions.lock）。
 -->
@@ -13,7 +13,7 @@
     <artifactId>w06-annual-report-agent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>W06 Annual Report Agent (Issue #16)</name>
+    <name>DeepReport — W06 Annual Report Agent Reference Implementation (Issue #16)</name>
 
     <modules>
         <module>agent-orchestrator</module>

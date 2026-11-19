@@ -1,4 +1,6 @@
-# W06 Annual Report Agent — 招商银行 2025 年报多 Agent 报告生成与核验
+# DeepReport · W06 年报参考实现 — 招商银行 2025 年报多 Agent 报告生成与核验
+
+> 本目录是 DeepReport 的年报基线参考实现（`annual-report` 分支对应的 Maven 工程），产品统一命名为 **DeepReport**。
 
 > 基于 openJiuwen `agent-runtime-java`（固定快照 `bf702bc`）构建的 Issue #16 W06「报告 Agent 与核验」参考实现。
 > 架构完全复用 `multi-deep-research-demo` 的两层模式：**库层无 Spring、wrapper 层做 Spring 装配**，远端子 agent 经 A2A 注册。

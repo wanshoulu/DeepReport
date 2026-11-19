@@ -22,7 +22,7 @@
 | **GPT Researcher** | **85.36%**（精度） | **83.70%** | 64.67% | CMU DeepResearchGym，开源第一 |
 | **STORM** | 85.2% 精度 / 84.8% 召回 | — | — | 同行评审（NAACL 2024） |
 | **Tongyi DeepResearch** | HLE 32.9 / GAIA 70.9 | — | — | 官方报告 |
-| **我们（Report Agent）** | 无公开基准 | — | — | 仅内部 15 例 benchmark |
+| **我们（DeepReport）** | 无公开基准 | — | — | 仅内部 15 例 benchmark |
 
 > 残酷事实：我们引以为傲的"引用核验"，在公开基准上是空白——无法与任何一家对比。
 
