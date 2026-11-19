@@ -140,7 +140,7 @@ flowchart LR
 5. **确定性双检 + fail-closed 门禁**：NumericChecker（N1–N7）与 CitationChecker（C1–C2）不调用模型；失败即阻断交付，定向修订一次，再失败转人工。
 6. **报告画像配置驱动**：新增报告类型 = 加一份 profile + 骨架 + `index.json` 登记，注册环节 Java 编排层零改动（引擎对模板章节的遵循度仍不稳定，见 [已知限制](#已知限制)）。
 7. **深搜桥接、主体隔离与工位上报**：非年报类型先调 DeepSearch `run_brief`，结果经 `snapshot_commit` 落盘后重新 scope；`subject_hint` 显式传递编制主体，避免混合主体库串数据；`?async=1` 启动后台线程池，`/v1/pipeline/status` 增量上报六工位状态。
-8. **能力声明-路由-对账（仓库内原型，生产端未接线）**：模板用 `capabilities` 声明要哪些图表/表格 → Agent 查 `capability-routes.json` → 调 **MCP 风格工具**（MCP 即 Model Context Protocol，工具须先在注册表声明、由 Agent 发现后调用）→ 工具没产出就转 **Skill**（可复用能力包，含方法说明与确定性脚本）→ 回填 `artifact.tables` / `artifact.charts` → 第三道门禁核对「声明的能力是否都交付」。2026-11-20 实跑 3 条声明全交付 `PASSED`、空材料负向 `FAILED`，但 Java 六工位与 DeepSearch 引擎尚未调用它；契约见 [`docs/capability-routing-design.md`](docs/capability-routing-design.md)，证据见 [`reviews/capability-routing-live-run-1120.md`](reviews/capability-routing-live-run-1120.md)。
+8. **能力声明 → MCP 工具发现 → 通用桥执行 → 对账**：模板用 `capabilities` 声明要哪些图表/表格，并用 `source_of_truth` 指定数据以哪为准 → Agent 调标准 MCP `tools/list` 发现工具（MCP 即 Model Context Protocol，工具须先注册、由 Agent 发现后调用）→ 查 `capability-routes.json` → 经 `tools/call` 调 `table_compose` / `chart_render` → 回填 `artifact` → 第三道门禁核对声明是否都交付。**Skill 只写方法论、不执行**；生产网关的 `mcp_bridge` 把注册表中标记的工具统一转发到独立 MCP Server，新增工具改两份 JSON、零 Java 改动。2026-11-20 实跑：标准 MCP 与生产网关两条路径均 `PASSED`（3 声明 / 2 表 29 行 / 1 图 4 节点），空材料 `FAILED`。Java 六工位仍未自动触发路由；契约见 [`docs/capability-routing-design.md`](docs/capability-routing-design.md)，工具说明见 [`mcp/README.md`](mcp/README.md)，证据见 [`reviews/capability-mcp-live-run-1120.md`](reviews/capability-mcp-live-run-1120.md)。
 
 ## 实测数据
 
@@ -152,7 +152,8 @@ flowchart LR
 | 632 条引用 → SUPPORTED 227 / PARTIAL 404 / UNSUPPORTED **1** | 2026-11-18，Phase 1 适配层对 Phase 0 报告逐条判定；唯一 BLOCKING 为模型从外部知识带入、材料中不存在的数字 |
 | 15 例标注样本精确匹配 15/15，precision/recall/F1 = 1.0 | `benchmark/eval_checkers.py`，**15 例为自构标注用例**；1 例语义等价需模型层，结果见 [`benchmark/results.json`](benchmark/results.json) |
 | 技术方案报告实测：14,922 字 / 52 引用 / 门禁 FAILED | 2026-11-19，5 份监管与实践材料 + 8 节自定义模板，耗时 392s；43 条 `PARTIAL_SUPPORT`、模板 8 节只生成 1 个主章节。这是一次**失败案例**，不是成功指标 |
-| 能力路由闭环：3 条声明 → 3 条交付、2 次真实工具调用、门禁 PASSED | 2026-11-20，`source/capability-router/router.py` 原型 + `18083` 真实 MCP 工具端点 + 同批 5 份材料；产出 2 表 29 行 / 1 图 4 节点全带原文证据；空材料负向对照 `FAILED`（4 条 BLOCKING）。**仅证明链路可行，生产端未接线**，见[实跑记录](reviews/capability-routing-live-run-1120.md) |
+| 能力路由闭环：3 条声明 → 3 条交付、2 次真实工具调用、门禁 PASSED | 2026-11-20 v0.1，`source/capability-router/router.py` 原型 + `18083` 真实工具端点 + 同批 5 份材料；产出 2 表 29 行 / 1 图 4 节点全带原文证据；空材料负向 `FAILED`（4 条 BLOCKING）。当时执行者在 Skill 脚本，见[v0.1 实跑记录](reviews/capability-routing-live-run-1120.md) |
+| 能力下沉 MCP：两条路径均 PASSED、生产网关 9 工具真调用 | 2026-11-20 v0.2，`mcp/capability_server.py` + `ToolGateway::mcpBridge`；stdio 标准 MCP 与 gateway 生产网关各跑一次，3 声明全交付、2 表 29 行 / 1 图 4 节点；桥接返回 `ok=true, via=mcp_bridge`；未知工具仍 `unknown_tool`、原生 `table_extract` 回归正常；空材料 `FAILED`（6 条 BLOCKING）；重建镜像后复验一致。**网关已注册，六工位仍未接线**，见[MCP 实跑记录](reviews/capability-mcp-live-run-1120.md) |
 
 更多历史运行（164,429 字符 / 632 引用 / 约 25 分钟的 Phase 0 E2E、航天飞鸿投研 v5 等）见 [`docs/phase0-validation-report.md`](docs/phase0-validation-report.md)。同类系统的公开基准可用于对照，但**本项目尚未在公开基准上评测**：GPT Researcher 在 DeepResearchGym 的引用精度 85.36% / 报告 83.70% / 覆盖 64.67%，STORM 在 NAACL 2024 报告引用召回 84.8% / 精度 85.2%；逐项对比见 [`docs/opensource-comparison-and-plan.md`](docs/opensource-comparison-and-plan.md)。
 
@@ -164,7 +165,8 @@ flowchart LR
 | 看工作台长什么样 | 本页首图（报告编制页）；源码见 [`frontend/workbench.html`](frontend/workbench.html)，共三页：报告编制 / 资产库 / 报告库 |
 | 理解核验规则与已知边界 | [`reviews/generalization-and-l2-fix-1117.md`](reviews/generalization-and-l2-fix-1117.md)、[`skills/verify_metrics_generic.py`](skills/verify_metrics_generic.py) |
 | 新增一类报告 | [`source/config/report-profiles/`](source/config/report-profiles/)，约定见 [`BRANCHES.md`](BRANCHES.md) |
-| 让模板声明的能力被 Agent 自动调度 | [`docs/capability-routing-design.md`](docs/capability-routing-design.md)、[`source/capability-router/router.py`](source/capability-router/router.py)、[实跑记录](reviews/capability-routing-live-run-1120.md) |
+| 让模板声明的能力被 Agent 自动调度 | [`docs/capability-routing-design.md`](docs/capability-routing-design.md)、[`source/capability-router/router.py`](source/capability-router/router.py)、[MCP 实跑记录](reviews/capability-mcp-live-run-1120.md) |
+| 注册新的 MCP 能力工具 | [`mcp/tools.json`](mcp/tools.json) + [`source/config/tools.json`](source/config/tools.json)（改两份 JSON，不改 Java），步骤见 [`mcp/README.md`](mcp/README.md) |
 | 看设计取舍与整改计划 | [`docs/opensource-comparison-and-plan.md`](docs/opensource-comparison-and-plan.md)、[`ROADMAP.md`](ROADMAP.md) |
 | 找 HTTP 接口 | `source/w06-annual-report-agent/` 内 `CheckerHttpServer` 路由表；调用示例见 [`frontend/workbench.html`](frontend/workbench.html) |
 
@@ -181,14 +183,14 @@ flowchart LR
 
 > 学 STORM 把话说在前面：*当前产出不应直接作为正式报告发布*，结构补全与人工复核仍不可省。
 
-- **能力分层尚未接入生产端（结构性缺口）**：报告需要哪些图表/表格，过去散落在模板文字、Java 硬编码与一次性离线脚本里——`requiredMetrics()` 全仓零消费点、任务书首句写死 `annual-report` 技能、`extractDataTables()` 无条件执行、非年报工件 `charts` 是硬编码空列表、`w06-charts` 仍标「待注册」、批准门禁只跑 numeric + citation。这解释了为什么年报成品有 51 表 2 图，而风控技术方案报告 0 表 0 图却照样放行。仓库已补四层契约与可运行原型（[设计](docs/capability-routing-design.md) / [实跑](reviews/capability-routing-live-run-1120.md)），但 **Java 编排层与 DeepSearch 引擎都还没调用它**；7 项接线点见实跑记录末节。
+- **能力已注册，但六工位尚未自动触发路由**：`table_compose` / `chart_render` 已是标准 MCP 工具，`18083` 的 `/v1/tools` 可发现 9 个工具、`/v1/tools/call` 可经通用 `mcp_bridge` 真执行（[设计](docs/capability-routing-design.md) / [MCP 实跑](reviews/capability-mcp-live-run-1120.md)）。但 Java `CheckerHttpServer` 六工位与 DeepSearch 引擎 agent 序列仍不读模板 `capabilities`，**线上报告编制不会因声明自动产出图表**：`requiredMetrics()` 零消费点、任务书技能硬编码、`extractDataTables()` 无条件执行、非年报 `charts` 硬编码空列表、批准门禁只跑 numeric + citation 都还没改。7 项接线点见实跑记录末节。
 - **门禁只判编造、不判完整性（当前最严重）**：2026-11-19 用非预置主题「金融银行风控技术方案研究报告」实测，8 节里 5 节空白、8 项指标全 `NOT_FOUND`、仅 1 条引用，双检仍返回 `PASSED`。`NOT_FOUND` 被 N1 豁免、空节不触发任何规则，一份实质为空的报告会被放行。需要补章节覆盖率 / 证据密度的 completeness 规则。
 - **模板注册 ≠ 模板遵循**：同一次实测注册 8 节技术方案模板后，引擎只生成「结论与建设建议」一个主章节，`SECTION_MISSING` 被门禁拦下；52 条引用中 43 条为 `PARTIAL_SUPPORT`。"加配置即决定报告结构"尚未兑现。
 - **非预置报告类型静默回退**：`research` 骨架是投研八节，但指标字典仍是年报八项；`subject_hint` 不覆盖 `company` / `task_id` / 报告标题，实测把快照库名当成了研究标的。未登记类型应显式报错，而不是悄悄套用旧骨架。
 - **没有一键部署**：容器镜像由源码本地构建、未发布到公共 registry；`source/w06-annual-report-agent/deploy/compose.yaml` 依赖 Agent Bus 的 external network，不映射宿主端口。真实搜索 key 仍是占位符，联网检索不可用，现有端到端验证全部走"材料模式"。
 - 任务类型识别目前是**词表匹配**，不是 LLM 意图识别；Java 编排层仍有年报专用 `MetricKey` enum（61 处引用），值对象化未完成。
 - 语义等价（ROE ↔ 净资产收益率）需 NLI/语义蕴含模型，确定性层一律保守降级人工；双检覆盖正文指标与引用，**不覆盖表格单元格**。
-- 取数与分析偏浅：无付费/登录态信源接入，`table_extract` 为单页轻量实现；交付形态仅 HTML/JSON，无 PDF/Word/PPT 导出。
+- 取数与分析偏浅：无付费/登录态信源接入；`table_extract` 只识别被拍平的财报表格，对条文类材料返回 0（实测对含财报的 `live` 快照全扫描可抽 100 表，此前记录中「实时抽取返回 0、不可靠」的结论已[更正](reviews/capability-mcp-live-run-1120.md)）；交付形态仅 HTML/JSON，无 PDF/Word/PPT 导出。
 - 工程生产化缺口：未接 PostgreSQL 权威账本、执行身份 `o/a/b`、角色挂 RDC/Gateway，详见 [`reviews/w06-gap-vs-github-1117.md`](reviews/w06-gap-vs-github-1117.md)。
 
 完整不足清单与逐条验收标准见 [`ROADMAP.md`](ROADMAP.md)。
@@ -201,7 +203,7 @@ flowchart LR
 
 分支分工：`main` 为通用内核主线，`annual-report` 为冻结的银行年报基线（含工行 2025 年报成品），用于等价性回归；协作约定见 [`BRANCHES.md`](BRANCHES.md)。主要目录：`source/`（Java 工程与配置）、`skills/`（核验与推断标记脚本）、`frontend/`（工作台）、`benchmark/`（评测）、`docs/`（设计与验证）、`reviews/`（对标与历史评审）、`artifacts/`（报告成品）。
 
-能力分层（模板 / Agent / Skill / MCP 四层职责）的契约定义见 [`docs/capability-routing-design.md`](docs/capability-routing-design.md)，原文调研留痕见 [`reviews/capability-routing-research-1120.md`](reviews/capability-routing-research-1120.md)，生产端 7 项接线清单见 [实跑记录](reviews/capability-routing-live-run-1120.md)。README 的重写调研留痕见 [`reviews/readme-rewrite-research-1119.md`](reviews/readme-rewrite-research-1119.md)。本仓由 `agent-hub-alpha` 的 W06 工作包演化而来，早期评审请求与架构审视保留在 `reviews/` 与 [`REVIEW-REQUEST.md`](REVIEW-REQUEST.md) 供追溯；历史文档中的 `Report Agent` / `W06` 为演变留痕，产品与仓库现已统一命名为 **DeepReport**（原 `Report-Agent` 地址由 GitHub 重定向）。
+能力分层（模板 / Agent / Skill / MCP 四层职责）的契约定义见 [`docs/capability-routing-design.md`](docs/capability-routing-design.md)，MCP Server 与通用桥见 [`mcp/README.md`](mcp/README.md)，原文调研留痕见 [`reviews/capability-routing-research-1120.md`](reviews/capability-routing-research-1120.md)，生产端 7 项接线清单见 [MCP 实跑记录](reviews/capability-mcp-live-run-1120.md)。README 的重写调研留痕见 [`reviews/readme-rewrite-research-1119.md`](reviews/readme-rewrite-research-1119.md)。本仓由 `agent-hub-alpha` 的 W06 工作包演化而来，早期评审请求与架构审视保留在 `reviews/` 与 [`REVIEW-REQUEST.md`](REVIEW-REQUEST.md) 供追溯；历史文档中的 `Report Agent` / `W06` 为演变留痕，产品与仓库现已统一命名为 **DeepReport**（原 `Report-Agent` 地址由 GitHub 重定向）。
 
 ## 许可证
 

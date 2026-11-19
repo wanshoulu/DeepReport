@@ -155,6 +155,8 @@ E03 反例测试：改正文 → 旧 PASSED 失效 → 旧批准连锁失效
 
 5 server（snapshot/checker/compute/artifacts/approval）12 工具，JSON-RPC 2.0 完整协议（initialize→tools/list→tools/call），bind 即装配全限定名工具。v3 补：`version` 字段入能力卡（AR-04 版本绑定）；w06-charts（图表）待 chart-agent 有实现基础后注册。
 
+> 状态更新（2026-11-20，`w06-checker:0.4.0-mcp`，原文保留作演变留痕）：`w06-charts` 最终**未以独立 server 注册**——成图能力改由标准 MCP 工具 `chart_render` 承载（`mcp/capability_server.py`，`tools/list` 可发现），生产网关 `ToolGateway::mcpBridge()` 用通用分支转发注册表中 `executor=mcp_bridge` 的工具，`/v1/tools` 现返回 9 个工具。新增同类工具只改 `mcp/tools.json` 与 `source/config/tools.json`，无需改 Java switch。实测见 [MCP 实跑记录](../../reviews/capability-mcp-live-run-1120.md)。
+
 ### 2.5 主 Agent 知识包（orchestrator-skill，新建）
 
 **Figure 2 · 主 Agent 知识与候选图生成**（`docs/diagrams/fig4-orchestrator-knowledge.svg`，会话内已渲染）：目录索引四元组→四类知识→四步纪律→双重门禁→冻结 T/g。

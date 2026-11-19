@@ -1,0 +1,77 @@
+{
+  "$comment": "DeepReport 能力 MCP 工具契约（唯一事实源）。MCP Server 启动时加载本文件生成 tools/list；生产网关 source/config/tools.json 注册同名工具并标记 executor=mcp_bridge 转发到本 Server。新增能力只改这里，不改编排代码。",
+  "protocol_version": "2025-06-18",
+  "server": {
+    "name": "deepreport-capability-mcp",
+    "version": "0.1.0",
+    "description": "把确定性原子能力（成表 / 成图）注册为 MCP 工具，供 Agent 经 tools/list 发现、tools/call 调用；输出一律带原文证据摘录，不调用模型、不编造数字。"
+  },
+  "tools": [
+    {
+      "name": "table_compose",
+      "description": "从原始材料文本确定性抽取数值矩阵或条款对照，生成结构化表格：逐行保留原文数值与原文证据摘录，附来源文件 sha256 指纹。适用于条文/监管类材料（table_extract 对这类材料返回 table_count=0）。数字照抄原文、不做换算、抽不到记 extraction_miss 而不编造。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "object",
+            "description": "模板声明的能力描述；id 用于回写工件，spec 含「条款/矩阵」时走条款对照规则，否则走监管指标数值矩阵规则",
+            "properties": {
+              "id": {"type": "string"},
+              "spec": {"type": "string"}
+            },
+            "required": ["id"]
+          },
+          "materials": {
+            "type": "array",
+            "description": "原始材料 [{file, text}]；text 必须是材料原文，不得预加工",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {"type": "string"},
+                "text": {"type": "string"}
+              },
+              "required": ["file", "text"]
+            }
+          }
+        },
+        "required": ["capability", "materials"]
+      },
+      "executor": "compose_table",
+      "discipline": "原文证据字面命中 + sha256 绑定；空结果不判成功"
+    },
+    {
+      "name": "chart_render",
+      "description": "把材料中抽取的结构化节点渲染为内联 SVG 分层架构图：四个阶段槽的文字必须命中材料原文，每节点附 evidence 与来源文件。只渲染不改数、不发明节点；某层未命中则标注「材料未覆盖」并记 extraction_miss。",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "capability": {
+            "type": "object",
+            "description": "模板声明的能力描述；chart_type 当前仅支持 flow",
+            "properties": {
+              "id": {"type": "string"},
+              "chart_type": {"type": "string", "enum": ["flow"]}
+            },
+            "required": ["id"]
+          },
+          "materials": {
+            "type": "array",
+            "description": "原始材料 [{file, text}]，用于逐节点取原文证据",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": {"type": "string"},
+                "text": {"type": "string"}
+              },
+              "required": ["file", "text"]
+            }
+          }
+        },
+        "required": ["capability", "materials"]
+      },
+      "executor": "render_chart",
+      "discipline": "节点文字取自原文；SVG 内联、无外链、无脚本"
+    }
+  ]
+}

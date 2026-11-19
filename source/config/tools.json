@@ -6,7 +6,8 @@
     "call_endpoint": "POST /v1/tools/call",
     "call_body": "{\"tool_name\": \"…\", \"arguments\": {…}}",
     "discipline": "联网抓取产物必须经 snapshot_commit 落盘 + sha256 注册进信源注册表，才能被引用核验（C1/C2）与数值核验（N3）接受——抓得到与可引用之间有纪律门",
-    "data_capability": "0.3.8 数据能力补强：table_extract + table_analyze 把拍平财报表格结构化为真实数据表，pipeline 注入任务书并随工件输出"
+    "data_capability": "0.3.8 数据能力补强：table_extract + table_analyze 把拍平财报表格结构化为真实数据表，pipeline 注入任务书并随工件输出",
+    "mcp_bridge_note": "0.4.0 通用 MCP 桥：executor=mcp_bridge 的工具由 ToolGateway 统一转发到独立 MCP Server（default_args.mcp_endpoint），结果取 structuredContent 原样回填；新增 MCP 工具只改本文件 + mcp/tools.json，不改 Java switch"
   },
   "tools": [
     {
@@ -230,6 +231,78 @@
       },
       "sample_args": {
         "query": "中核核电 经营概况与财务表现"
+      }
+    },
+    {
+      "tool_id": "table_compose",
+      "name": "table_compose 材料成表（MCP 桥）",
+      "description": "标准 MCP 工具：从原始材料文本确定性抽取数值矩阵或条款对照，逐行保留原文数值与证据摘录，附来源 sha256 指纹。适用于条文/监管类材料（table_extract 对这类材料返回 table_count=0）。由通用 mcp_bridge 转发到独立 MCP Server，不调用模型、不编造数字。",
+      "executor": "mcp_bridge",
+      "mcp_tool": "table_compose",
+      "params": [
+        {
+          "name": "capability",
+          "type": "object",
+          "required": true,
+          "desc": "模板能力声明 {id, spec}；spec 含「条款/矩阵」走条款对照规则，否则走指标数值矩阵规则"
+        },
+        {
+          "name": "materials",
+          "type": "array",
+          "required": true,
+          "desc": "原始材料 [{file, text}]，text 必须是材料原文"
+        }
+      ],
+      "default_args": {
+        "mcp_endpoint": "http://172.17.0.1:8090/mcp"
+      },
+      "sample_args": {
+        "capability": {
+          "id": "cap.capital_ratio_table",
+          "spec": "资本充足率监管红线对比表"
+        },
+        "materials": [
+          {
+            "file": "02.txt",
+            "text": "（原文，导入材料后由编排层填充）"
+          }
+        ]
+      }
+    },
+    {
+      "tool_id": "chart_render",
+      "name": "chart_render 内联架构图（MCP 桥）",
+      "description": "标准 MCP 工具：把材料中命中的结构化节点渲染为内联 SVG 分层架构图，每节点附 evidence 与来源文件。只渲染不改数、不发明节点；未命中的层标注「材料未覆盖」并记 extraction_miss。由通用 mcp_bridge 转发，SVG 内联、无外链、无脚本。",
+      "executor": "mcp_bridge",
+      "mcp_tool": "chart_render",
+      "params": [
+        {
+          "name": "capability",
+          "type": "object",
+          "required": true,
+          "desc": "模板能力声明 {id, chart_type}；chart_type 当前仅支持 flow"
+        },
+        {
+          "name": "materials",
+          "type": "array",
+          "required": true,
+          "desc": "原始材料 [{file, text}]，用于逐节点取原文证据"
+        }
+      ],
+      "default_args": {
+        "mcp_endpoint": "http://172.17.0.1:8090/mcp"
+      },
+      "sample_args": {
+        "capability": {
+          "id": "cap.control_architecture_chart",
+          "chart_type": "flow"
+        },
+        "materials": [
+          {
+            "file": "01.txt",
+            "text": "（原文，导入材料后由编排层填充）"
+          }
+        ]
       }
     }
   ]

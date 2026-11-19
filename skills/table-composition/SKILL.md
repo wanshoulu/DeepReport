@@ -1,38 +1,46 @@
 ---
 name: table-composition
-description: 从原始材料文本中确定性抽取数值矩阵与条款条目，生成带 capability_id 与来源指纹的结构化表格。当报告模板声明 kind=table、且 table_extract 对条文类材料返回 0 时使用；不调用模型，不编造数字。
-entry: scripts/compose.py
+description: 成表能力的方法论：判断何时该出表、出哪种表、参数怎么组织、探测工具返回空时如何降级。执行已上移为标准 MCP 工具 table_compose（tools/list 可发现、tools/call 可调用），本 Skill 不执行、不产出工件。
+mcp_tool: table_compose
+layer: methodology
 ---
 
-# table-composition
+# table-composition（方法论）
+
+> **分层变更（v0.2）**：确定性抽取逻辑已上移到 `mcp/capability_server.py` 的 `table_compose` 工具。
+> 本 Skill 只回答「何时用、用哪个工具、参数怎么组织、失败怎么降级」，**不再声明 `entry`，不执行脚本**。
+> 依据：MCP 工具是 model-controlled 的原子执行单元；Skill 是指令与方法（Anthropic Agent Skills 的 progressive disclosure 第一级）。
 
 ## 何时使用
 
-- 模板 `capabilities` 中出现 `kind: table`。
-- MCP 工具 `table_extract` 已探测但返回 `table_count: 0`（它只识别被 PDF 拍平的财报表格，见 `source/config/tools.json` 描述）。
+1. 模板 `capabilities` 中出现 `kind: table`。
+2. Agent 先 `tools/list` 发现 `table_compose`，再按路由表 `source/config/capability-routes.json` 的 `table.mcp_tool` 绑定。
+3. 若路由表配了 `probe_tools`（当前为生产网关的 `table_extract`），先探测：它只识别被 PDF 拍平的财报表格，对监管条文返回 `table_count=0` 时，Agent **依据工具真实返回**改调 `table_compose`，不是静默跳过。
 
-## 方法（确定性，无模型）
+## 方法（由 MCP 工具执行，此处只定义判据）
 
-1. **数值矩阵表**：逐份读材料文本，按 `指标词 + 数值 + 条款/来源` 三元组抽取。指标词来自 capability `spec` 中列出的名称；数值只取原文中出现的字面值，单位随原文保留；每个单元格记录 `source_file` 与命中原文片段。
-2. **条款对照表**：识别中文条款号（如 `（十三）`、`第二十六条`），取该条首句作为要求摘要，再从同条正文中抽取技术落点关键词，生成一行。
-3. 任何一条抽不到时返回空行并附 `extraction_miss`，**不补全、不推测**；由门禁判 `CAPABILITY_MISSING`。
+1. **指标数值矩阵**：`spec` 不含「条款 / 矩阵」时走这条。指标词 + `不得低于` / `要求为` + 字面百分比；数字照抄原文，不做换算，附原文句子摘录与来源文件 sha256 指纹。
+2. **条款对照矩阵**：`spec` 含「条款 / 矩阵」时走这条。中文条款号切段 → 首句摘要 → 领域关键词命中。
+3. 抽不到留空并记 `extraction_miss`，**不补全、不推测**；由门禁判 `CAPABILITY_MISSING`。
 
-## 输入输出契约
+## 工具契约（唯一事实源：`mcp/tools.json`）
 
-输入（stdin JSON）：
-
-```json
-{"capability": {"id": "...", "kind": "table", "spec": "..."}, "materials": [{"file": "01.txt", "text": "..."}]}
-```
-
-输出（stdout JSON）：
+调用：
 
 ```json
-{"capability_id": "...", "headers": [], "rows": [[]], "sources": [], "extraction_rule": "...", "extraction_miss": []}
+{"name": "table_compose", "arguments": {"capability": {"id": "...", "spec": "..."}, "materials": [{"file": "01.txt", "text": "..."}]}}
 ```
+
+返回：`capability_id` / `headers` / `rows` / `sources` / `extraction_rule` / `extraction_miss`。
+`materials` 为空时工具返回 `error`，拒绝产出空表壳。
 
 ## 纪律
 
 - 数字照抄原文，派生值必须由脚本复算并附 `formula`（沿用项目既有纪律）。
 - 输出必须带 `capability_id`，否则门禁无法做声明-交付对账。
 - 不使用网络、不调用 LLM、不写文件（由编排层统一落盘）。
+- **禁止**在 Skill 里再实现一份抽取逻辑；规则变更只改 MCP Server。
+
+## 可执行参考
+
+`scripts/compose.py` 是通过 MCP client 调用 `table_compose` 的示例，不是执行入口。

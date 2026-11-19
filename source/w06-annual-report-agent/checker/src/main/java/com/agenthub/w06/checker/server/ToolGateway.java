@@ -124,6 +124,12 @@ final class ToolGateway {
             return err("unknown_tool", "注册表无工具: " + tool + "（GET /v1/tools 查看可用工具）");
         }
         try {
+            // 通用 MCP 桥：注册表标记 executor=mcp_bridge 的工具统一转发到独立 MCP Server。
+            // 新增 MCP 工具只需改 tools.json（工具定义 + mcp_tool + 端点），不再修改本 switch。
+            ObjectNode def = REGISTRY.get(tool);
+            if (def != null && "mcp_bridge".equals(def.path("executor").asText(""))) {
+                return mcpBridge(tool, def, argsOf(body));
+            }
             return switch (tool) {
                 case "web_search" -> webSearch(argsOf(body));
                 case "web_fetch" -> webFetch(argsOf(body));
@@ -141,6 +147,67 @@ final class ToolGateway {
 
     private static JsonNode argsOf(JsonNode body) {
         return body.path("arguments");
+    }
+
+    // ———————————————————— 通用 MCP 桥 ————————————————————
+
+    /** 把 /v1/tools/call 转成 JSON-RPC 2.0 的 tools/call 转发给独立 MCP Server，
+     *  再把 structuredContent 原样作为工具结果返回（fail-closed）。
+     *
+     *  端点与目标工具名全部来自 tools.json（default_args.mcp_endpoint / mcp_tool）；
+     *  本方法不认识任何具体工具语义——新增 MCP 工具零 Java 改动。 */
+    private static ObjectNode mcpBridge(String tool, ObjectNode def, JsonNode args) {
+        String endpoint = def.path("default_args").path("mcp_endpoint")
+                .asText("http://172.17.0.1:8090/mcp");
+        String mcpTool = def.path("mcp_tool").asText(tool);
+        try {
+            ObjectNode rpc = MAPPER.createObjectNode();
+            rpc.put("jsonrpc", "2.0");
+            rpc.put("id", 1);
+            rpc.put("method", "tools/call");
+            ObjectNode params = rpc.putObject("params");
+            params.put("name", mcpTool);
+            params.set("arguments", args == null || args.isMissingNode()
+                    ? MAPPER.createObjectNode() : args);
+
+            HttpRequest req = HttpRequest.newBuilder(URI.create(endpoint))
+                    .timeout(Duration.ofSeconds(90))
+                    .header("Content-Type", "application/json; charset=utf-8")
+                    .POST(HttpRequest.BodyPublishers.ofString(
+                            MAPPER.writeValueAsString(rpc), StandardCharsets.UTF_8))
+                    .build();
+            HttpResponse<String> resp = HTTP.send(req,
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            if (resp.statusCode() != 200) {
+                return err("mcp_bridge_http", "MCP Server 返回 HTTP " + resp.statusCode()
+                        + "（" + endpoint + "）");
+            }
+            JsonNode result = MAPPER.readTree(resp.body()).path("result");
+            if (result.isMissingNode() || result.isNull()) {
+                return err("mcp_bridge_response", "MCP Server 响应缺少 result: "
+                        + resp.body().substring(0, Math.min(200, resp.body().length())));
+            }
+            boolean isError = result.path("isError").asBoolean(false);
+            JsonNode payload = result.path("structuredContent");
+            if (!payload.isObject()) {
+                String text = result.path("content").path(0).path("text").asText("");
+                payload = text.isEmpty() ? MAPPER.createObjectNode() : MAPPER.readTree(text);
+            }
+            ObjectNode out = MAPPER.createObjectNode();
+            if (payload.isObject()) {
+                payload.fields().forEachRemaining(e -> out.set(e.getKey(), e.getValue()));
+            }
+            boolean hasError = payload.path("error").isTextual()
+                    || out.path("error").isTextual();
+            out.put("ok", !isError && !hasError);
+            out.put("tool_name", tool);
+            out.put("mcp_tool", mcpTool);
+            out.put("via", "mcp_bridge");
+            out.put("mcp_endpoint", endpoint);
+            return out;
+        } catch (Exception e) {
+            return err("mcp_bridge_error", "MCP 桥调用失败: " + rootMessage(e));
+        }
     }
 
     // ———————————————————— deepsearch_research ————————————————————
