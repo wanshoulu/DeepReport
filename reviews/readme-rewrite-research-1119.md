@@ -62,3 +62,65 @@ Ollama / Mermaid（工具可视化型）要求「截图先行 + 两行跑通 + �
 - 官方首个应用场景确实是金融分析研报。
 
 因此 README 名词表中区分了 DeepSearch 的「片段级溯源」与本项目自研的「证据摘录字面命中 + sha256 绑定」，没有把两者混为一个机制。
+
+---
+
+## 第二轮重写（2026-11-20）：按优秀 README 的**第一屏结构**返工
+
+第一版把标准条目堆齐了，但第一屏就是 11 行名词表 + 6 张数据表，读起来像内部审计报告，不像 GitHub 首页。用户要求「参考人家优秀的项目咋写 readme」，因此重新拉了 **5 份原文**，这次逐份拆的是**排版与叙事节奏**，不是条目清单。
+
+### 样本四：RAGFlow（`infiniflow/ragflow`）
+
+`https://raw.githubusercontent.com/infiniflow/ragflow/main/README.md`
+
+- 第一屏顺序：Logo → badge 行 → 一行链接导航（`Cloud | Documentation | Roadmap | Discord`）→ **1200px 产品大图** → `<details open>` 折叠目录。
+- 目录在第一个 `##` 之前；`## 💡 What is RAGFlow?` 之后立刻是 `## 🎮 Get Started`，Get Started 里再放 GIF 演示。
+- 结论：**长 README 必须有可见 TOC，且图和"怎么开始"要排在任何术语解释之前**。
+
+### 样本五：Dify（`langgenius/dify`）
+
+`https://raw.githubusercontent.com/langgenius/dify/main/README.md`
+
+- 第一行就是封面图 `![cover-v5-optimized](./images/GitHub_README_if.png)`，然后一行链接、badge 行、一段简介。
+- `## Quick start` 排在 `## Key features` **之前**；安装后明确写出「Once the services are running, open http://localhost/install」——**告诉读者看到什么算成功**。
+- Key features 是 `**1. Workflow**:` / `**2. Comprehensive model support**:` 这种「编号 + 加粗机制名 + 一句解释」，不是表格。
+- 尾部有 Contributing / Community / Security disclosure / License 四节。
+
+### 样本六：Prometheus（`prometheus/prometheus`）
+
+`https://raw.githubusercontent.com/prometheus/prometheus/main/README.md`
+
+- 定义句只讲动作：*"It collects metrics from configured targets at given intervals, evaluates rule expressions, displays the results, and can trigger alerts..."*，不用形容词。
+- 区分清单用 `* A **multi-dimensional** data model (...)` 的加粗短语 + 括号补解释；`## Architecture overview` 紧跟其后放架构图。
+- Install 给三条路径，Docker 那条一行命令 + "Prometheus will now be reachable at <http://localhost:9090/>"。
+
+### 样本七：FastAPI（`fastapi/fastapi`）
+
+`https://raw.githubusercontent.com/fastapi/fastapi/master/README.md`
+
+- 开头一行 `**Documentation**: ... **Source Code**: ...`，紧接着一句话定位 + 加粗特性清单，没有任何铺垫段落。
+- 性能声明 `on par with **NodeJS** and **Go** (thanks to Starlette and Pydantic)` 用**机制归因**，并给脚注 `estimation based on tests conducted by an internal development team`。
+
+### 样本八：GPT Researcher 全文重读（`AssafElovic/gpt-researcher`）
+
+- 第一屏：Logo → badges → **加粗一句话定位** → `## Why GPT Researcher?` 列 5 条具体痛点（*"Objective conclusions for manual research can take weeks"*）→ `## Demo` 视频封面图 → `## Architecture`（planner / execution / publisher 三个机制名 + 5 个步骤）。
+- Features 用短句 + 具体数字（`exceeding 2,000 words`、`over 20 sources`），Getting Started 最后写 `Visit http://localhost:8000 to start.`
+
+### 五份原文的共识（本轮改动的依据）
+
+| 共性 | 第一版的问题 | 本轮改法 |
+|---|---|---|
+| 第一屏是图 / demo / 一句话定位 | 标题后直接长 tagline + 改名说明 + 11 行名词表 | 真实工作台截图（2x PNG）+ badge + 一行导航 + 一句话定位，名词表折叠到文末 |
+| 长 README 有可见 TOC | 无 | 加 `<details open>` 目录 |
+| Features = 编号 + **加粗机制名** + 一句解释 | 7 条平铺 + 独立术语大表，机制与定义割裂 | 重组成 7 条编号机制，首次出现的名词就地括号解释 |
+| 有「为什么需要它」的具体痛点 | 无，直接进问题域抽象论述 | 新增 4 条朴素痛点（引用自评、补数字、指纹失配、改代码） |
+| 有「看到成品」的示例输出 | 无，只有命令 | 新增 `一眼看懂：0.85%`（取自 `benchmark/results.json` 真实例子）+ 真实 artifact JSON 节选 + 报告引用标记 |
+| Quickstart 写清「看到什么算成功」 | 只有 4 行 curl，没有预期结果 | 补返回片段、成功标志、约 5 分钟的耗时提示，并新增 `examples/quickstart.sh` |
+| 架构图在前部 | 无图 | 新增 Mermaid 三段链路图（GitHub 原生渲染，不依赖外链） |
+| 尾部有 License / 参与 | 无 | 新增「路线图与参与」「许可证」 |
+
+### 本轮连带修正（真调研的收益）
+
+- 核对 compose 时发现 `README` 原先指向的部署编排实际位于 `source/w06-annual-report-agent/deploy/compose.yaml`，且是 Agent Bus 内部网络版（`networks: control-net external: true`，**不映射宿主端口**），并非能单独起本机服务的编排；远端真实启动方式是 `docker run -p 18083:18095 -v ...:/snapshot w06-checker:0.3.9`，镜像未在公共 registry 发布。因此把「没有一键部署」写进已知限制，Quickstart 改为如实声明前置条件，不再给读者一条跑不通的路径。
+- 仓库根目录**没有 LICENSE 文件**。第一版对此只字未提；本轮新增「许可证」节，明确写"未明确授予开源使用许可"，不默认按 MIT / Apache-2.0 使用。
+- 截图按既有规范交付：`docs/images/deepreport-workbench-1120.png`，Chrome headless `--force-device-scale-factor=2` 输出 2400×1440 PNG，用新文件名避免 CDN 缓存吐旧图。
