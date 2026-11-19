@@ -1,0 +1,19 @@
+{
+  "$comment": "能力路由表（Agent 编排层唯一事实源）。kind → 绑定哪个 Skill、先探测哪个 MCP 工具、工具无结果时如何降级、缺失时门禁如何判。新增能力改这里，不改编排代码。",
+  "version": "1.0.0",
+  "discovery": "调用前先与 source/config/tools.json 比对，模拟 MCP tools/list 语义；未注册的能力不得静默降级。",
+  "table": {
+    "skill": "table-composition",
+    "probe_tools": ["table_extract"],
+    "fallback": "skill_compose_from_materials",
+    "fallback_reason": "table_extract 只识别已拍平的财报表格；条文类材料无表格时由 Skill 从原文抽取数值矩阵成表",
+    "on_missing": "BLOCKING"
+  },
+  "chart": {
+    "skill": "chart-composition",
+    "probe_tools": [],
+    "registered_tool": null,
+    "note": "w06-charts（图表）在 ARCHITECTURE-v3.md:156 标注待注册；当前由 Skill 内确定性 SVG 渲染脚本承载，注册后改为 probe_tools=['chart_spec_build']",
+    "on_missing": "BLOCKING"
+  }
+}

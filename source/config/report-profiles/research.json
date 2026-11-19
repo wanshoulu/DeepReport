@@ -11,6 +11,24 @@
   "required_metrics": [
     "REVENUE", "NET_PROFIT", "GROSS_MARGIN", "ROE", "PE_RATIO", "EPS"
   ],
+  "$capabilities_note": "机读能力声明，契约见 docs/capability-routing-design.md。当前仅由 source/capability-router/router.py 原型消费；Java 编排层（CheckerHttpServer）尚未读取，勿据此认为线上已具备图表能力。",
+  "capabilities": [
+    {
+      "id": "cap.valuation_table",
+      "kind": "table",
+      "spec": "估值与盈利指标对比表（REVENUE/NET_PROFIT/GROSS_MARGIN/ROE/PE/EPS）",
+      "required": true,
+      "source_of_truth": "materials"
+    },
+    {
+      "id": "cap.trend_chart",
+      "kind": "chart",
+      "chart_type": "bar",
+      "spec": "核心指标趋势图，数值取估值对比表",
+      "required": false,
+      "source_of_truth": "artifact.tables"
+    }
+  ],
   "derived_rules_ref": "source/config/report-profiles/metrics/equity_research.json",
 
   "support_lexicon": {
