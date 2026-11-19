@@ -1,9 +1,9 @@
 # 分支分工与协作约定
 
-DeepReport 用两条长期分支管理「已验证的过去」与「面向未来的通用化」（仓库名 `Report-Agent` 为历史名称，产品统一命名 DeepReport）：
+DeepReport 用两条长期分支管理「已验证的过去」与「面向未来的通用化」：
 
 ```
-Report-Agent (repo)
+DeepReport (repo)
 ├── main            通用写报告智能体 · 主线 · 持续迭代
 └── annual-report   银行年报完整实现 · 冻结基线
 ```

@@ -1,6 +1,6 @@
 # 致 chaosxingxc-orion：请评审 W06 年报智能体系统（架构 / 代码 / 效果）
 
-> **状态说明（2026-11-17，2026-11-19 补充命名）**：本文是 W06 工作包时期向 `agent-hub-alpha` 提交的评审请求，作为历史文档保留。本项目已独立为 `wanshoulu/Report-Agent` 仓持续迭代，产品与系统现统一命名为 **DeepReport**（仓库名保留不改）；最初的评审意见与回应仍具参考价值，故完整留存，不改写原文。新仓定位与最新状态见 [README.md](README.md)。
+> **状态说明（2026-11-17，2026-11-19 补充命名）**：本文是 W06 工作包时期向 `agent-hub-alpha` 提交的评审请求，作为历史文档保留。本项目已独立为 `wanshoulu/DeepReport` 仓持续迭代（原 `Report-Agent`，GitHub 已改名并自动重定向）；仓库、产品与系统现统一命名为 **DeepReport**；最初的评审意见与回应仍具参考价值，故完整留存，不改写原文。新仓定位与最新状态见 [README.md](README.md)。
 >
 > 留言人：wanshoulu · 日期：2026-11-17
 > 对象：本仓 `agent-hub-alpha` 主理人 chaosxingxc-orion

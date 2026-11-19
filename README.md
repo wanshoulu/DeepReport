@@ -2,7 +2,7 @@
 
 > **DeepReport 是一套受控长报告编制系统**：先把材料落盘成带指纹的快照，再由配置驱动的报告画像组织编制，最后用**不依赖模型**的数值与引用双检做 fail-closed 门禁，让报告里每个数字都能追到来源页的原文摘录。
 
-GitHub 仓库名 `Report-Agent` 是项目早期名称，**产品与系统统一命名为 DeepReport**；历史文档中的 `Report Agent` / `W06` 为演变留痕，不再作为对外名称。
+仓库、产品与系统三者现已统一命名为 **DeepReport**（[`wanshoulu/DeepReport`](https://github.com/wanshoulu/DeepReport)，原 `Report-Agent` 已由 GitHub 重定向）；历史文档中的 `Report Agent` / `W06` 为演变留痕，不再作为对外名称。
 
 ## 项目简介
 
