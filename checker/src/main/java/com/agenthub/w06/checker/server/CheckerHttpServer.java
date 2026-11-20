@@ -360,18 +360,33 @@ public final class CheckerHttpServer {
             respond(ex, 200, arr);
             return;
         }
-        if ("/v1/artifacts/template".equals(path)) { // 正例模板工件（只读）：对话流按银行取底稿
+        if ("/v1/artifacts/template".equals(path)) { // 模板工件（只读）：年报域取银行正例工件；通用域按骨架合成
             Map<String, String> query = parseQuery(ex.getRequestURI().getRawQuery());
             String bank = query.getOrDefault("bank", resolver.defaultBank);
+            String reportType = query.getOrDefault("report_type", "annual_report");
+            String subject = query.getOrDefault("subject_hint", "").trim();
             BankSnap b = resolver.banks.get(bank);
-            Path f = b == null ? null : b.dir.resolve("positive-artifact.json");
-            if (f == null || !Files.isRegularFile(f)) {
-                respond(ex, 404, errorNode("template_not_found",
-                        "无模板工件: bank=" + bank + "（可用: " + resolver.banks.keySet() + "）"));
+            if (b == null) {
+                respond(ex, 404, errorNode("bank_not_found",
+                        "无快照集: bank=" + bank + "（可用: " + resolver.banks.keySet() + "）"));
                 return;
             }
-            ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
-            respondRaw(ex, 200, Files.readAllBytes(f));
+            JsonNode structure = structureFor(reportType);
+            if (structure == null) {
+                respond(ex, 400, errorNode("unknown_report_type",
+                        "未知报告类型: " + reportType + "（可用: " + availableReportTypes() + "）"));
+                return;
+            }
+            Path f = b.dir.resolve("positive-artifact.json");
+            if (Files.isRegularFile(f) && "annual_report".equals(reportType)) {
+                // 年报域：银行冻结正例工件作为底稿（原行为）
+                ex.getResponseHeaders().set("Content-Type", "application/json; charset=utf-8");
+                respondRaw(ex, 200, Files.readAllBytes(f));
+                return;
+            }
+            // 通用域 / 无正例工件（如 live 导入快照）：按骨架合成基座工件，指标为空合法
+            AnnualReportArtifacts gen = synthesizeBase(structure, b, subject, reportType);
+            respond(ex, 200, MAPPER.valueToTree(gen));
             return;
         }
         if ("/v1/snapshot/manifest".equals(path)) {
@@ -849,6 +864,101 @@ public final class CheckerHttpServer {
     }
 
     /**
+     * 按报告类型解析骨架配置：annual_report（或缺省）用顶层年报骨架；
+     * 其余查 report_types.{type}（通用域）。未知类型返回 null（调用方 400）。
+     */
+    private static JsonNode structureFor(String reportType) {
+        if (reportType == null || reportType.isBlank() || "annual_report".equals(reportType)) {
+            return STRUCTURE;
+        }
+        JsonNode g = STRUCTURE.path("report_types").path(reportType);
+        return g.isObject() && g.size() > 0 ? g : null;
+    }
+
+    /** 可用报告类型清单（用于 400 错误提示，通用化后随 report_types 增长）。 */
+    private static String availableReportTypes() {
+        StringBuilder sb = new StringBuilder("annual_report");
+        STRUCTURE.path("report_types").fieldNames().forEachRemaining(n -> sb.append(", ").append(n));
+        return sb.toString();
+    }
+
+    /**
+     * 通用域基座工件合成：按骨架 section_order 生成节（静态节取 static_bodies 模板，
+     * 分析节取 brief_body 骨架占位；占位符 {company}/{snapshot_version}/{primary_pages}/
+     * {comparison_pages} 就地填充），指标与引用为空合法——事实性陈述由后续写作/核验层补齐。
+     */
+    private static AnnualReportArtifacts synthesizeBase(JsonNode structure, BankSnap snap,
+                                                        String subject, String reportType) {
+        JsonNode bankTitles = structure.path("banks").path(snap.bank).path("titles");
+        String company = (subject != null && !subject.isBlank()) ? subject
+                : (snap.company != null && !snap.company.isBlank() ? snap.company : "自定主体");
+        String snapshotVersion = snap.snapshotVersion == null || snap.snapshotVersion.isBlank()
+                ? "（未注册版本）" : snap.snapshotVersion;
+        String primaryPages = primaryPagesLabel(snap, 8);
+        List<ReportSection> sections = new ArrayList<>();
+        JsonNode order = structure.path("section_order");
+        for (int i = 0; i < order.size(); i++) {
+            String id = order.get(i).asText();
+            JsonNode sec = structure.path("sections").path(id);
+            if (!sec.isObject()) {
+                continue;
+            }
+            String label = sec.path("label").asText(id);
+            String title = bankTitles.path(id).asText(label);
+            boolean isStatic = "static".equals(sec.path("role").asText("analysis"));
+            String tpl = isStatic ? structure.path("static_bodies").path(id).asText("")
+                    : sec.path("brief_body").asText("");
+            String body = fillPlaceholders(tpl, company, snapshotVersion, primaryPages,
+                    primaryPages.equals("—") ? "—" : "—");
+            sections.add(new ReportSection(id, title, body, List.of()));
+        }
+        String reportPeriod = "annual_report".equals(reportType)
+                ? (snap.reportPeriod == null || snap.reportPeriod.isBlank() ? "报告期" : snap.reportPeriod)
+                : "以导入资料为准";
+        return new AnnualReportArtifacts(null, company, reportPeriod, null,
+                List.of(), List.of(), List.copyOf(sections), List.of());
+    }
+
+    /** 骨架占位符填充：未识别的占位符原样保留（便于发现模板配置遗漏）。 */
+    private static String fillPlaceholders(String tpl, String company, String snapshotVersion,
+                                           String primaryPages, String comparisonPages) {
+        if (tpl == null || tpl.isEmpty()) {
+            return "";
+        }
+        return tpl
+                .replace("{company}", company)
+                .replace("{snapshot_version}", snapshotVersion)
+                .replace("{primary_pages}", primaryPages)
+                .replace("{comparison_pages}", comparisonPages);
+    }
+
+    /** 资料集页清单摘要：manifest.sources 按序拼接 P 页码，超 maxPages 项截断加「等」。 */
+    private static String primaryPagesLabel(BankSnap snap, int maxPages) {
+        Set<Integer> pages = new TreeSet<>();
+        for (JsonNode src : snap.sourcesNode) {
+            for (JsonNode p : src.path("pages")) {
+                pages.add(p.asInt());
+            }
+        }
+        if (pages.isEmpty()) {
+            return "—";
+        }
+        List<Integer> all = new ArrayList<>(pages);
+        int cap = Math.min(maxPages, all.size());
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < cap; i++) {
+            if (i > 0) {
+                sb.append('/');
+            }
+            sb.append('P').append(all.get(i));
+        }
+        if (all.size() > cap) {
+            sb.append(" 等").append(all.size()).append(" 页");
+        }
+        return sb.toString();
+    }
+
+    /**
      * 六工位受控生成流水线（确定性重放，无 LLM）：查数 → 分析 → 图表 → 写作 → 核验 → 主编。
      * 分派/标题/节序全部来自骨架配置与工件数据，服务端零机构特判；换银行=换数据配置。
      */
@@ -862,18 +972,29 @@ public final class CheckerHttpServer {
         String bank = body.path("bank").asText(resolver.defaultBank);
         String mode = body.path("mode").asText("brief");
         String taskId = body.path("task_id").asText("");
-        BankSnap snap = resolver.scope(bank);
-        Path f = snap.dir.resolve("positive-artifact.json");
-        if (!Files.isRegularFile(f)) {
-            respond(ex, 404, errorNode("artifact_missing", "银行快照缺少正例工件: " + snap.bank));
+        String reportType = body.path("report_type").asText("annual_report");
+        String subjectHint = body.path("subject_hint").asText("").trim();
+        JsonNode structure = structureFor(reportType);
+        if (structure == null) {
+            respond(ex, 400, errorNode("unknown_report_type",
+                    "未知报告类型: " + reportType + "（可用: " + availableReportTypes() + "）"));
             return;
         }
-        AnnualReportArtifacts art = MAPPER.treeToValue(MAPPER.readTree(f.toFile()), AnnualReportArtifacts.class);
+        BankSnap snap = resolver.scope(bank);
+        Path f = snap.dir.resolve("positive-artifact.json");
+        AnnualReportArtifacts art;
+        if (Files.isRegularFile(f) && "annual_report".equals(reportType)) {
+            // 年报域：银行冻结正例工件作为基座（模板填充语义）
+            art = MAPPER.treeToValue(MAPPER.readTree(f.toFile()), AnnualReportArtifacts.class);
+        } else {
+            // 通用域 / 无银行正例工件（如 live 导入快照）：按骨架合成基座工件，指标为空合法
+            art = synthesizeBase(structure, snap, subjectHint, reportType);
+        }
 
-        // 节 → 责任 agent / role 映射自骨架配置（不写死「第几节归谁」）
+        // 节 → 责任 agent / role 映射自所选报告类型的骨架配置（不写死「第几节归谁」）
         Map<String, String> sectionAgent = new LinkedHashMap<>();
         Map<String, String> sectionRole = new LinkedHashMap<>();
-        var secIt = STRUCTURE.path("sections").fields();
+        var secIt = structure.path("sections").fields();
         while (secIt.hasNext()) {
             var e = secIt.next();
             sectionAgent.put(e.getKey(), e.getValue().path("agent").asText("editor-in-chief"));
@@ -902,9 +1023,18 @@ public final class CheckerHttpServer {
         // （writer-agent）依据 annual-report 技能方法论自主完成；框架按 sessionId 维护
         // 会话记忆，续写与反思修订轮在同一会话内进行。
         LongFormOutcome lf = null;
+        String llmFallbackNote = null;
         if ("long_form".equals(mode)) {
-            lf = runLongForm(art, snap, sectionRole, sectionAgent, resolver, sources);
-            art = lf.artifacts();
+            try {
+                lf = runLongForm(art, snap, sectionRole, sectionAgent, resolver, sources, reportType);
+                art = lf.artifacts();
+            } catch (Exception llmEx) {
+                // LLM 通道不可达：按门禁语义回退简报骨架（fail-safe 而非 fail-silent——回退原因进 stages）
+                llmFallbackNote = "writer-agent 不可达（"
+                        + (llmEx.getMessage() == null ? llmEx.getClass().getSimpleName() : llmEx.getMessage())
+                        + "），本轮回退为简报骨架交付";
+                lf = null;
+            }
         }
 
         ArrayNode stages = MAPPER.createArrayNode();
@@ -966,6 +1096,9 @@ public final class CheckerHttpServer {
         ObjectNode s4 = stageNode("writing", "写作", "writer-agent", s4Headline);
         s4.put("mode", mode);
         ArrayNode det4 = s4.withArray("details");
+        if (llmFallbackNote != null) {
+            det4.add(llmFallbackNote);
+        }
         if (lf != null) {
             for (String r : lf.rounds()) {
                 det4.add(r);
@@ -1032,12 +1165,17 @@ public final class CheckerHttpServer {
     // Java 侧不含任何写作方法论——「怎么写」由 agent 侧技能决定。
     // ------------------------------------------------------------------
 
-    /** agent 输出的章节块首行格式：整行仅 [S-n]（容许前置 # 标记与括号内空白，接受后统一规范化）。 */
+    /** agent 输出的章节块首行格式：整行仅 [S-n]/[G-n]（容许前置 # 标记与括号内空白，接受后统一规范化）。 */
     private static final java.util.regex.Pattern SECTION_HEAD =
-            java.util.regex.Pattern.compile("^\\s*(?:#+\\s*)?\\[\\s*(S-\\d{1,2})\\s*\\]\\s*$");
+            java.util.regex.Pattern.compile("^\\s*(?:#+\\s*)?\\[\\s*([SG]-\\d{1,2})\\s*\\]\\s*$");
 
     /** 采纳成稿的最小正文字数（低于此值视为异常响应，不采纳）。 */
     private static final int MIN_BODY_CHARS = 50;
+
+    /** 块首行 token 按报告类型：年报域 [S-n]，通用域 [G-n]（解析层 SECTION_HEAD 两域通吃）。 */
+    private static String secToken(String reportType) {
+        return "annual_report".equals(reportType) ? "S-n" : "G-n";
+    }
 
     /** long_form 生成结果：最终工件 + agent 协作轮次记录（供 Stage 4 展示）。 */
     private record LongFormOutcome(AnnualReportArtifacts artifacts, List<String> rounds) {}
@@ -1048,7 +1186,7 @@ public final class CheckerHttpServer {
      */
     private static LongFormOutcome runLongForm(AnnualReportArtifacts art, BankSnap snap,
             Map<String, String> sectionRole, Map<String, String> sectionAgent,
-            SnapshotHttpResolver resolver, List<SourceEntry> sources) {
+            SnapshotHttpResolver resolver, List<SourceEntry> sources, String reportType) {
         List<String> rounds = new ArrayList<>();
         List<String> analysisIds = new ArrayList<>();
         for (ReportSection sec : art.sections()) {
@@ -1067,7 +1205,7 @@ public final class CheckerHttpServer {
         // 1) 任务书分派：agent 自主分解章节写作任务并成稿（框架 task planning + 会话记忆）
         String draft = AgentChatClient.chat(
                 buildTaskBook(art, snap, resolver.banks.get(ToolGateway.LIVE_BANK),
-                        sectionRole, sectionAgent, analysisIds), sessionId);
+                        sectionRole, sectionAgent, analysisIds, reportType), sessionId);
         if (draft == null) {
             rounds.add("agent 不可达，本次回退模板正文（可稍后重试）");
             return new LongFormOutcome(art, rounds);
@@ -1083,7 +1221,7 @@ public final class CheckerHttpServer {
                 if (!bodies.containsKey(id)) missing.add(id);
             }
             if (missing.isEmpty()) break;
-            String cont = AgentChatClient.chat(buildContinueDirective(missing), sessionId);
+            String cont = AgentChatClient.chat(buildContinueDirective(missing, reportType), sessionId);
             if (cont == null) break;
             bodies.putAll(parseSectionBodies(cont, missing));
             rounds.add("续写轮 " + round + "：补写 " + String.join("、", missing)
@@ -1102,7 +1240,7 @@ public final class CheckerHttpServer {
                     + "，违规 " + violations + " 条，进入反思修订");
         }
         for (int round = 1; round <= 2 && violations > 0; round++) {
-            String revised = AgentChatClient.chat(buildRevisionFeedback(num, cit), sessionId);
+            String revised = AgentChatClient.chat(buildRevisionFeedback(num, cit, reportType), sessionId);
             if (revised == null) break;
             Map<String, String> patches = parseSectionBodies(revised, analysisIds);
             if (patches.isEmpty()) break;
@@ -1132,13 +1270,18 @@ public final class CheckerHttpServer {
      * 指标表、引用清单、快照页原文，以及 Java 解析所需的输出协议。
      */
     private static String buildTaskBook(AnnualReportArtifacts art, BankSnap snap, BankSnap liveSnap,
-            Map<String, String> sectionRole, Map<String, String> sectionAgent, List<String> analysisIds) {
+            Map<String, String> sectionRole, Map<String, String> sectionAgent, List<String> analysisIds,
+            String reportType) {
+        boolean general = !"annual_report".equals(reportType);
+        String skillId = general ? "general-report" : "annual-report";
         StringBuilder sb = new StringBuilder();
         sb.append("【长文写作任务书】\n");
-        sb.append("请先用 skill_tool 加载 annual-report 技能及 references/long-form-writing.md，");
+        sb.append("请先用 skill_tool 加载 ").append(skillId).append(" 技能及 references/long-form-writing.md，");
         sb.append("按技能方法自主分解本任务书的章节写作计划，并逐节成稿。\n\n");
-        sb.append("任务目标：为以下银行撰写年报各分析章节正文。\n");
-        sb.append("银行：").append(art.company()).append("\n");
+        sb.append("任务目标：").append(general
+                ? "为以下报告主题撰写通用报告的各分析章节正文。"
+                : "为以下银行撰写年报各分析章节正文。").append("\n");
+        sb.append(general ? "报告主题：" : "银行：").append(art.company()).append("\n");
         sb.append("报告期：").append(art.reportPeriod()).append("\n\n");
 
         // 章节清单（骨架派生，只含 analysis 节；分析洞察责任 agent 用于写作侧重参考）
@@ -1204,23 +1347,27 @@ public final class CheckerHttpServer {
         // 输出协议（Java 解析契约；写作口径/句式等验收标准见技能）
         sb.append("输出协议（服务端按此解析，须严格遵守）：\n");
         sb.append("1. 只输出章节清单所列各节的正文，不输出任务书解读、开场白或收尾总结；\n");
-        sb.append("2. 每节一个块，块首行只写 [S-n]（n 为章节编号，如 [S-1]），正文从下一行开始；\n");
+        sb.append("2. 每节一个块，块首行只写 [").append(secToken(reportType))
+          .append("]（n 为章节编号，如 [").append(general ? "G-4" : "S-1")
+          .append("]），正文从下一行开始；\n");
         sb.append("3. 数据陈述标注对应引用编号 [C-n]；派生值标注「基于 [C-k] 计算」并给出算式；\n");
         sb.append("4. 不编造快照页原文之外的数据。\n");
         return sb.toString();
     }
 
     /** 缺节续写指令（输出协议不变；同一会话内 agent 可见此前任务书与成稿）。 */
-    private static String buildContinueDirective(List<String> missing) {
+    private static String buildContinueDirective(List<String> missing, String reportType) {
         return "上一轮输出不完整，缺少章节：" + String.join("、", missing) + "\n"
                 + "请按任务书继续完成缺失章节的写作，只输出缺失章节的块，"
-                + "输出协议不变（块首行只写 [S-n]，正文从下一行开始）。";
+                + "输出协议不变（块首行只写 [" + secToken(reportType) + "]，正文从下一行开始）。";
     }
 
     /** 核验违规反馈（反思修订轮输入）：违规清单 + 修订契约。 */
-    private static String buildRevisionFeedback(CheckResult num, CheckResult cit) {
+    private static String buildRevisionFeedback(CheckResult num, CheckResult cit, String reportType) {
+        String skillId = "annual_report".equals(reportType) ? "annual-report" : "general-report";
         StringBuilder sb = new StringBuilder();
-        sb.append("核验未通过，违规清单如下。请按 annual-report 技能的修订流程反思并修订正文。\n\n");
+        sb.append("核验未通过，违规清单如下。请按 ").append(skillId)
+                .append(" 技能的修订流程反思并修订正文。\n\n");
         sb.append("## 数值核验（").append(num.status()).append("）\n");
         for (Violation v : num.violations()) {
             sb.append("- [").append(v.rule()).append("] ");
@@ -1234,7 +1381,8 @@ public final class CheckerHttpServer {
             sb.append(v.detail()).append("\n");
         }
         sb.append("\n修订要求：只修订与违规相关的章节；未修订的章节不要输出。")
-                .append("输出协议：仅输出被修订章节的块，块首行只写 [S-n]，正文从下一行开始，")
+                .append("输出协议：仅输出被修订章节的块，块首行只写 [").append(secToken(reportType))
+                .append("]，正文从下一行开始，")
                 .append("数据陈述标注 [C-n]。");
         return sb.toString();
     }
@@ -1262,9 +1410,9 @@ public final class CheckerHttpServer {
         return out;
     }
 
-    /** 输出协议 token 解码容差：[ S-7 ]/[ C-22 ] 统一规范化为 [S-7]/[C-22]（仅去括号内空白）。 */
+    /** 输出协议 token 解码容差：[ S-7 ]/[ G-4 ]/[ C-22 ] 统一规范化为 [S-7]/[G-4]/[C-22]（仅去括号内空白）。 */
     private static final java.util.regex.Pattern BRACKET_TOKEN =
-            java.util.regex.Pattern.compile("\\[\\s*(S-\\d{1,2}|C-\\d{1,3})\\s*\\]");
+            java.util.regex.Pattern.compile("\\[\\s*([SG]-\\d{1,2}|C-\\d{1,3})\\s*\\]");
 
     private static void acceptSection(Map<String, String> out, String id,
             StringBuilder body, List<String> wantedIds) {
@@ -1317,8 +1465,12 @@ public final class CheckerHttpServer {
             CheckResult posNum = NUMERIC.check(pos, resolver.scopedFor(pos));
             CheckResult posCit = CITATION.check(pos, resolver.scopedFor(pos), sources);
             String posDigest = "sha256:" + sha256(MAPPER.writeValueAsBytes(pos));
-            ObjectNode t1 = approvedTask("TASK-2025-AR-001", pos, "APPROVED",
-                    "2025 年度经营简报：" + artifactBrief(pos) + "，两项核验 PASSED，Alice 具名批准交付",
+            // fail-closed：批准状态按启动时真实重跑的核验结果计算，绝不预写 APPROVED
+            boolean posPassed = "PASSED".equals(String.valueOf(posNum.status()))
+                    && "PASSED".equals(String.valueOf(posCit.status()));
+            ObjectNode t1 = approvedTask("TASK-2025-AR-001", pos, posPassed ? "APPROVED" : "FAILED",
+                    "2025 年度经营简报：" + artifactBrief(pos) + "，两项核验 "
+                            + (posPassed ? "PASSED" : "FAILED") + "，Alice 具名批准交付",
                     posDigest, "2026-03-28T09:30:00Z", "2026-03-28T09:41:00Z", posNum, posCit);
             ObjectNode apr = MAPPER.createObjectNode();
             apr.put("approval_id", "APR-0001");
@@ -1326,12 +1478,14 @@ public final class CheckerHttpServer {
             apr.put("approver", "Alice");
             apr.put("approved_at", "2026-03-28T09:41:00Z");
             apr.put("artifact_digest", posDigest);
-            apr.put("status", "APPROVED");
+            apr.put("status", posPassed ? "APPROVED" : "FAILED");
             apr.set("checks", checksNode(posNum, posCit));
             t1.set("approval", apr);
             TASKS.put("TASK-2025-AR-001", t1);
             TASK_ARTIFACTS.put("TASK-2025-AR-001", pos);
-            APPROVALS.put("TASK-2025-AR-001", apr);
+            if (posPassed) {
+                APPROVALS.put("TASK-2025-AR-001", apr);
+            }
 
             ObjectNode errArt = (ObjectNode) MAPPER.readTree(errF.toFile());
             errArt.put("task_id", "TASK-2025-AR-002");
@@ -1442,7 +1596,7 @@ public final class CheckerHttpServer {
      * 报告库 upsert 登记（对话流登记与流水线产物落库共用同一入口）：沿用传入编号，
      * 未传则自动指派；工件内 task_id 与登记编号同步；计算规范化 digest 写入任务记录。
      *
-     * @param id       期望任务编号（空则自动指派 TASK-2025-AR-%03d）
+     * @param id       期望任务编号（空则自动指派：年报域 TASK-2025-AR-%03d，通用域 TASK-GEN-%03d）
      * @param metaIn   任务元数据（status/summary；null 时按 GENERATED 登记）
      * @param artifact 交付工件
      * @return 登记后的任务记录（TASKS 内引用）
@@ -1450,7 +1604,10 @@ public final class CheckerHttpServer {
     private static ObjectNode registerTask(String id, JsonNode metaIn, AnnualReportArtifacts artifact)
             throws IOException {
         if (id == null || id.isBlank()) {
-            id = String.format("TASK-2025-AR-%03d", TASK_SEQ.incrementAndGet());
+            // 编号前缀按域区分：年报域工件带标准指标 → TASK-2025-AR；通用域（无标准指标）→ TASK-GEN
+            boolean general = artifact == null || artifact.metrics() == null || artifact.metrics().isEmpty();
+            id = String.format(general ? "TASK-GEN-%03d" : "TASK-2025-AR-%03d",
+                    TASK_SEQ.incrementAndGet());
         }
         ObjectNode artNode = (ObjectNode) MAPPER.valueToTree(artifact);
         artNode.put("task_id", id);
@@ -1564,7 +1721,7 @@ public final class CheckerHttpServer {
                 new String[]{}, null);
     }
 
-    /** 技能注册表种子：8 个技能（与 skills/annual-report 目录一致），可绑定给任意运行时 agent。 */
+    /** 技能注册表种子：10 个技能（annual-report 8 个 + general-report 2 个），可绑定给任意运行时 agent。 */
     private static void seedSkills() {
         putSkill("annual-report", "annual-report 主技能", "skills/annual-report/SKILL.md",
                 "年报编制主技能：受控流程编排——资料装载 → 口径澄清 → 分节成稿 → 双重核验 → 具名批准，内含五份 reference（领域/引用/口径/信源/长文写作方法）。",
@@ -1590,6 +1747,13 @@ public final class CheckerHttpServer {
         putSkill("source-library", "信源库管理", "skills/annual-report/references/source-library.md",
                 "一手信源铁律与快照装载流程：页文本读取、digest 校验、二手信源禁入。",
                 new String[]{"信源管理"});
+        // —— 通用报告域（非年报）技能：与 annual-report 同布局，骨架差异全部由 report-structure.json 承载 ——
+        putSkill("general-report", "general-report 主技能", "skills/general-report/SKILL.md",
+                "通用报告编制主技能（调研/客户分析/通用深度报告等非年报域）：受控流程编排——资料装载 → 主题澄清 → 分节成稿 → 双重核验 → 具名批准，复用年报域的核验纪律与引用体例。",
+                new String[]{"编排", "成稿", "核验", "批准", "通用"});
+        putSkill("general-long-form-writing", "通用报告长文写作", "skills/general-report/references/long-form-writing.md",
+                "通用报告长文写作方法：主题聚焦与分解、分节成稿法、引用标注法、口径句式规范、跨节一致性要求、核验违规修订流程（与年报域共用输出协议）。",
+                new String[]{"长文写作", "任务分解", "修订流程", "通用"});
     }
 
     private static void putSkill(String id, String name, String path, String desc, String[] tags) {
