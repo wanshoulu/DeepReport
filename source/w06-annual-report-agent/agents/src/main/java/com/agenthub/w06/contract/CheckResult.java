@@ -20,4 +20,11 @@ public record CheckResult(
     public boolean validFor(String artifactSha256) {
         return this.artifactSha256 != null && this.artifactSha256.equals(artifactSha256);
     }
+
+    /** 无指纹的结论（历史遗留形态）——对任何工件都无效（fail-closed）。 */
+    public static CheckResult unbound(String checkerId, String checkerVersion,
+                                      CheckStatus status, List<Violation> violations) {
+        return new CheckResult(checkerId, checkerVersion, status, violations, null,
+                java.time.Instant.now().toString());
+    }
 }
