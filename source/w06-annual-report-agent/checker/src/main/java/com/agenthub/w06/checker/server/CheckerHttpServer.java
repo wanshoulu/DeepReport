@@ -657,9 +657,29 @@ public final class CheckerHttpServer {
             respond(ex, 400, errorNode("bad_request", "缺少 approver 参数（批准须具名）"));
             return;
         }
+        // report_type 可随 body 传入（research/client_analysis 按各自字典核验）；剥离后反序列化工件
+        byte[] raw;
+        try {
+            raw = ex.getRequestBody().readAllBytes();
+        } catch (Exception e) {
+            respond(ex, 400, errorNode("bad_request", "读取 body 失败"));
+            return;
+        }
+        String reportType = "annual_report";
+        com.fasterxml.jackson.databind.JsonNode bodyNode;
+        try {
+            bodyNode = MAPPER.readTree(raw);
+            if (bodyNode.has("report_type")) {
+                reportType = bodyNode.path("report_type").asText("annual_report");
+                ((com.fasterxml.jackson.databind.node.ObjectNode) bodyNode).remove("report_type");
+            }
+        } catch (Exception e) {
+            respond(ex, 400, errorNode("bad_request", "工件 JSON 解析失败: " + e.getMessage()));
+            return;
+        }
         AnnualReportArtifacts draft;
         try {
-            draft = MAPPER.readValue(ex.getRequestBody(), AnnualReportArtifacts.class);
+            draft = MAPPER.treeToValue(bodyNode, AnnualReportArtifacts.class);
         } catch (Exception e) {
             respond(ex, 400, errorNode("bad_request", "工件反序列化失败: " + e.getMessage()));
             return;
@@ -673,7 +693,7 @@ public final class CheckerHttpServer {
         CheckResult numeric;
         CheckResult citation;
         try {
-            numeric = NUMERIC.check(draft, resolver.scopedFor(draft));
+            numeric = dictCheckerFor(reportType).check(draft, resolver.scopedFor(draft));
             citation = CITATION.check(draft, resolver.scopedFor(draft), sources);
         } catch (Exception e) {
             respond(ex, 500, errorNode("check_failed", String.valueOf(e)));

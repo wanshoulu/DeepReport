@@ -896,16 +896,18 @@ async function gotoApproval() {
   chat.stage = "wait_approval";
   addMsg("approver",
     "两项核验全部 PASSED。交付批准须<b>具名确认</b>——批准记录将与工件内容指纹（sha256）绑定，内容一改批准即失效。");
-  setQuick([{ label: "Alice 确认交付", cls: "primary", fn: approveDelivery }]);
+  setQuick([{ label: "以 Alice 名义批准交付", cls: "primary", fn: approveDelivery }]);
 }
 
 async function approveDelivery() {
   setQuick([]);
   addMsg("user", "Alice 确认交付。");
-  const r = await jpost("/v1/approvals?approver=" + encodeURIComponent("Alice"), chat.artifact);
+  const r = await jpost("/v1/approvals?approver=" + encodeURIComponent("Alice"),
+    Object.assign({ report_type: chat.reportType || "annual_report" }, chat.artifact));
   if (!r.ok) {
-    addMsg("approver", '<span style="color:var(--destructive)">批准被拒绝：HTTP ' + r.status
-      + " —— " + esc((r.data || {}).message || "") + "</span>");
+    addMsg("approver", '<span style="color:var(--destructive)">批准被拒绝（409 REFUSED）：'
+      + esc((r.data || {}).message || "") + "</span>"
+      + '<div class="digest">' + esc(JSON.stringify(((r.data || {}).numeric || {}).violations || []).slice(0, 3)) + "</div>");
     setQuick([{ label: "重新生成一份", cls: "primary", fn: resetChat }]);
     return;
   }
