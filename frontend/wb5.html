@@ -619,11 +619,16 @@ $("#quick-row").addEventListener("click", e => {
 /* 对话状态机：greet → bank → material → clarify → generating → (fix) → wait_approval → done */
 function greet() {
   chat.stage = "greet";
+  const typeNames = { annual_report: "年度报告", research: "调研/技术报告", client_analysis: "客户分析报告" };
   addMsg("editor-in-chief",
-    "您好，我是主编编排 Agent（editor-in-chief）。这里由多专业 agent 协同完成年度报告编制：<br>"
-    + "资料装载 → 口径澄清 → 分节成稿 → 确定性核验 → 具名批准交付。<br>"
-    + "两种方式开始：<b>①</b> 直接输入「写一份关于 XX 的报告」或输入公司全名（任意公司/主题，不限名单）；<b>②</b> 上传该主体的资料（pdf/txt/md 或粘贴文本）后编制。报告类型自动识别（年度报告/调研报告/客户分析）。");
-  setQuick([]);
+    "您好，我是主编编排 Agent（editor-in-chief）。工作流：任务理解 → 匹配报告模板 → 分派专业 agent → 各 agent 调度技能与工具 → 确定性核验 → 具名批准交付。<br>"
+    + "已注册报告类型：" + Object.values(typeNames).map(t => "<b>" + t + "</b>").join(" / ")
+    + "（年报为其中一种；新增类型只需追加 profile 配置，代码零改动）。<br>"
+    + "两种方式开始：<b>①</b> 直接输入「写一份关于 XX 的调研报告」「做一份 XX 的客户分析」或输入公司/主题全名；<b>②</b> 上传该主体的资料（pdf/txt/md 或粘贴文本）后编制。报告类型自动识别。");
+  setQuick([
+    { label: "示例：招商银行 2025 年度报告", fn: () => { $("#chat-input").value = "写一份关于招商银行的2025年度报告"; $("#chat-form").requestSubmit(); } },
+    { label: "示例：写一份关于 deepagent 的技术调研报告", fn: () => { $("#chat-input").value = "写一份关于 deepagent 的技术调研报告"; $("#chat-form").requestSubmit(); } }
+  ]);
 }
 
 async function pickBank(b) {
@@ -666,6 +671,11 @@ function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 async function startClarify() {
   setQuick([]);
+  // 口径澄清演示（N7 反例剧本）仅年报场景有意义；其他类型直接进编制
+  if (chat.reportType && chat.reportType !== "annual_report" && chat.bank === "live") {
+    chat.stage = "generating";
+    return startGeneration(true);
+  }
   chat.stage = "clarify";
   // 口径澄清对象数据驱动：delta_unit=PERCENTAGE_POINT 即「比率类 + 百分点表述」（N7 口径铁律的领域判据），
   // 按变动幅度取最大者（无指标名硬编码；value 是否带 % 不作为判据——模板工件与 demo 工件格式可不同）
@@ -1036,9 +1046,11 @@ async function handleFreeInput(text) {
           || text.match(/(?:调研|研究|分析)报告[：:，,\s]*([\w\u4e00-\u9fa5]+)/);
         chat.subject = m2 ? m2[1].trim() : text.trim();
       }
-      chat.reportType = /年报|年度报告|年度经营/.test(text) ? "annual_report"
-        : /调研|研究|综述|深度分析/.test(text) ? "research"
-        : /客户分析|客户报告|满意度/.test(text) ? "client_analysis"
+      // 主 agent 意图理解：关键词 → 报告类型（与 profiles-index 注册表对齐）
+      chat.reportType = /客户分析|客户报告|满意度|客户画像|客户调研/.test(text) ? "client_analysis"
+        : /调研|研究|综述|竞品|可行性|白皮书|行业分析|技术报告|技术分析|评估报告/.test(text) ? "research"
+        : /年报|年度报告|年度经营|财务报告/.test(text) ? "annual_report"
+        : /报告/.test(text) ? "research"
         : "annual_report";
       chat.bank = "live";
       const company = chat.subject;
