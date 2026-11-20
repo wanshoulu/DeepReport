@@ -945,8 +945,22 @@ async function handleFreeInput(text) {
   } else if (chat.stage === "material") {
     if (/齐备|开始|编制/.test(text)) { startClarify(); }
     else {
-      addMsg("material-agent", "已登记补充资料（" + text.length + " 字）：「"
-        + esc(text.slice(0, 40)) + (text.length > 40 ? "……" : "") + "」，将作为编制依据。可继续粘贴，或点击「资料齐备，开始编制」。");
+      // 真导入：粘贴文本 → /v1/documents/import 落盘 live 快照集并注册信源（与 annual 版对齐）
+      addMsg("material-agent", "正在解析与落盘补充资料（" + text.length + " 字）……");
+      try {
+        const r = await jpost("/v1/documents/import", { title: "对话粘贴补充资料 · " + (chat.subject || "主体"), text });
+        if (r.ok && r.data && r.data.ok) {
+          const n = (r.data.imported || []).length;
+          addMsg("material-agent", "补充资料已落盘 live 快照集并注册进信源注册表（" + n
+            + " 份）。可继续粘贴，或点击「资料齐备，开始编制」。");
+          setQuick([{ label: "资料齐备，开始编制", cls: "primary", fn: startClarify }]);
+        } else {
+          addMsg("material-agent", "资料导入失败：" + esc((r.data || {}).error || "HTTP " + r.status)
+            + "。可重试粘贴，或直接「资料齐备，开始编制」。");
+        }
+      } catch (e) {
+        addMsg("material-agent", "资料导入异常：" + esc(String(e)) + "。可重试，或直接「资料齐备，开始编制」。");
+      }
     }
   } else if (chat.stage === "clarify") {
     if (/个百分点|百分点/.test(text)) answerClarify(true);
