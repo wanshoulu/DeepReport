@@ -44,6 +44,7 @@ package com.agenthub.w06.checker.server;
 
 import com.agenthub.w06.checker.CitationChecker;
 import com.agenthub.w06.checker.NumericChecker;
+import com.agenthub.w06.checker.MetricDictionary;
 import com.agenthub.w06.checker.MetricExtractor;
 import com.agenthub.w06.contract.AnnualReportArtifacts;
 import com.agenthub.w06.contract.DataTable;
@@ -889,6 +890,8 @@ public final class CheckerHttpServer {
 
     /** 多报告类型画像（0.4 泛化）：report_type → 适配后的骨架。来源 = report-profiles/index.json 登记。 */
     static final Map<String, ObjectNode> PIPELINE_PROFILES = new LinkedHashMap<>();
+    /** 指标字典注册表（report-profiles/metrics/*.json，key=字典名如 banking_8）——注册制领域资产。 */
+    static final Map<String, MetricDictionary> METRIC_DICTS = new LinkedHashMap<>();
     static JsonNode PROFILE_INDEX;
 
     /** role→agent 推导（语言级语义映射，与报告类型无关；profile 可用 analyst 字段覆盖 analysis 类）。 */
@@ -935,6 +938,23 @@ public final class CheckerHttpServer {
             System.out.println("WARN: report-structure.json 解析失败: " + e);
         }
         // 多画像登记（report-profiles/index.json）：骨架按各自 schema 适配后入注册表。
+        // 指标字典注册表：/app/metrics/*.json（banking_8/client_analytics/equity_research 同构）
+        Path mdir = staticDir.resolve("metrics");
+        if (Files.isDirectory(mdir)) {
+            try (var stream = Files.list(mdir)) {
+                stream.filter(p -> p.toString().endsWith(".json")).forEach(p -> {
+                    try {
+                        MetricDictionary d = MetricDictionary.load(p);
+                        METRIC_DICTS.put(p.getFileName().toString().replace(".json", ""), d);
+                    } catch (Exception e) {
+                        System.out.println("WARN: 指标字典加载失败 " + p.getFileName() + ": " + e.getMessage());
+                    }
+                });
+            } catch (Exception e) {
+                System.out.println("WARN: metrics 目录遍历失败: " + e.getMessage());
+            }
+            System.out.println("Metric dictionaries loaded: " + METRIC_DICTS.keySet());
+        }
         // 适配规则是结构性的（字段重命名 + role→agent 推导），新增报告类型 = 加配置，零代码改动。
         Path idx = staticDir.resolve("profiles-index.json");
         if (!Files.isRegularFile(idx)) {
@@ -1170,7 +1190,8 @@ public final class CheckerHttpServer {
                 mp.put("page", pg);
                 mp.put("text", text);
             }
-            List<MetricValue> extracted = MetricExtractor.extract(metricPages, snap.reportPeriod);
+            MetricDictionary mdict = metricDictFor(reportType);
+            List<MetricValue> extracted = MetricExtractor.extract(metricPages, snap.reportPeriod, mdict);
             art = new AnnualReportArtifacts(art.taskId(), art.company(), art.reportPeriod(),
                     art.generatedAt(), extracted, art.citations(), art.sections(), art.charts());
             long real = extracted.stream().filter(m -> !"NOT_FOUND".equals(m.value())).count();
@@ -1218,7 +1239,8 @@ public final class CheckerHttpServer {
         if ("long_form".equals(mode)) {
             // 慢工位预上报：LLM 写作分钟级，先让面板看到"写作·执行中"
             reportStageRunning(runId, "写作", "writer-agent", "writer-agent 编制中（任务分解 → 成稿 → 反思）");
-            lf = runLongForm(art, snap, sectionRole, sectionAgent, resolver, sources, dataTables);
+            lf = runLongForm(art, snap, sectionRole, sectionAgent, resolver, sources, dataTables,
+                    dictCheckerFor(reportType));
             art = lf.artifacts();
         }
 
@@ -1302,7 +1324,7 @@ public final class CheckerHttpServer {
         reportStage(runId, s4);
 
         // 5) 核验：真实跑两项确定性核验（N1-N7 / C1-C2）
-        CheckResult num = NUMERIC.check(art, resolver.scopedFor(art));
+        CheckResult num = dictCheckerFor(reportType).check(art, resolver.scopedFor(art));
         CheckResult cit = CITATION.check(art, resolver.scopedFor(art), sources);
         ObjectNode s5 = stageNode("checking", "核验", "numeric-checker, citation-checker", "N1-N7 数值核验 + C1-C2 引用核验（确定性，无 LLM）");
         s5.withArray("details").add("数值核验 " + num.status()
@@ -1371,6 +1393,24 @@ public final class CheckerHttpServer {
                         ? "编制中" : snap.reportPeriod,
                 java.time.LocalDate.now().toString(),
                 new ArrayList<>(), new ArrayList<>(), sections, charts);
+    }
+
+    /** 按报告类型取指标字典：profile.metric_profile → 注册表；缺省回退 banking_8 → null（枚举路径）。 */
+    private static MetricDictionary metricDictFor(String reportType) {
+        JsonNode prof = PIPELINE_PROFILES.get(reportType);
+        String mp = prof == null ? "" : prof.path("metric_profile").asText("");
+        if (mp.isBlank()) mp = "banking_8"; // annual_report 等未声明 profile 的类型默认银行字典
+        MetricDictionary d = METRIC_DICTS.get(mp);
+        if (d == null) {
+            System.out.println("INFO: 指标字典未注册 " + mp + "（reportType=" + reportType + "），回退枚举路径");
+        }
+        return d;
+    }
+
+    /** 字典化数值核验器（字典为 null 时行为与全局 NUMERIC 完全一致）。 */
+    private static NumericChecker dictCheckerFor(String reportType) {
+        MetricDictionary d = metricDictFor(reportType);
+        return d == null ? NUMERIC : new NumericChecker(d);
     }
 
     /** 页码 → 信源 digest（指标/表格抽取共用证据三元组）。 */
@@ -1542,7 +1582,8 @@ public final class CheckerHttpServer {
      */
     private static LongFormOutcome runLongForm(AnnualReportArtifacts art, BankSnap snap,
             Map<String, String> sectionRole, Map<String, String> sectionAgent,
-            SnapshotHttpResolver resolver, List<SourceEntry> sources, ArrayNode dataTables) {
+            SnapshotHttpResolver resolver, List<SourceEntry> sources, ArrayNode dataTables,
+            NumericChecker checker) {
         List<String> rounds = new ArrayList<>();
         List<String> analysisIds = new ArrayList<>();
         for (ReportSection sec : art.sections()) {
@@ -1588,7 +1629,7 @@ public final class CheckerHttpServer {
 
         // 3) 应用成稿并核验
         AnnualReportArtifacts best = applyBodies(art, bodies);
-        CheckResult num = NUMERIC.check(best, resolver.scopedFor(best));
+        CheckResult num = checker.check(best, resolver.scopedFor(best));
         CheckResult cit = CITATION.check(best, resolver.scopedFor(best), sources);
         int violations = num.violations().size() + cit.violations().size();
 
@@ -1603,7 +1644,7 @@ public final class CheckerHttpServer {
             Map<String, String> patches = parseSectionBodies(revised, analysisIds);
             if (patches.isEmpty()) break;
             AnnualReportArtifacts cand = applyBodies(best, patches);
-            CheckResult n2 = NUMERIC.check(cand, resolver.scopedFor(cand));
+            CheckResult n2 = checker.check(cand, resolver.scopedFor(cand));
             CheckResult c2 = CITATION.check(cand, resolver.scopedFor(cand), sources);
             int v2 = n2.violations().size() + c2.violations().size();
             if (v2 < violations) {

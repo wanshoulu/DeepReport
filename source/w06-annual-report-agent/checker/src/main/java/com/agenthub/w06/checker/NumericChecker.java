@@ -21,6 +21,7 @@ import java.math.RoundingMode;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.HashSet;
 import java.util.List;
@@ -31,7 +32,22 @@ import java.util.regex.Pattern;
 public final class NumericChecker {
 
     public static final String CHECKER_ID = "numeric-checker";
-    public static final String CHECKER_VERSION = "0.3.0";
+    public static final String CHECKER_VERSION = "0.4.0";
+
+    /**
+     * 指标字典（可空）：非空时 N1/N2 按字典驱动（任意行业/报告类型），
+     * 为空时按 MetricKey 枚举（银行年报，向后兼容）。
+     * 字典来自 report-profiles/metrics/{metric_profile}.json（注册制领域资产）。
+     */
+    private final MetricDictionary dictionary;
+
+    public NumericChecker() {
+        this.dictionary = null;
+    }
+
+    public NumericChecker(MetricDictionary dictionary) {
+        this.dictionary = dictionary;
+    }
 
     /*
      * v0.3.0 泛化说明：本类仍是年报（银行八指标）路径，保持向后兼容、行为不变。
@@ -80,20 +96,35 @@ public final class NumericChecker {
 
         // N1 完整性
         Map<MetricKey, MetricValue> byKey = new EnumMap<>(MetricKey.class);
+        Map<String, MetricValue> byKeyStr = new HashMap<>();
         for (MetricValue m : draft.metrics()) {
             if (byKey.put(m.key(), m) != null) {
                 violations.add(v("METRIC_DUPLICATED", m.key().name(), "同一指标出现多条记录", Severity.BLOCKING));
             }
+            byKeyStr.putIfAbsent(m.key().name(), m);
         }
-        for (MetricKey k : MetricKey.values()) {
-            if (!byKey.containsKey(k)) {
-                violations.add(v("METRIC_MISSING", k.name(), "八指标缺失：" + k.getDisplayName(), Severity.BLOCKING));
+        if (dictionary != null) {
+            // 字典驱动：完整性按配置的指标集（任意行业/报告类型）
+            for (MetricDictionary.MetricDef def : dictionary.all()) {
+                MetricValue mv = byKeyStr.get(def.key());
+                if (mv == null) {
+                    violations.add(v("METRIC_MISSING", def.key(),
+                            "指标缺失：" + def.nameZh(), Severity.BLOCKING));
+                }
+            }
+        } else {
+            for (MetricKey k : MetricKey.values()) {
+                if (!byKey.containsKey(k)) {
+                    violations.add(v("METRIC_MISSING", k.name(), "八指标缺失：" + k.getDisplayName(), Severity.BLOCKING));
+                }
             }
         }
 
         for (MetricValue m : draft.metrics()) {
-            // N2 单位
-            String expected = EXPECTED_UNITS.get(m.key());
+            // N2 单位（字典驱动优先，回退枚举冻结口径）
+            String expected = dictionary != null && dictionary.byKey(m.key().name()) != null
+                    ? dictionary.byKey(m.key().name()).expectedUnit()
+                    : EXPECTED_UNITS.get(m.key());
             if (expected != null && !expected.equals(m.unit())) {
                 violations.add(v("UNIT_MISMATCH", m.key().name(),
                         "单位应为 " + expected + "，实际 " + m.unit() + "（A07）", Severity.BLOCKING));

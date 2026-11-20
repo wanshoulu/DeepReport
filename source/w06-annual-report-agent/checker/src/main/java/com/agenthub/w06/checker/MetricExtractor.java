@@ -15,6 +15,7 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -69,6 +70,87 @@ public final class MetricExtractor {
      * 抽不到的指标 value=NOT_FOUND、page=0（N1 完整性满足，N3 豁免，checker 语义诚实）。
      */
     public static List<MetricValue> extract(JsonNode pages, String period) {
+        return extract(pages, period, null);
+    }
+
+    /**
+     * 字典驱动抽取（通用内核）：指标集/名称模式/约定单位来自 MetricDictionary（注册制领域资产）。
+     * 匹配策略：对字典每个指标，按 matchNames()（中文名+别名）在页文本定位 → 窗口取首个两位小数 →
+     * 单位取字典 expected_unit。抽不到 → NOT_FOUND（诚实兜底，N1 满足/N3 豁免/N4 跳过）。
+     * 归母口径守护泛化：字典 definition 含"归属于母公司/归母"字样的指标，正文须含同字样才采信。
+     */
+    public static List<MetricValue> extract(JsonNode pages, String period, MetricDictionary dictionary) {
+        if (dictionary != null) {
+            return extractWithDictionary(pages, period, dictionary);
+        }
+        return extractLegacyBanking(pages, period);
+    }
+
+    /** 字典驱动路径（通用）。 */
+    private static List<MetricValue> extractWithDictionary(JsonNode pages, String period, MetricDictionary dict) {
+        List<JsonNode> pageList = new ArrayList<>();
+        if (pages != null) pages.forEach(pageList::add);
+        Map<String, MetricValue> got = new LinkedHashMap<>();
+        for (MetricDictionary.MetricDef def : dict.all()) {
+            MetricValue mv = null;
+            for (JsonNode p : pageList) {
+                String text = p.path("text").asText("");
+                if (text.isBlank()) continue;
+                String digest = p.path("digest").asText("");
+                int page = p.path("page").asInt(0);
+                for (String name : def.matchNames()) {
+                    int i = text.indexOf(name);
+                    if (i < 0) continue;
+                    // 子串守护：名称前紧连"比/占/率/入/对"（如"比营业收入""占营业收入"）是比率行而非指标行
+                    if (i > 0) {
+                        char prev = text.charAt(i - 1);
+                        if (prev == '比' || prev == '占' || prev == '率' || prev == '入' || prev == '对') {
+                            int j = text.indexOf(name, i + name.length());
+                            if (j >= 0) i = j;
+                        }
+                    }
+                    String tail = text.substring(i + name.length(), Math.min(text.length(), i + name.length() + 30));
+                    if (tail.contains("除以")) {
+                        int j = text.indexOf(name, i + name.length());
+                        if (j >= 0) i = j;
+                    }
+                    String window = text.substring(i + name.length(), Math.min(text.length(), i + name.length() + 120));
+                    Matcher n = NUM2.matcher(window);
+                    if (n.find()) {
+                        String unit = def.expectedUnit() == null || def.expectedUnit().isBlank() ? "%" : def.expectedUnit();
+                        mv = mv(safeEnumKey(def.key()), n.group(1), unit, digest, page, period);
+                        break;
+                    }
+                }
+                if (mv != null) break;
+            }
+            if (mv != null && mv.page() > 0 && def.definition() != null
+                    && (def.definition().contains("归属于母公司") || def.definition().contains("归母"))) {
+                String text = textOfPage(pageList, mv.page());
+                if (text == null || !(text.contains("归属于母公司") || text.contains("归属于本行"))) {
+                    mv = null;
+                }
+            }
+            if (mv == null) {
+                String unit = def.expectedUnit() == null || def.expectedUnit().isBlank() ? "%" : def.expectedUnit();
+                mv = new MetricValue(safeEnumKey(def.key()), "NOT_FOUND", unit, period, "", 0, "");
+            }
+            got.put(def.key(), mv);
+        }
+        return new ArrayList<>(got.values());
+    }
+
+    /** 字典 key 不在 MetricKey 枚举时的安全占位（工件契约要求枚举 key；N1/N2 走字典路径不受影响）。 */
+    private static MetricKey safeEnumKey(String key) {
+        try {
+            return MetricKey.valueOf(key);
+        } catch (IllegalArgumentException e) {
+            return MetricKey.OPERATING_REVENUE;
+        }
+    }
+
+    /** 旧银行口径路径（硬编码模式，向后兼容 annual_report + banking_8 行为不变）。 */
+    private static List<MetricValue> extractLegacyBanking(JsonNode pages, String period) {
         // page 文本按页码缓存
         List<JsonNode> pageList = new ArrayList<>();
         if (pages != null) {

@@ -1,0 +1,59 @@
+{
+  "$comment": "银行年报指标字典 banking_8 —— 与 equity_research.json 同构（配置驱动，checker/extractor 按 report_type 加载）。W01 冻结口径：单位错误即 A07。",
+  "version": "1.0.0",
+  "report_type": "annual_report",
+  "metrics": {
+    "OPERATING_REVENUE": {
+      "name_zh": "营业收入",
+      "expected_unit": "亿元",
+      "definition": "合并口径营业收入"
+    },
+    "NET_PROFIT_ATTRIBUTABLE": {
+      "name_zh": "归属于母公司股东的净利润",
+      "expected_unit": "亿元",
+      "definition": "归母净利润（须含'归属于母公司/本行'口径字样才采信）",
+      "aliases": ["净利润"]
+    },
+    "NET_INTEREST_MARGIN": {
+      "name_zh": "净利息收益率",
+      "expected_unit": "%",
+      "definition": "利息净收入除以平均生息资产",
+      "aliases": ["净息差"]
+    },
+    "COST_INCOME_RATIO": {
+      "name_zh": "成本收入比",
+      "expected_unit": "%",
+      "definition": "业务及管理费除以营业收入"
+    },
+    "NPL_BALANCE": {
+      "name_zh": "不良贷款余额",
+      "expected_unit": "亿元",
+      "definition": "不良贷款余额（贷款五级分类次级+可疑+损失）"
+    },
+    "NPL_RATIO": {
+      "name_zh": "不良贷款率",
+      "expected_unit": "%",
+      "definition": "不良贷款余额除以客户贷款及垫款总额",
+      "derived": {
+        "formula": "NPL_BALANCE / LOANS_TOTAL * 100",
+        "tolerance": 0.05,
+        "base_keywords": ["贷款和垫款本金总额", "贷款总额", "客户贷款及垫款总额"]
+      }
+    },
+    "PROVISION_COVERAGE": {
+      "name_zh": "拨备覆盖率",
+      "expected_unit": "%",
+      "definition": "贷款减值准备余额除以不良贷款余额",
+      "derived": {
+        "formula": "LOAN_PROVISION / NPL_BALANCE * 100",
+        "tolerance": 1.0,
+        "base_keywords": ["贷款减值准备"]
+      }
+    },
+    "CET1_RATIO": {
+      "name_zh": "核心一级资本充足率",
+      "expected_unit": "%",
+      "definition": "核心一级资本净额除以风险加权资产"
+    }
+  }
+}
