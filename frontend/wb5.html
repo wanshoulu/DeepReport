@@ -717,9 +717,20 @@ async function startGeneration(correct) {
     base = chat.bank === "cmb" ? clone(state.positive)
       : await jget("/v1/artifacts/template?bank=" + encodeURIComponent(chat.bank));
   } catch (e) {
-    addMsg("editor-in-chief", '<span style="color:var(--destructive)">模板工件加载失败：' + esc(e.message) + "</span>");
-    setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
-    return;
+    // live 主体（如 deepagent）无预置底稿是正常路径：信源快照由导入资料生成，抽取工位产出真实数据。
+    // 构造最小空底稿壳继续编制，不再中断。
+    if (chat.bank === "live") {
+      addMsg("material-agent", "该主体无预置底稿，将从导入的信源快照现场抽取构建。");
+      base = {
+        company: chat.subject || "未命名主体",
+        report_period: "2025年度",
+        metrics: [], sections: [], citations: [], tables: []
+      };
+    } else {
+      addMsg("editor-in-chief", '<span style="color:var(--destructive)">模板工件加载失败：' + esc(e.message) + "</span>");
+      setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
+      return;
+    }
   }
   if (!correct) {
     // 演示腐化：澄清指标的比率变动句「个百分点」→「%」——按「指标名 + 上升/下降变动表述」联合定位目标句（无节号/指标名硬编码），
