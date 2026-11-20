@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>W06 年报工作台 · 年度经营简报（多银行）</title>
+<title>W06 报告智能体工作台</title>
 <style>
 /* ———— SkillHub 设计 token（与 skill hub 站点同源）———— */
 :root {
@@ -137,60 +137,49 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 /* ———— 对话视图（页签 1）———— */
 .chat-card { display: flex; flex-direction: column; height: calc(100vh - 236px); min-height: 520px; padding: 0; overflow: hidden; }
 
-/* ———— Agent 运行实时面板（对照 Dify Tracing / Langfuse Timeline 设计）———— */
-.chat-split { display: grid; grid-template-columns: 1fr 400px; gap: 14px; align-items: stretch; }
-.run-panel { display: flex; flex-direction: column; background: var(--bg, #fff); border: 1px solid var(--border, #e4e6eb); border-radius: 12px; overflow: hidden; min-height: 520px; height: calc(100vh - 236px); }
-.run-panel.empty { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 12.5px; border-style: dashed; }
-.rp-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--border, #e4e6eb); }
-.rp-head h3 { font-size: 13px; margin: 0 0 8px; display: flex; justify-content: space-between; align-items: center; }
-.rp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.rp-stat { background: #f6f7f9; border-radius: 8px; padding: 7px 8px; text-align: center; }
-.rp-stat .v { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.rp-stat .k { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: .3px; }
-.rp-toolbar { display: flex; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border, #e4e6eb); align-items: center; }
-.rp-view-tabs { display: flex; gap: 2px; background: #f0f1f4; border-radius: 8px; padding: 2px; }
-.rp-vtab { font-size: 11.5px; padding: 4px 10px; border-radius: 6px; cursor: pointer; border: none; background: none; color: var(--muted); }
-.rp-vtab.on { background: #fff; color: var(--fg); font-weight: 650; box-shadow: 0 1px 2px rgba(0,0,0,.06); }
-.rp-body { flex: 1; overflow-y: auto; padding: 12px 14px; }
-/* 时间线节点（Langfuse Timeline 风格）*/
-.rp-tl { position: relative; padding-left: 18px; }
-.rp-tl::before { content: ""; position: absolute; left: 5px; top: 6px; bottom: 6px; width: 2px; background: #e8eaef; }
-.rp-node { position: relative; margin-bottom: 10px; border: 1px solid var(--border, #e4e6eb); border-radius: 10px; background: #fff; overflow: hidden; }
-.rp-node::before { content: ""; position: absolute; left: -17px; top: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--success, #1f9d61); box-shadow: 0 0 0 3px rgba(31,157,97,.15); }
-.rp-node.running::before { background: #3b7bf5; animation: rpPulse 1.1s ease-in-out infinite; }
-.rp-node.failed::before { background: #d64545; box-shadow: 0 0 0 3px rgba(214,69,69,.15); }
-@keyframes rpPulse { 0%,100% { box-shadow: 0 0 0 2px rgba(59,123,245,.3);} 50% { box-shadow: 0 0 0 5px rgba(59,123,245,.12);} }
-.rp-node-h { display: flex; align-items: center; gap: 8px; padding: 9px 11px; cursor: pointer; }
-.rp-node-h:hover { background: #f7f8fa; }
-.rp-ntype { font-size: 9.5px; font-weight: 700; letter-spacing: .5px; padding: 2px 6px; border-radius: 4px; background: #eceef2; color: #5b6470; }
-.rp-ntype.ORCHESTRATOR { background: #e8e2fb; color: #6a3fc0; }
-.rp-ntype.AGENT { background: #e0ecfb; color: #1d5fbf; }
-.rp-ntype.CHECKER { background: #fdeede; color: #b25e09; }
-.rp-ntype.GATEKEEP { background: #e2f3e9; color: #1f7a45; }
-.rp-ntitle { flex: 1; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rp-nmeta { font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; gap: 8px; flex: 0 0 auto; }
-.rp-nstatus { font-size: 10.5px; font-weight: 700; }
-.rp-node.running .rp-nstatus { color: #3b7bf5; }
-.rp-node-b { display: none; padding: 4px 11px 10px; border-top: 1px dashed #e8eaef; background: #fbfcfd; }
-.rp-node.open .rp-node-b { display: block; }
-.rp-field { margin-top: 7px; }
-.rp-field .fl { font-size: 10px; color: var(--muted); letter-spacing: .5px; margin-bottom: 3px; font-weight: 650; }
-.rp-field .fv { font-size: 11.5px; line-height: 1.65; color: #333; word-break: break-all; }
-.rp-thinking { font-size: 11.5px; color: #6b5bd6; background: #f4f2fd; border-left: 3px solid #a99df0; padding: 7px 10px; border-radius: 0 6px 6px 0; font-style: italic; }
-.rp-tools .tc { display: flex; align-items: center; gap: 6px; font-size: 11px; padding: 4px 8px; background: #f0f4f9; border-radius: 6px; margin-bottom: 4px; }
-.rp-tools .tc .tn { font-family: ui-monospace, Consolas, monospace; color: #1d5fbf; }
-.rp-tools .tc .tp { margin-left: auto; font-size: 9.5px; color: var(--muted); }
-/* 图视图（Langfuse Graph 聚合模式简化版）*/
-.rp-graph { display: flex; flex-direction: column; align-items: center; padding: 8px 0; }
-.rp-gnode { width: 200px; text-align: center; padding: 8px 10px; border: 1.5px solid var(--border, #e4e6eb); border-radius: 10px; font-size: 11.5px; background: #fff; margin: 4px 0; }
-.rp-gnode .gtitle { font-weight: 650; font-size: 11.5px; }
-.rp-gnode .gmeta { font-size: 10px; color: var(--muted); margin-top: 2px; }
-.rp-gnode.ok { border-color: #bfe5cf; background: #f4fbf7; }
-.rp-par { display: flex; gap: 6px; }
-.rp-garrow { color: #b8bec8; font-size: 13px; line-height: 1; margin: 1px 0; }
-/* 运行中头部条 */
-.rp-live-bar { display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: #3b7bf5; padding: 6px 16px; background: #f0f5ff; border-bottom: 1px solid #dbe7ff; }
-.rp-dot { width: 7px; height: 7px; border-radius: 50%; background: #3b7bf5; animation: rpPulse 1.1s infinite; }
+/* ———— 协作图谱面板（报告编制页右侧：静态注册拓扑 + 任务执行动态点亮）———— */
+.chat-split { display: grid; grid-template-columns: 1fr 430px; gap: 14px; align-items: stretch; }
+.graph-panel { display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; min-height: 520px; height: calc(100vh - 236px); }
+.gp-head { padding: 12px 14px 9px; border-bottom: 1px solid var(--border); }
+.gp-head h3 { font-size: 13px; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; }
+.gp-plan { font-size: 11.5px; color: var(--muted); line-height: 1.7; }
+.gp-plan b { color: var(--fg); font-weight: 600; }
+.gp-legend { display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; font-size: 10.5px; color: var(--muted); }
+.gp-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 4px; vertical-align: 1px; }
+.gp-body { flex: 1; overflow: auto; padding: 4px 2px; }
+.gp-body svg { width: 100%; height: auto; display: block; }
+.gp-status { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; min-height: 36px; line-height: 1.5; }
+.gp-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #b8bec8; flex: none; }
+.gp-status.run { color: #3b7bf5; }
+.gp-status.run .dot { background: #3b7bf5; animation: gpPulse 1.1s ease-in-out infinite; }
+.gp-status.done { color: var(--success); }
+.gp-status.done .dot { background: var(--success); }
+@keyframes gpPulse { 0%,100% { box-shadow: 0 0 0 2px rgba(59,123,245,.3); } 50% { box-shadow: 0 0 0 5px rgba(59,123,245,.12); } }
+/* SVG 元素状态：静态拓扑全彩可见；运行中未参与对象淡显、参与对象按类型点亮 */
+.gg-edge { stroke: #d9dde5; stroke-width: 1.4; fill: none; transition: stroke .3s, opacity .3s, stroke-width .3s; }
+.gg-edge.k-register { stroke-dasharray: 5 3; }
+.gg-edge.lit { stroke-width: 2.2; }
+.gg-edge.lit.k-register { stroke: #8a5fd0; stroke-dasharray: none; }
+.gg-edge.lit.k-bind { stroke: #3b7bf5; }
+.gg-edge.lit.k-serve { stroke: #17937c; }
+.gg-edge.lit.k-call { stroke: #d98b21; }
+.gg-node rect { fill: #fff; stroke: #d3d7e0; stroke-width: 1.3; transition: all .3s; }
+.gg-node text { font-size: 11px; fill: #6a7280; text-anchor: middle; font-family: var(--sans); pointer-events: none; }
+.gg-node.t-main rect { stroke: #b9a3e8; fill: #faf7ff; }
+.gg-node.t-main text { fill: #6a3fc0; font-weight: 650; }
+.gg-node.t-market rect { stroke-dasharray: 4 3; fill: #fafafa; }
+.gg-node.lit rect { stroke-width: 2; }
+.gg-node.lit.t-main rect { fill: #efe8fb; stroke: #8a5fd0; }
+.gg-node.lit.t-agent rect { fill: #e7f0fe; stroke: #3b7bf5; }
+.gg-node.lit.t-agent text { fill: #1d5fbf; font-weight: 600; }
+.gg-node.lit.t-skill rect { fill: #e5f4f1; stroke: #17937c; }
+.gg-node.lit.t-skill text { fill: #0f6e5d; font-weight: 600; }
+.gg-node.lit.t-mcp rect { fill: #fdf3e3; stroke: #d98b21; }
+.gg-node.lit.t-mcp text { fill: #a36808; font-weight: 600; }
+.gg-node.now rect { animation: gpNodeGlow 1s ease-in-out 1; }
+@keyframes gpNodeGlow { 0%,100% { stroke-width: 2; } 50% { stroke-width: 3.6; filter: drop-shadow(0 0 4px rgba(59,123,245,.55)); } }
+svg.g-running .gg-node:not(.lit) { opacity: .3; }
+svg.g-running .gg-edge:not(.lit) { opacity: .16; }
 .chat-log { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
 .chat-msg { display: flex; gap: 10px; max-width: 94%; }
 .chat-msg.user { flex-direction: row-reverse; margin-left: auto; max-width: 80%; }
@@ -494,21 +483,21 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
   .reports-layout { grid-template-columns: 1fr; }
   .reports-list { max-height: none; }
   .chat-split { grid-template-columns: 1fr; }
-  .run-panel { min-height: 380px; height: auto; max-height: 60vh; }
+  .graph-panel { min-height: 380px; height: auto; max-height: 60vh; }
   .chat-card { height: 70vh; min-height: 420px; }
 }
 </style>
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="brand-mark">W06</span>年报工作台<span class="brand-en">Annual Report Workbench</span></div>
+  <div class="brand"><span class="brand-mark">W06</span>报告智能体工作台<span class="brand-en">Report Agent Workbench</span></div>
   <div class="top-status">
     <span id="health-badge" class="badge neutral">连接中…</span>
     <span class="mono" id="health-ver"></span>
   </div>
 </header>
 <nav class="tabs" id="tabs">
-  <button class="tab active" data-view="chat">对话</button>
+  <button class="tab active" data-view="chat">报告编制</button>
   <button class="tab" data-view="assets">资产库</button>
   <button class="tab" data-view="reports">报告库</button>
   <button class="tab" data-view="agents">Agent Hub</button>
@@ -527,7 +516,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
         <button class="btn primary" type="submit">发送</button>
       </form>
       </div>
-      <aside class="run-panel" id="run-panel"></aside>
+      <aside class="graph-panel" id="graph-panel"></aside>
     </div>
   </section>
   <section class="view" id="view-assets"></section>
@@ -866,6 +855,17 @@ async function pickBank(b) {
 
 function escRe(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
+/* 从自由输入提取报告主题：剥离动词/量词与报告类型后缀（剥完为空则视为未提取，调用方回退原文） */
+function extractSubject(text) {
+  let s = String(text).trim()
+    .replace(/^(请|帮忙|帮我)/, "")
+    .replace(/^(写|编制|生成|撰写|做|出|来)/, "")
+    .replace(/^(一份|一个|篇)/, "")
+    .replace(/(投研报告|投资分析报告|调研报告|分析报告|研究报告|通用报告|行业分析报告|客户分析报告|报告|简报)$/, "")
+    .replace(/[的之\s]+$/, "").trim();
+  return s || "";
+}
+
 async function startClarify() {
   setQuick([]);
   chat.stage = "clarify";
@@ -962,8 +962,10 @@ async function startGeneration(correct) {
   }
   // 通用域/长文模式：writer-agent 服务端成稿（含核验后终稿）——如实采纳服务端工件，前端不本地编造
   if (isGeneral && p.data.artifact) chat.artifact = p.data.artifact;
+  graphBeginRun(p.data.plan); // 主 agent 任务理解与规划 → 图谱进入运行态
   for (const st of p.data.stages) {
     if (st.stage_id === "writing") continue; // 写作工位在下方逐节播报
+    await graphStage(st); // 图谱按工位点亮参与 agent/skill/MCP（累积保持）
     const agentOf = { material: "material-agent", chart: "chart-agent", checking: "numeric-checker", consolidation: "editor-in-chief" };
     const aid = agentOf[st.stage_id] || String(st.agent || "").split(",")[0].trim() || "editor-in-chief";
     await jpost("/v1/agents/load", { agent_id: aid, task_id: chat.taskId });
@@ -977,6 +979,7 @@ async function startGeneration(correct) {
   const wr = p.data.stages.find(s => s.stage_id === "writing");
   if (wr) {
     await jpost("/v1/agents/load", { agent_id: "writer-agent", task_id: chat.taskId });
+    await graphStage(wr);
     addMsg("writer-agent", "【写作工位】" + esc(wr.headline || ""));
   }
   for (const line of (wr && wr.details) || []) {
@@ -1085,6 +1088,7 @@ async function approveDelivery() {
   }
   state.approval = r.data;
   chat.stage = "done";
+  graphFinish();
   addMsg("approver",
     '<div class="approval-card"><b style="color:var(--success)">交付批准已签发</b><div class="a-grid">'
     + '<span><b>批准编号</b><span class="mono">' + esc(r.data.approval_id) + "</span></span>"
@@ -1104,6 +1108,7 @@ async function approveDelivery() {
 function resetChat() {
   $("#chat-log").innerHTML = "";
   chat.stage = "greet"; chat.bank = "cmb"; chat.artifact = null; chat.taskId = null;
+  graphReset();
   greet();
 }
 
@@ -1114,14 +1119,16 @@ function handleFreeInput(text) {
   if (/重新生成|再来一份|重新来/.test(text)) {
     addMsg("editor-in-chief", "好的，重新开始编制流程。"); resetChat(); return;
   }
-  if (/报告/.test(text)) { addMsg("editor-in-chief", "已为您切换到报告库。"); switchTab("reports"); return; }
+  if (/报告/.test(text) && !/投研|调研|分析|研究|写一份|编制|生成/.test(text)) { addMsg("editor-in-chief", "已为您切换到报告库。"); switchTab("reports"); return; }
   if (/资产/.test(text)) { addMsg("editor-in-chief", "已为您切换到资产库。"); switchTab("assets"); return; }
   if (/agent|hub|智能体/i.test(text)) { addMsg("editor-in-chief", "已为您切换到 Agent Hub。"); switchTab("agents"); return; }
   if (/演示/.test(text)) { addMsg("editor-in-chief", "已为您切换到演示链。"); switchTab("demo"); return; }
   /* 阶段意图 */
   if (chat.stage === "greet") {
-    if (/通用|调研|分析报告|客户分析/.test(text)) {
+    if (/通用|投研|调研|分析报告|研究报告|客户分析|行业/.test(text)) {
       pickGeneral();
+      const subj = extractSubject(text);
+      if (subj) setSubject(subj); // 「写一份航天飞鸿的投研报告」→ 自动提取主题并装载资料
     } else if (/你好|您好|hi|hello/i.test(text)) {
       addMsg("editor-in-chief", "您好！请选择报告类型（可点击下方快捷按钮）。");
     } else if (/工商/.test(text)) {
@@ -1134,7 +1141,7 @@ function handleFreeInput(text) {
       addMsg("editor-in-chief", "请先选择报告类型：通用报告，或 招商银行 / 中国工商银行 / 中国建设银行 · 2025 年度（可点击下方快捷按钮）。");
     }
   } else if (chat.stage === "subject") {
-    setSubject(text);
+    setSubject(extractSubject(text) || text);
   } else if (chat.stage === "material") {
     if (/齐备|开始|编制/.test(text)) {
       if (chat.reportType === "annual_report") startClarify();
@@ -1566,7 +1573,7 @@ async function renderAssets() {
     + '<div class="src-grid">' + srcCards + "</div>"
     + '<div class="group-h">本地导入资料 <span class="g-tag">live 快照集 · ' + docSources.length
     + " 份 · 与联网抓取同纪律门（sha256 注册后即可引用核验）</span></div>"
-    + (docCards || '<div class="kv">暂无导入资料 —— 对话页「导入资料」可上传 pdf/txt/md/json，落盘注册后即刻可被报告引用。</div>')
+    + (docCards || '<div class="kv">暂无导入资料 —— 报告编制页「导入资料」可上传 pdf/txt/md/json，落盘注册后即刻可被报告引用。</div>')
     + '<div class="group-h">核验规则知识 <span class="g-tag">数值 N1–N7 + 引用 C1–C2</span></div>'
     + '<div class="asset-grid cols-2">' + ruleTiles + "</div>"
     + '<div class="group-h">释义知识 <span class="g-tag">entities</span></div>'
@@ -1802,8 +1809,7 @@ async function openSkillDetail(id) {
   });
 }
 
-/* ———— Agent 运行实时面板（对话区右侧）———— */
-/** 轻量提示浮层（右上角，3s 自动消失）。 */
+/* ———— 轻量提示浮层（右上角，3s 自动消失）———— */
 function toast(msg) {
   let t = document.getElementById("__toast");
   if (!t) {
@@ -1818,127 +1824,145 @@ function toast(msg) {
   toast._h = setTimeout(() => { t.style.opacity = "0"; }, 3000);
 }
 
-let RUN_PANEL = { trace: null, view: "timeline", timer: null, openNodes: new Set() };
+/* ———— 协作图谱（报告编制页右侧）：注册拓扑静态图 + 任务执行动态点亮 ———— */
+const GRAPH = { data: null, running: false, lit: new Set() };
+const GP_ECOLOR = { register: "#8a5fd0", bind: "#3b7bf5", serve: "#17937c", call: "#d98b21" };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-function fmtMs(ms) { return ms < 1000 ? ms + "ms" : (ms / 1000).toFixed(1) + "s"; }
-
-async function startAgentRun(bank) {
-  renderRunPanelLoading();
+async function initGraphPanel() {
+  const p = document.getElementById("graph-panel");
+  if (!p) return;
+  p.innerHTML = '<div class="gp-head"><h3>协作图谱 <span style="font-weight:400;font-size:11px;color:var(--muted)">主 agent · 专业 agent · skill · MCP</span></h3>'
+    + '<div class="gp-plan" id="gp-plan">注册拓扑加载中…</div></div>'
+    + '<div class="gp-legend">'
+    + '<span><i style="background:' + GP_ECOLOR.register + '"></i>团队注册</span>'
+    + '<span><i style="background:' + GP_ECOLOR.bind + '"></i>技能绑定</span>'
+    + '<span><i style="background:' + GP_ECOLOR.serve + '"></i>工具注册</span>'
+    + '<span><i style="background:' + GP_ECOLOR.call + '"></i>资料获取</span>'
+    + "</div>"
+    + '<div class="gp-body" id="gp-body"></div>'
+    + '<div class="gp-status" id="gp-status"><span class="dot"></span><span id="gp-status-text">空闲 —— 任务开始后按主 agent 规划依次点亮参与对象</span></div>';
   try {
-    const resp = await jpost("/v1/run/start", { bank: bank || "cmb" });
-    const t = resp && resp.data ? resp.data : resp;   // jpost 包装 {ok,status,data}
-    if (!t || !t.run_id) throw new Error((t && t.message) || "运行启动失败");
-    RUN_PANEL.trace = t;
-    renderRunPanel();
-    toast("运行 " + t.run_id + " 已完成：" + t.status);
+    GRAPH.data = await jget("/v1/graph");
+    drawGraph();
+    $("#gp-plan").innerHTML = "注册拓扑：<b>" + GRAPH.data.node_count + "</b> 节点 · <b>" + GRAPH.data.edge_count
+      + "</b> 关联边。任务开始后由主 agent 任务理解规划分派，参与对象依次点亮。";
   } catch (e) {
-    renderRunPanelError(e.message);
+    $("#gp-plan").textContent = "图谱加载失败：" + e.message;
   }
 }
 
-function renderRunPanelLoading() {
-  const p = document.getElementById("run-panel");
-  if (!p) return;
-  p.className = "run-panel";
-  p.innerHTML = '<div class="rp-live-bar"><span class="rp-dot"></span>正在启动 agent 运行…（主编规划 → 工位执行 → 门禁核验）</div>'
-    + '<div class="rp-body"><div class="rp-tl">'
-    + ["主编 · 任务规划", "团队与通道检查", "快照装载", "指标抽取", "经营分析", "资产质量分析", "结构化成稿", "双核验门禁", "交付判断"]
-        .map((t, i) => '<div class="rp-node running" style="animation:rpPulse 1.1s ease-in-out ' + (i * 0.12) + 's infinite"><div class="rp-node-h"><span class="rp-ntype">AGENT</span><span class="rp-ntitle">' + t + '</span><span class="rp-nstatus">…</span></div></div>').join("")
-    + "</div></div>";
-}
-
-function renderRunPanelError(msg) {
-  const p = document.getElementById("run-panel");
-  if (p) { p.className = "run-panel"; p.innerHTML = '<div class="rp-body"><div style="color:#a32d2d;font-size:12.5px">运行失败：' + esc(msg) + "</div></div>"; }
-}
-
-function renderRunPanel() {
-  const p = document.getElementById("run-panel");
-  const t = RUN_PANEL.trace;
-  if (!p || !t) return;
-  p.className = "run-panel";
-  const nodes = t.nodes || [];
-  const ok = nodes.filter(n => n.status === "SUCCEEDED").length;
-  const st = { SUCCEEDED: ["✓", "var(--success)"], RUNNING: ["◐", "#3b7bf5"], FAILED: ["✕", "#d64545"] }[t.status] || ["?", "var(--muted)"];
-  let html = '<div class="rp-head"><h3>Agent 运行 <span style="font-size:11px;color:var(--muted);font-weight:400" class="mono">' + esc(t.run_id) + " · " + esc(t.task_id) + "</span>"
-    + '<span style="color:' + st[1] + ';font-size:12px">' + st[0] + " " + esc(t.status) + "</span></h3>"
-    + '<div class="rp-stats">'
-    + '<div class="rp-stat"><div class="v">' + nodes.length + '</div><div class="k">节点</div></div>'
-    + '<div class="rp-stat"><div class="v">' + fmtMs(t.elapsed_ms || 0) + '</div><div class="k">总耗时</div></div>'
-    + '<div class="rp-stat"><div class="v">' + (t.tokens || 0) + '</div><div class="k">TOKENS</div></div>'
-    + '<div class="rp-stat"><div class="v">' + esc(t.cost_estimate || "—") + '</div><div class="k">成本估算</div></div>'
-    + "</div></div>";
-  html += '<div class="rp-toolbar"><div class="rp-view-tabs">'
-    + [["timeline", "时间线"], ["graph", "执行图"], ["json", "原始"]].map(([v, l]) =>
-        '<button class="rp-vtab' + (RUN_PANEL.view === v ? " on" : "") + '" onclick="setRunView(\'' + v + '\')">' + l + "</button>").join("")
-    + '</div><button class="btn sm" onclick="startAgentRun(\'' + (t.bank || "cmb") + '\')">重跑</button>'
-    + '<span style="font-size:10.5px;color:var(--muted);margin-left:auto">触发：' + esc(t.trigger || "—") + " · " + esc((t.started_at || "").replace("T", " ").slice(5, 19)) + "</span></div>";
-
-  if (RUN_PANEL.view === "timeline") {
-    html += '<div class="rp-body"><div class="rp-tl">' + nodes.map(n => renderTraceNode(n)).join("") + "</div></div>";
-  } else if (RUN_PANEL.view === "graph") {
-    html += '<div class="rp-body"><div class="rp-graph">' + renderTraceGraph(nodes) + "</div></div>";
-  } else {
-    html += '<div class="rp-body"><pre style="font-size:10.5px;overflow:auto">' + esc(JSON.stringify(t, null, 1)) + "</pre></div>";
+function drawGraph() {
+  const d = GRAPH.data;
+  const body = document.getElementById("gp-body");
+  if (!body || !d) return;
+  const nodes = d.nodes || [], edges = d.edges || [];
+  const W = 430, pos = {};
+  let y = 24;
+  const rowOf = (items, h, w, gap) => {
+    for (let i = 0; i < items.length; i++) {
+      const r = Math.floor(i / 5), c = i % 5;
+      const inRow = Math.min(items.length - r * 5, 5);
+      const span = inRow * w + (inRow - 1) * gap;
+      pos[items[i].id] = { x: (W - span) / 2 + w / 2 + c * (w + gap), y: y + r * (h + 9), w, h };
+    }
+    y += Math.ceil(items.length / 5) * (h + 9);
+  };
+  const rt = t => nodes.filter(n => n.type === t && n.state === "runtime");
+  const market = nodes.filter(n => n.type === "agent" && n.state === "market");
+  const mains = nodes.filter(n => n.type === "main");
+  rowOf(mains, 34, 170, 0); y += 6;
+  rowOf(rt("agent"), 32, 74, 6);
+  if (market.length) rowOf(market, 26, 74, 6);
+  y += 12; rowOf(rt("skill"), 28, 80, 4);
+  y += 12; rowOf(rt("mcp"), 30, 80, 4);
+  const H = y + 4;
+  const anchor = (id, top) => { const p = pos[id]; return p ? { x: p.x, y: top ? p.y : p.y + p.h } : null; };
+  let edgeSvg = "";
+  for (const e of edges) {
+    const a = anchor(e.from, false), b = anchor(e.to, true);
+    if (!a || !b) continue;
+    const mx = (a.x + b.x) / 2;
+    edgeSvg += '<path class="gg-edge k-' + esc(e.kind) + '" data-from="' + esc(e.from) + '" data-to="' + esc(e.to)
+      + '" d="M' + a.x + "," + a.y + " C" + mx + "," + a.y + " " + mx + "," + b.y + " " + b.x + "," + b.y
+      + '"><title>' + esc(e.label) + "</title></path>";
   }
-  p.innerHTML = html;
-}
-
-function renderTraceNode(n) {
-  const cls = n.status === "FAILED" ? " failed" : (n.status === "RUNNING" ? " running" : "");
-  const open = RUN_PANEL.openNodes.has(n.id);
-  const stColor = n.status === "SUCCEEDED" ? "var(--success)" : (n.status === "FAILED" ? "#d64545" : "#3b7bf5");
-  let body = "";
-  if (open) {
-    if (n.thinking) body += '<div class="rp-field"><div class="fl">思考过程 THINKING</div><div class="rp-thinking">' + esc(n.thinking) + "</div></div>";
-    if (n.skill_used) body += '<div class="rp-field"><div class="fl">使用技能 SKILL</div><div class="fv">' + esc(n.skill_used) + "</div></div>";
-    if ((n.tool_calls || []).length) body += '<div class="rp-field"><div class="fl">工具调用 TOOL CALLS（MCP JSON-RPC）</div>'
-      + n.tool_calls.map(tc => '<div class="tc"><span class="tn">' + esc(tc.tool) + "</span><span>×" + tc.calls + '</span><span class="tp">' + esc(tc.protocol || "") + "</span></div>").join("") + "</div>";
-    body += '<div class="rp-field"><div class="fl">输入 INPUT</div><div class="fv">' + esc(n.input) + "</div></div>";
-    body += '<div class="rp-field"><div class="fl">输出 OUTPUT</div><div class="fv">' + esc(n.output) + "</div></div>";
-    if (n.outputs_detail) body += '<div class="rp-field"><div class="fl">输出明细</div><div class="fv">' + Object.entries(n.outputs_detail).map(([k, v]) => "· " + esc(k) + ": " + esc(String(v))).join("<br>") + "</div></div>";
-    if (n.gate_rule) body += '<div class="rp-field"><div class="fl">门禁规则</div><div class="fv">' + esc(n.gate_rule) + "</div></div>";
-    if (n.real_check) body += '<div class="rp-field"><div class="fl">✓ 真实核验</div><div class="fv">本节点实际调用了 NumericChecker/CitationChecker（非预录数据）</div></div>';
-    if (n.parallel_group) body += '<div class="rp-field"><div class="fl">并行组</div><div class="fv">' + esc(n.parallel_group) + "（与同组节点并行执行）</div></div>";
-    if (n.iteration) body += '<div class="rp-field"><div class="fl">Agent Loop</div><div class="fv">iteration #' + n.iteration + "</div></div>";
+  let nodeSvg = "";
+  for (const n of [...mains, ...rt("agent"), ...market, ...rt("skill"), ...rt("mcp")]) {
+    const p = pos[n.id];
+    if (!p) continue;
+    nodeSvg += '<g class="gg-node t-' + (n.state === "market" ? "market" : n.type) + '" data-id="' + esc(n.id) + '">'
+      + '<rect x="' + (p.x - p.w / 2) + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h + '" rx="7"></rect>'
+      + '<text x="' + p.x + '" y="' + (p.y + p.h / 2 + 4) + '">' + esc(shortLabel(n.label)) + "</text>"
+      + "<title>" + esc(n.label + " · " + n.kind + (n.state === "market" ? "（市场目录未安装）" : "（运行时）"))
+      + (n.desc ? "\n" + n.desc : "") + "</title></g>";
   }
-  return '<div class="rp-node' + cls + (open ? " open" : "") + '">'
-    + '<div class="rp-node-h" onclick="toggleTraceNode(\'' + n.id + '\')">'
-    + '<span class="rp-ntype ' + n.type + '">' + n.type + '</span>'
-    + '<span class="rp-ntitle">' + esc(n.title) + "</span>"
-    + '<span class="rp-nmeta">' + (n.tokens ? n.tokens + "tok · " : "") + fmtMs(n.elapsed_ms || 0) + '</span>'
-    + '<span class="rp-nstatus" style="color:' + stColor + '">' + (n.status === "SUCCEEDED" ? "✓" : n.status) + "</span>"
-    + "</div>" + (body ? '<div class="rp-node-b">' + body + "</div>" : "") + "</div>";
+  body.innerHTML = '<svg id="gp-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMin meet">'
+    + edgeSvg + nodeSvg + "</svg>";
 }
 
-function renderTraceGraph(nodes) {
-  // 聚合图：主编 → 查数 → 指标 → [双分析并行] → 写作 → 核验 → 门禁
-  const par = nodes.filter(n => n.parallel_group === "analysis");
-  const seq = nodes.filter(n => n.parallel_group !== "analysis");
-  const arrow = '<div class="rp-garrow">↓</div>';
-  let g = seq.map(n => '<div class="rp-gnode ok"><div class="gtitle">' + esc(n.title.split("·")[0].trim()) + '</div><div class="gmeta">' + n.type + " · " + fmtMs(n.elapsed_ms || 0) + "</div></div>");
-  // 并行段插入到写作之前
-  if (par.length) {
-    const parHtml = '<div class="rp-par">' + par.map(n => '<div class="rp-gnode ok" style="width:150px"><div class="gtitle">' + esc(n.title.split("·")[0].trim()) + '</div><div class="gmeta">' + n.type + " · " + n.tokens + "tok</div></div>").join("") + "</div>";
-    const wIdx = g.findIndex(x => x.includes("成稿") || x.includes("写作"));
-    if (wIdx > 0) g.splice(wIdx, 0, parHtml);
+function shortLabel(s) {
+  s = String(s || "");
+  return s.length > 9 ? s.slice(0, 8) + "…" : s;
+}
+
+function gpNodeEl(id) { return document.querySelector('#gp-body .gg-node[data-id="' + id + '"]'); }
+function setGpStatus(cls, text) {
+  const s = document.getElementById("gp-status");
+  if (!s) return;
+  s.className = "gp-status" + (cls ? " " + cls : "");
+  const t = document.getElementById("gp-status-text");
+  if (t) t.textContent = text;
+}
+function gpLight(id, current) {
+  const el = gpNodeEl(id);
+  if (el) {
+    el.classList.add("lit");
+    if (current) {
+      el.classList.remove("now"); void el.getBoundingClientRect();
+      el.classList.add("now");
+      setTimeout(() => el.classList.remove("now"), 1100);
+    }
   }
-  return g.join(arrow);
+  GRAPH.lit.add(id);
+  gpRelightEdges();
 }
-
-function toggleTraceNode(id) {
-  if (RUN_PANEL.openNodes.has(id)) RUN_PANEL.openNodes.delete(id); else RUN_PANEL.openNodes.add(id);
-  renderRunPanel();
+function gpRelightEdges() {
+  document.querySelectorAll("#gp-body .gg-edge").forEach(e => {
+    e.classList.toggle("lit", GRAPH.running && GRAPH.lit.has(e.dataset.from) && GRAPH.lit.has(e.dataset.to));
+  });
 }
-function setRunView(v) { RUN_PANEL.view = v; renderRunPanel(); }
-
-function initRunPanel() {
-  const p = document.getElementById("run-panel");
-  if (!p) return;
-  p.className = "run-panel empty";
-  p.innerHTML = '<div style="text-align:center;padding:0 24px"><div style="font-size:26px;margin-bottom:8px">📡</div>'
-    + "<b>Agent 运行面板</b><div style=\"margin-top:6px;line-height:1.7\">发送任务或点击下方按钮启动运行<br>实时展示：主编规划 → 工位执行 → MCP 工具调用 → 核验门禁</div>"
-    + '<button class="btn primary" style="margin-top:12px" onclick="startAgentRun(\'cmb\')">启动演示运行（招行）</button></div>';
+function graphBeginRun(plan) {
+  GRAPH.running = true;
+  const svg = document.getElementById("gp-svg");
+  if (svg) svg.classList.add("g-running");
+  if (plan && plan.summary) $("#gp-plan").innerHTML = "<b>主 agent 规划</b> — " + esc(plan.summary);
+  setGpStatus("run", "主 agent 任务理解与规划中…");
+}
+async function graphStage(st) {
+  if (!GRAPH.data || !st) return;
+  const ids = ["agent:editor-in-chief"];
+  (st.nodes || []).forEach(a => { if (!ids.includes("agent:" + a)) ids.push("agent:" + a); });
+  (st.skills || []).forEach(s => { const id = "skill:" + s; if (!ids.includes(id)) ids.push(id); });
+  (st.tools || []).forEach(t => { const id = "mcp:" + t; if (!ids.includes(id)) ids.push(id); });
+  const parts = [];
+  if ((st.nodes || []).length) parts.push("agent×" + st.nodes.length);
+  if ((st.skills || []).length) parts.push("skill×" + st.skills.length);
+  if ((st.tools || []).length) parts.push("MCP 工具×" + st.tools.length);
+  setGpStatus("run", "【" + (st.name || st.stage_id || "") + "工位】" + (st.headline || "") + "　参与：" + (parts.join(" · ") || "—"));
+  for (const id of ids) { gpLight(id, true); await sleep(110); }
+}
+function graphFinish() {
+  setGpStatus("done", "任务执行完成 —— 本次任务参与对象保持点亮（按类型着色），未参与的保持淡显");
+}
+function graphReset() {
+  GRAPH.running = false;
+  GRAPH.lit.clear();
+  const svg = document.getElementById("gp-svg");
+  if (svg) svg.classList.remove("g-running");
+  document.querySelectorAll("#gp-body .gg-node.lit, #gp-body .gg-node.now").forEach(el => el.classList.remove("lit", "now"));
+  gpRelightEdges();
+  setGpStatus("", "空闲 —— 任务开始后按主 agent 规划依次点亮参与对象");
 }
 
 function fmtBytes(b) {
@@ -2238,7 +2262,7 @@ async function refreshAgents() {
     '<div class="card"><h3>Agent Hub <span class="hint">安装注册 → 加入运行时 → 按任务动态按需加载 → 可注销 / 可注册</span></h3>'
     + '<div style="font-size:12.5px;color:var(--muted);line-height:1.9">'
     + "① 从<b>市场目录</b>选择 agent 点击「安装注册」，即加入<b>运行时</b>（RUNNING）；<br>"
-    + "② 对话页签的编制流程会按任务对运行时 agent 发起<b>动态按需加载</b>（POST /v1/agents/load），最近加载记录实时回写卡片；<br>"
+    + "② 报告编制页签的编制流程会按任务对运行时 agent 发起<b>动态按需加载</b>（POST /v1/agents/load），最近加载记录实时回写卡片；<br>"
     + "③ 运行时 agent 可<b>注销</b>（卡片或详情抽屉操作）：市场来源退回市场目录可重装，内置 / 自定义来源直接移除；主编编排 Agent 为运行时根节点不可注销；<br>"
     + "④ 下方表单可<b>注册自定义 agent</b>（名称 / 类型 / 能力 / 描述），注册即加入运行时（CUSTOM 来源）；<br>"
     + "⑤ agent 的<b>技能绑定</b>与「注册给主编编排 Agent 团队」在卡片「详情 · 绑定」抽屉中操作。</div></div>"
@@ -2449,7 +2473,7 @@ async function init() {
 }
 init();
 
-initRunPanel();
+initGraphPanel();
 </script>
 </body>
 </html>
