@@ -1,8 +1,8 @@
 {
-  "schema": "w06.report-structure@1.0",
-  "note": "年报简报骨架的唯一数据配置。方法约定（名称保留、深度收缩）沉淀在 skill 的 report-skeleton/agent-division 参考文件中；本文件只承载三行差异：真实年报章节标题（含章号）、静态节正文模板（占位符）、各节责任 agent 与角色。新增银行=在 banks 下加一组 titles，不改任何代码。",
+  "schema": "w06.report-structure@1.1",
+  "note": "报告骨架的唯一数据配置。方法约定（名称保留、深度收缩）沉淀在 skill 的 report-skeleton/agent-division 参考文件中；本文件承载差异：真实年报章节标题（含章号）、静态节正文模板（占位符）、各节责任 agent 与角色。新增银行=在 banks 下加一组 titles；新增报告类型=在 report_types 下加一组骨架，不改任何代码。顶层配置 = annual_report（年报域）；通用域（调研/客户分析/通用深度报告）见 report_types.general。",
   "placeholders": {
-    "company": "机构法定名称（取自 manifest.company）",
+    "company": "机构法定名称（年报域取自 manifest.company；通用域取自请求 subject_hint）",
     "snapshot_version": "快照版本标识（取自 manifest.snapshot_version）",
     "primary_pages": "本期信源页清单（取自 manifest.sources[0].pages，如 P18/P30/P37）",
     "comparison_pages": "对比信源页清单（取自 manifest.sources[1].pages，如 P46）"
@@ -89,6 +89,36 @@
         "S-10": "第九章 重要事项 · 数据来源与使用限制",
         "S-13": "第十章 股份变动及股东情况",
         "S-14": "第十一章 财务报告"
+      }
+    }
+  },
+  "report_types": {
+    "general": {
+      "note": "通用深度报告骨架（调研分析 / 客户分析 / 通用深度报告）。不绑定银行快照：主体由请求 subject_hint 提供；无银行数值字典（metrics 为空合法，数值核验自动降级）；全部事实性陈述依赖已注册资料集的 [C-n] 引用，由核验层 fail-closed 把关。brief_body 为简报模式的分析节骨架占位，长文模式由 writer-agent 依 general-report 技能成稿。",
+      "placeholders": {
+        "company": "主体名称（取自请求 subject_hint，缺省为「自定主体」）",
+        "snapshot_version": "资料集快照版本标识（取自 manifest.snapshot_version）",
+        "primary_pages": "资料集页清单摘要（取自 manifest.sources[0..n].pages，超长截断）",
+        "comparison_pages": "对比资料页清单（无对比信源时以 — 呈现）"
+      },
+      "section_order": ["G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7"],
+      "sections": {
+        "G-1": { "role": "analysis", "agent": "editor-in-chief",   "label": "执行摘要",
+                 "brief_body": "简报模式下本节为骨架占位：{company} 的核心结论、关键依据与总体建议由主编（editor-in-chief）在长文模式下基于已注册资料集生成，每条结论须挂接 [C-n] 引用。" },
+        "G-2": { "role": "static",   "agent": "disclosure-officer", "label": "背景与目标" },
+        "G-3": { "role": "static",   "agent": "disclosure-officer", "label": "资料与方法" },
+        "G-4": { "role": "analysis", "agent": "finance-analyst",   "label": "核心发现",
+                 "brief_body": "简报模式下本节为骨架占位：{company} 的核心发现由 finance-analyst 在长文模式下依据资料集（{primary_pages}）逐条生成，每条发现须挂接 [C-n] 引用，禁止页外推算。" },
+        "G-5": { "role": "analysis", "agent": "risk-analyst",      "label": "风险与挑战",
+                 "brief_body": "简报模式下本节为骨架占位：{company} 的风险识别与挑战评估由 risk-analyst 在长文模式下基于证据生成。" },
+        "G-6": { "role": "analysis", "agent": "editor-in-chief",   "label": "结论与建议",
+                 "brief_body": "简报模式下本节为骨架占位：结论与建议由主编在长文模式下汇总各节要点生成，不引入资料集之外的新论断。" },
+        "G-7": { "role": "static",   "agent": "disclosure-officer", "label": "数据来源与使用限制" }
+      },
+      "static_bodies": {
+        "G-2": "本报告围绕 {company} 编制。调研背景、范围与目标以导入资料为准；资料集（{snapshot_version}）覆盖之外的背景信息不进入正文。",
+        "G-3": "编制方法：多 Agent 受控交付（主 agent 编排 · 专家团分派 · skill 方法论 · MCP 工具落盘）。事实性陈述须挂接 [C-n] 引用；引用经页内字面命中、摘录指纹与支持度核验；页外推算或评述性内容不进入正文。",
+        "G-7": "本节数据来源为用户导入并已注册的资料集（{snapshot_version}，页清单摘要：{primary_pages}；对比资料：{comparison_pages}），信源指纹见引用清单。\n资料集之外的信息不在本报告覆盖范围内；本报告不构成投资建议或盈利预测。"
       }
     }
   }
