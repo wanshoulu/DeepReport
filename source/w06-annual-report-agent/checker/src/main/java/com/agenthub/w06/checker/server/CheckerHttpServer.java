@@ -1162,7 +1162,7 @@ public final class CheckerHttpServer {
                         MAPPER.createObjectNode()
                                 .put("tool_name", "deepsearch_research")
                                 .set("arguments", MAPPER.createObjectNode().put("query", intent)),
-                        snap.dir, resolver, sources);
+                        snap.dir.getParent(), resolver, sources);  // commitSource 内部再拼 bank 名，传顶层避免 live/live 嵌套
                 com.fasterxml.jackson.databind.JsonNode dataNode = dsResp.path("data");
                 String md = (dataNode != null && !dataNode.isMissingNode()
                         ? dataNode.path("report_md") : dsResp.path("report_md")).asText("");
@@ -1183,7 +1183,7 @@ public final class CheckerHttpServer {
                                     .put("url", "deepsearch://" + reportType + "-" + System.currentTimeMillis())
                                     .put("title", "DeepSearch 检索研究：" + snap.company)
                                     .put("authority", "TERTIARY_AGGREGATED")
-                                    .set("pages", pages)), snap.dir, resolver, sources);
+                                    .set("pages", pages)), snap.dir.getParent(), resolver, sources);  // 同上，防嵌套
                     System.out.println("DeepSearch bridge: research artifact committed, pages=" + pages.size());
                 } else {
                     System.out.println("WARN deepsearch bridge: empty report (chars=" + md.length() + "), degrade to live materials");
