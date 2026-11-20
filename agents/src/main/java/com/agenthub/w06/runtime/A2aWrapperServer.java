@@ -55,6 +55,12 @@ public final class A2aWrapperServer {
 
     private static void route(HttpExchange ex) throws IOException {
         String path = ex.getRequestURI().getPath();
+        // 网关前缀归一化：反向代理常带 /a2a 前缀，strip 后与根路径同语义
+        if (path.equals("/a2a")) {
+            path = "/";
+        } else if (path.startsWith("/a2a/")) {
+            path = path.substring("/a2a".length());
+        }
         String method = ex.getRequestMethod();
         try {
             if ("GET".equals(method) && ("/.well-known/agent-card.json".equals(path) || "/agent-card.json".equals(path))) {
@@ -92,8 +98,9 @@ public final class A2aWrapperServer {
         String base = host != null ? "http://" + host + "/" : "http://localhost:" + A2A_PORT + "/";
         ObjectNode card = MAPPER.createObjectNode();
         card.put("name", "w06-annual-report-agent");
-        card.put("description", "年度经营简报生成智能体：多专业 agent 产出结构化工件（指标+引用+章节），"
-                + "经确定性数值核验与引用溯源后受控交付；交付批准与工件内容指纹绑定。");
+        card.put("description", "通用报告生成智能体（年报域首发，扩展支持调研/分析等报告类型）："
+                + "多专业 agent 产出结构化工件（指标+引用+章节），经确定性数值核验与引用溯源后受控交付；"
+                + "交付批准与工件内容指纹绑定。");
         card.put("url", base);
         card.put("version", "0.1.0");
         ObjectNode caps = card.putObject("capabilities");
@@ -104,11 +111,11 @@ public final class A2aWrapperServer {
         out.add("application/json");
         ObjectNode skill = card.putArray("skills").addObject();
         skill.put("id", "generate_annual_report");
-        skill.put("name", "年度经营简报生成");
-        skill.put("description", "输入企业与报告期，产出经数值与引用双重核验的年度经营简报工件，"
-                + "附带核验结果、内容指纹、参考答案与工作台报告链接。");
+        skill.put("name", "受控报告生成");
+        skill.put("description", "输入报告主题（年报域为企业与报告期），产出经数值与引用双重核验的"
+                + "结构化报告工件，附带核验结果、内容指纹与工作台报告链接。");
         ArrayNode tags = skill.putArray("tags");
-        tags.add("annual-report").add("verification").add("citations");
+        tags.add("annual-report").add("general-report").add("verification").add("citations");
         ObjectNode provider = card.putObject("provider");
         provider.put("organization", "agent-hub-alpha");
         provider.put("url", "https://github.com/chaosxingxc-orion/agent-hub-alpha");
