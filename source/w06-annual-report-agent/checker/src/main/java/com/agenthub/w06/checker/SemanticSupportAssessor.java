@@ -101,6 +101,9 @@ public final class SemanticSupportAssessor {
 
     /** 非数值论断：主体词重叠判支撑；即便重叠也无数字可核 → PARTIAL（转人工）。 */
     private CitationSupport assessNonNumeric(String claim, String text) {
+        // 字面一致豁免：摘录包含完整论断（定性引用常见形态——摘录即原文）→ 直接 SUPPORTED，
+        // 不依赖主体词表（表外定性表述如"十四五规划收官"不应被误判）
+        if (text.contains(claim) || claim.contains(text)) return CitationSupport.SUPPORTED;
         Collection<String> subs = subjects();
         boolean claimHas = false, textHas = false;
         for (String s : subs) {
