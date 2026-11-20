@@ -764,33 +764,60 @@ async function startGeneration(correct) {
   chat.artifact = base;
   addMsg("editor-in-chief",
     "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。启动六工位流水线（查数 → 分析 → 图表 → 写作 → 核验 → 主编），各工位按骨架配置分派……");
-  // 六工位流水线：播报内容全部来自服务端 stages[]（headline/details），前端只渲染不编造
-  const p = await jpost("/v1/pipeline/run", {
+  // 六工位流水线：异步提交（async=1）+ 轮询增量播报——long_form（deepsearch 300s + LLM 写作分钟级）
+  // 远超 HTTP 同步窗口；工位播报内容全部来自服务端 stages[]，前端只渲染不编造
+  const pr = await jpost("/v1/pipeline/run?async=1", {
     bank: chat.bank,
     report_type: chat.reportType || "annual_report",
-    subject_hint: chat.subject || ""
+    subject_hint: chat.subject || "",
+    mode: "long_form"
   });
-  if (!p.ok || !p.data || !p.data.stages) {
-    addMsg("editor-in-chief", '<span style="color:var(--destructive)">流水线执行失败：HTTP ' + (p.status || "—") + " " + esc((p.data && p.data.error) || "") + "</span>");
+  if (!pr.ok || !pr.data || !pr.data.run_id) {
+    addMsg("editor-in-chief", '<span style="color:var(--destructive)">流水线启动失败：HTTP ' + (pr.status || "—") + " " + esc((pr.data && pr.data.error) || "") + "</span>");
     setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
     return;
   }
-  // 服务端真实产物回填（metrics/sections/citations/tables 来自管线工位，替代空壳）
-  chat.pipelineChecks = p.data.checks || null;
-  if (p.data.artifact) {
-    chat.artifact = p.data.artifact;
-    chat.artifact.task_id = chat.taskId;
-    if (p.data.company) chat.artifact.company = p.data.company;
+  addMsg("editor-in-chief", "流水线运行中（run <span class=\"mono\">" + esc(pr.data.run_id) + "</span>），各工位完成即播报……");
+  chat.reportedStages = {};
+  let pollOk = false;
+  let lastStages = [];
+  for (let i = 0; i < 450; i++) {  // 2s × 450 = 15 分钟上限
+    await new Promise(r => setTimeout(r, 2000));
+    const st = await jget("/v1/pipeline/status?run_id=" + encodeURIComponent(pr.data.run_id));
+    if (!st.ok || !st.data) continue;
+    // 增量播报新完成的工位（writing 除外——完成后按 details 逐节播报）
+    for (const s of (st.data.stages || [])) {
+      if (s.stage_id === "writing" || chat.reportedStages[s.stage_id]) continue;
+      chat.reportedStages[s.stage_id] = true;
+      const aid = { material: "material-agent", analysis: "finance-analyst", chart: "chart-agent", checking: "numeric-checker", consolidation: "editor-in-chief" }[s.stage_id] || "editor-in-chief";
+      await jpost("/v1/agents/load", { agent_id: aid, task_id: chat.taskId });
+      const head = (s.data && s.data.snapshot_version ? '<div class="digest">快照 ' + esc(s.data.snapshot_version) + " · " + esc(s.data.sources) + " 信源 · " + esc(s.data.pages) + " 页</div>" : "");
+      const det = s.details || [];
+      const shown = det.slice(0, s.stage_id === "analysis" ? 4 : 2).map(d => "<br>· " + esc(d)).join("");
+      const more = det.length > (s.stage_id === "analysis" ? 4 : 2) ? '<span style="font-size:12px;color:var(--muted)">…共 ' + det.length + " 条</span>" : "";
+      addMsg(aid, "【" + esc(s.name) + "工位】" + esc(s.headline) + head + shown + more);
+    }
+    if (st.data.status === "FAILED") {
+      addMsg("editor-in-chief", '<span style="color:var(--destructive)">流水线失败：' + esc(st.data.error || "未知错误") + "</span>");
+      setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
+      return;
+    }
+    if (st.data.status === "SUCCEEDED") { pollOk = true; lastStages = st.data.stages || []; break; }
   }
-  for (const st of p.data.stages) {
-    if (st.stage_id === "writing") continue; // 写作工位在下方逐节播报
-    const agentOf = { material: "material-agent", chart: "chart-agent", checking: "numeric-checker", consolidation: "editor-in-chief" };
-    const aid = agentOf[st.stage_id] || String(st.agent || "").split(",")[0].trim() || "editor-in-chief";
-    await jpost("/v1/agents/load", { agent_id: aid, task_id: chat.taskId });
-    const det = (st.details || []);
-    const head = det.slice(0, st.stage_id === "analysis" ? 4 : 2).map(d => '<div class="quote">' + esc(d) + "</div>").join("");
-    const more = det.length > (st.stage_id === "analysis" ? 4 : 2) ? '<span style="font-size:12px;color:var(--muted)">…共 ' + det.length + " 条</span>" : "";
-    addMsg(aid, "【" + esc(st.name) + "工位】" + esc(st.headline) + head + more);
+  if (!pollOk) {
+    addMsg("editor-in-chief", '<span style="color:var(--destructive)">流水线超时（15 分钟）未完成——可稍后在报告库查看结果。</span>');
+    setQuick([{ label: "重新发起", cls: "primary", fn: () => startGeneration(correct) }]);
+    return;
+  }
+  // 服务端真实产物回填（metrics/sections/citations/tables 来自管线工位，替代空壳）
+  const pl = { artifact: null, checks: null, company: "" };
+  const fin = await jget("/v1/pipeline/status?run_id=" + encodeURIComponent(pr.data.run_id));
+  if (fin.ok && fin.data) { pl.artifact = fin.data.artifact || null; pl.checks = fin.data.checks || null; pl.company = fin.data.company || ""; }
+  chat.pipelineChecks = pl.checks;
+  if (pl.artifact) {
+    chat.artifact = pl.artifact;
+    chat.artifact.task_id = chat.taskId;
+    if (pl.company) chat.artifact.company = pl.company;
   }
   // 写作工位：按服务端 details（节序/标题/责任 agent 来自骨架配置）逐节播报
   const wr = p.data.stages.find(s => s.stage_id === "writing");

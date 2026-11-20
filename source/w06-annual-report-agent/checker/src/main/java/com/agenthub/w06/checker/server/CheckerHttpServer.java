@@ -1087,6 +1087,7 @@ public final class CheckerHttpServer {
                     s.put("report_period", result.path("report_period").asText(""));
                     s.set("stages", result.path("stages").deepCopy());
                     s.set("checks", result.path("checks").deepCopy());
+                    s.set("artifact", result.path("artifact").deepCopy());  // 前端轮询 SUCCEEDED 后直接取产物
                     s.put("finished_at", java.time.Instant.now().toString());
                 } catch (Exception e) {
                     ObjectNode s = RUN_STATES.get(runId);
@@ -1975,21 +1976,30 @@ public final class CheckerHttpServer {
             CheckResult posNum = NUMERIC.check(pos, resolver.scopedFor(pos));
             CheckResult posCit = CITATION.check(pos, resolver.scopedFor(pos), sources);
             String posDigest = "sha256:" + sha256(MAPPER.writeValueAsBytes(pos));
-            ObjectNode t1 = approvedTask("TASK-2025-AR-001", pos, "APPROVED",
-                    "2025 年度经营简报：" + artifactBrief(pos) + "，两项核验 PASSED，Alice 具名批准交付",
-                    posDigest, "2026-03-28T09:30:00Z", "2026-03-28T09:41:00Z", posNum, posCit);
-            ObjectNode apr = MAPPER.createObjectNode();
-            apr.put("approval_id", "APR-0001");
-            apr.put("task_id", "TASK-2025-AR-001");
-            apr.put("approver", "Alice");
-            apr.put("approved_at", "2026-03-28T09:41:00Z");
-            apr.put("artifact_digest", posDigest);
-            apr.put("status", "APPROVED");
-            apr.set("checks", checksNode(posNum, posCit));
-            t1.set("approval", apr);
+            boolean posPassed = "PASSED".equals(String.valueOf(posNum.status()))
+                    && "PASSED".equals(String.valueOf(posCit.status()));
+            // 叙事跟随核验：0.4.0 N7 变严后 seed 工件重跑可能 FAILED——如实降级，不保留"已批准"假象
+            String posStatus = posPassed ? "APPROVED" : "FAILED";
+            String posSummary = posPassed
+                    ? "2025 年度经营简报：" + artifactBrief(pos) + "，两项核验 PASSED，Alice 具名批准交付"
+                    : "2025 年度经营简报（历史演示件）：" + artifactBrief(pos)
+                      + "，按当前核验规则（0.4.0）重跑未全部 PASSED，未获交付；工件保留作规则演进对照";
+            ObjectNode t1 = approvedTask("TASK-2025-AR-001", pos, posStatus,
+                    posSummary, posDigest, "2026-03-28T09:30:00Z", "2026-03-28T09:41:00Z", posNum, posCit);
+            if (posPassed) {
+                ObjectNode apr = MAPPER.createObjectNode();
+                apr.put("approval_id", "APR-0001");
+                apr.put("task_id", "TASK-2025-AR-001");
+                apr.put("approver", "Alice");
+                apr.put("approved_at", "2026-03-28T09:41:00Z");
+                apr.put("artifact_digest", posDigest);
+                apr.put("status", "APPROVED");
+                apr.set("checks", checksNode(posNum, posCit));
+                t1.set("approval", apr);
+                APPROVALS.put("TASK-2025-AR-001", apr);
+            }
             TASKS.put("TASK-2025-AR-001", t1);
             TASK_ARTIFACTS.put("TASK-2025-AR-001", pos);
-            APPROVALS.put("TASK-2025-AR-001", apr);
 
             ObjectNode errArt = (ObjectNode) MAPPER.readTree(errF.toFile());
             errArt.put("task_id", "TASK-2025-AR-002");
@@ -2016,7 +2026,7 @@ public final class CheckerHttpServer {
                 "Carol", "APR-0003", "2026-03-28T12:10:00Z", "2026-03-28T12:24:00Z");
         APPROVAL_SEQ.set(3);
         TASK_SEQ.set(4);
-        System.out.println("报告库预置 4 条历史任务（AR-001/003/004 已批准 / AR-002 已拦截）");
+        System.out.println("报告库预置历史任务已装载（核验叙事随重跑结果：PASSED→已批准 / FAILED→未获交付对照件）");
     }
 
     /** 从快照目录读某银行正例工件，真实重跑两项核验后登记为历史任务（PASSED 才记批准）。 */
@@ -2035,24 +2045,27 @@ public final class CheckerHttpServer {
         String digest = "sha256:" + sha256(MAPPER.writeValueAsBytes(art));
         boolean passed = "PASSED".equals(String.valueOf(num.status()))
                 && "PASSED".equals(String.valueOf(cit.status()));
-        String summary = art.company() + " " + art.reportPeriod() + " 年度经营简报：" + artifactBrief(art) + "，"
-                + "两项核验 " + (passed ? "PASSED" : "FAILED") + "，" + approver + " 具名批准交付";
+        String summary = passed
+                ? art.company() + " " + art.reportPeriod() + " 年度经营简报：" + artifactBrief(art)
+                  + "，两项核验 PASSED，" + approver + " 具名批准交付"
+                : art.company() + " " + art.reportPeriod() + " 年度经营简报（历史演示件）：" + artifactBrief(art)
+                  + "，按当前核验规则重跑 FAILED，未获交付；工件保留作规则演进对照";
         ObjectNode t = approvedTask(taskId, art, passed ? "APPROVED" : "FAILED", summary,
                 digest, createdAt, updatedAt, num, cit);
-        ObjectNode apr = MAPPER.createObjectNode();
-        apr.put("approval_id", approvalId);
-        apr.put("task_id", taskId);
-        apr.put("approver", approver);
-        apr.put("approved_at", updatedAt);
-        apr.put("artifact_digest", digest);
-        apr.put("status", passed ? "APPROVED" : "FAILED");
-        apr.set("checks", checksNode(num, cit));
-        t.set("approval", apr);
-        TASKS.put(taskId, t);
-        TASK_ARTIFACTS.put(taskId, art);
         if (passed) {
+            ObjectNode apr = MAPPER.createObjectNode();
+            apr.put("approval_id", approvalId);
+            apr.put("task_id", taskId);
+            apr.put("approver", approver);
+            apr.put("approved_at", updatedAt);
+            apr.put("artifact_digest", digest);
+            apr.put("status", "APPROVED");
+            apr.set("checks", checksNode(num, cit));
+            t.set("approval", apr);
             APPROVALS.put(taskId, apr);
         }
+        TASKS.put(taskId, t);
+        TASK_ARTIFACTS.put(taskId, art);
     }
 
     private static ObjectNode approvedTask(String taskId, AnnualReportArtifacts art, String status,
