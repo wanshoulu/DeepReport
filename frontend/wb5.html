@@ -1355,6 +1355,7 @@ const RULE_ASSETS = [
   { id: "C2", name: "信源未注册", checker: "引用核验器（C1–C2）", desc: "引用信源必须在快照注册表内（SOURCE_UNREGISTERED）。" }
 ];
 async function renderAssets() {
+  if (!$("#view-assets")) return; /* 防御性守卫 */
   const m = state.manifest;
   let agents = { runtime: [], catalog: [] };
   let skills = [];
@@ -1872,6 +1873,7 @@ function agentTile(a) {
 }
 
 async function refreshAgents() {
+  if (!$("#view-agents")) return; /* 页签已移除 */
   let d = { runtime: [], catalog: [] };
   try { d = await jget("/v1/agents"); } catch (e) {}
   state.agentsData = d;
@@ -2047,6 +2049,7 @@ function demoStep6() {
 }
 
 function renderDemoShell() {
+  if (!$("#view-demo")) return; /* 页签已移除 */
   $("#view-demo").innerHTML =
     '<div class="card"><h3>演示链：从「口径错误拦截」到「篡改失效」 <span class="hint">六步 · 每步真实调用后端 API</span></h3>'
     + '<div style="font-size:12.5px;color:var(--muted);line-height:1.9;margin-bottom:16px">'
@@ -2087,10 +2090,9 @@ async function init() {
     state.y2024 = extract2024(p46.text);
     state.y2024s = { cmb: state.y2024 };
     ASSETS_RENDER = renderAssets();
-    renderDemoShell();
     greet();
     refreshTasks();
-    refreshAgents();
+    /* Agent Hub/演示链 页签已移除，不再初始化渲染 */
   } catch (e) {
     const hb = $("#health-badge");
     hb.className = "badge destructive";
