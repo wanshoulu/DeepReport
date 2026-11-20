@@ -594,6 +594,17 @@ public final class CheckerHttpServer {
             respondRaw(ex, 200, Files.readAllBytes(f));
             return;
         }
+        if ("/favicon.svg".equals(path) || "/favicon.ico".equals(path)) {
+            Path f = staticDir.resolve("favicon.svg");
+            if (Files.isRegularFile(f)) {
+                ex.getResponseHeaders().set("Content-Type", "image/svg+xml");
+                ex.getResponseHeaders().set("Cache-Control", "public, max-age=86400");
+                respondRaw(ex, 200, Files.readAllBytes(f));
+            } else {
+                respond(ex, 404, errorNode("not_found", "favicon 未部署"));
+            }
+            return;
+        }
         respond(ex, 404, errorNode("not_found", "未知路由: " + method + " " + path));
     }
 

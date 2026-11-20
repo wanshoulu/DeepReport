@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+</head>
+<body>
+<!-- DeepReport Favicon: DR monogram, light/dark adaptive -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect x="4" y="4" width="56" height="56" rx="14" fill="#1d4ed8"/>
+  <path d="M20 16h12a16 16 0 0 1 0 32H20z" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/>
+  <rect x="38" y="34" width="14" height="14" rx="3" fill="#ffffff" opacity="0.9"/>
+  <path d="M41 37h8M41 41h6M41 45h7" stroke="#1d4ed8" stroke-width="2" stroke-linecap="round"/>
+</svg>
+</body>
+</html>
