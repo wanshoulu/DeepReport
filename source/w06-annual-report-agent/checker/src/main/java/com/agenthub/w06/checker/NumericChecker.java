@@ -281,8 +281,10 @@ public final class NumericChecker {
                 BigDecimal num = normalizeDelta(m.group(2));
                 String unitWord = m.group(3);
                 if (unitWord.equals("%") || unitWord.equals("％")) {
-                    // 比率指标的变动值却用 % 表述；若另有增长率指标同值则视为合法增速表述
-                    if (ratioDeltas.contains(num) && !percentDeltas.contains(num)) {
+                    // 正文窗口含率/比/覆盖字样 → 该变动是比率指标（如不良贷款率），% 表述必拦
+                    String before = sec.body().substring(Math.max(0, m.start() - 40), m.start());
+                    boolean ratioByContext = before.contains("率") || before.contains("比") || before.contains("覆盖");
+                    if ((ratioDeltas.contains(num) && !percentDeltas.contains(num)) || ratioByContext) {
                         out.add(v("DELTA_UNIT_MISMATCH", sec.sectionId(),
                                 "「" + m.group() + "」：比率变动误用 %，应为「个百分点」或「基点」",
                                 Severity.BLOCKING));
