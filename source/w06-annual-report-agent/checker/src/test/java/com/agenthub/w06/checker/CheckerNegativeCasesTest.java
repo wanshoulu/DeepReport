@@ -188,7 +188,7 @@ class CheckerNegativeCasesTest {
     };
 
     private static MetricValue mv(MetricKey k, String value, String unit, int page, String digest) {
-        return new MetricValue(k, value, unit, "2025年度", digest, page, "sha-excerpt");
+        return new MetricValue(k.name(), value, unit, "2025年度", digest, page, "sha-excerpt");
     }
 
     private static List<MetricValue> validMetrics() {
@@ -310,7 +310,7 @@ class CheckerNegativeCasesTest {
 
         // 篡改：替换任一指标值（工件内容变化 → 指纹变化）
         var tamperedArtifact = draft(validMetrics().stream()
-                .map(m -> m.key() == com.agenthub.w06.contract.MetricKey.OPERATING_REVENUE
+                .map(m -> "OPERATING_REVENUE".equals(m.key())
                         ? new com.agenthub.w06.contract.MetricValue(m.key(), "9,999.99",
                                 m.unit(), m.period(), m.sourceDocumentDigest(), m.page(),
                                 m.evidenceExcerptDigest())
