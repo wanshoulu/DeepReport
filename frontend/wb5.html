@@ -451,6 +451,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 </header>
 <nav class="tabs" id="tabs">
   <button class="tab active" data-view="chat">对话编制</button>
+  <button class="tab" data-view="assets">资产库</button>
   <button class="tab" data-view="reports">报告库</button>
 </nav>
 <main>
@@ -465,6 +466,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
       </form>
     </div>
   </section>
+  <section class="view" id="view-assets"></section>
   <section class="view" id="view-reports"></section>
 </main>
 <div class="drawer-mask" id="drawer-mask"></div>
@@ -980,7 +982,10 @@ async function handleFreeInput(text) {
   if (!composeVerb && /查看报告|打开报告|报告库|切换到报告|报告列表/.test(text)) {
     addMsg("editor-in-chief", "已为您切换到报告库。"); switchTab("reports"); return;
   }
-  /* 资产库/Agent Hub/演示链 已随 DeepReport 化移除，不再提供页签跳转 */
+  if (!composeVerb && /查看资产|资产库|切换到资产|资产列表/.test(text)) {
+    addMsg("editor-in-chief", "已为您切换到资产库。"); switchTab("assets"); return;
+  }
+  /* Agent Hub/演示链 已移除，不再提供页签跳转 */
   /* 阶段意图 */
   if (chat.stage === "greet" || chat.stage === "live_subject") {
     // 通用主体入口：自由输入公司全名（greet 与 live_subject 同一逻辑，不分预置/联网主体）
