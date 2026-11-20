@@ -586,7 +586,7 @@ const AGENT_META = {
   "approver":            { name: "交付批准官", kind: "APPROVER", av: "批" }
 };
 
-const chat = { stage: "greet", bank: "cmb", subject: "", artifact: null, taskId: null, busy: false };
+const chat = { stage: "greet", bank: "cmb", subject: "", reportType: "annual_report", artifact: null, taskId: null, busy: false };
 
 function addMsg(agentId, html) {
   const log = $("#chat-log");
@@ -624,7 +624,7 @@ function greet() {
   addMsg("editor-in-chief",
     "您好，我是主编编排 Agent（editor-in-chief）。这里由多专业 agent 协同完成年度报告编制：<br>"
     + "资料装载 → 口径澄清 → 分节成稿 → 确定性核验 → 具名批准交付。<br>"
-    + "请直接<b>输入要编制的公司全名</b>（任意公司，如：中国工商银行股份有限公司），不限行业与名单。");
+    + "两种方式开始：<b>①</b> 直接输入「写一份关于 XX 的报告」或输入公司全名（任意公司/主题，不限名单）；<b>②</b> 上传该主体的资料（pdf/txt/md 或粘贴文本）后编制。报告类型自动识别（年度报告/调研报告/客户分析）。");
   setQuick([]);
 }
 
@@ -748,7 +748,7 @@ async function startGeneration(correct) {
   // 六工位流水线：播报内容全部来自服务端 stages[]（headline/details），前端只渲染不编造
   const p = await jpost("/v1/pipeline/run", {
     bank: chat.bank,
-    report_type: "annual_report",
+    report_type: chat.reportType || "annual_report",
     subject_hint: chat.subject || ""
   });
   if (!p.ok || !p.data || !p.data.stages) {
@@ -895,25 +895,42 @@ function resetChat() {
 /* 自由输入：全局意图 + 阶段意图匹配 */
 async function handleFreeInput(text) {
   addMsg("user", text);
-  /* 全局跳转意图 */
+  /* 全局跳转意图（编制动词优先：含 写/编制/生成/调研/分析 的句子不跳页签，进编制流程） */
+  const composeVerb = /写|编制|生成|调研|分析|评估|研究/.test(text);
   if (/重新生成|再来一份|重新来/.test(text)) {
     addMsg("editor-in-chief", "好的，重新开始编制流程。"); resetChat(); return;
   }
-  if (/报告/.test(text)) { addMsg("editor-in-chief", "已为您切换到报告库。"); switchTab("reports"); return; }
-  if (/资产/.test(text)) { addMsg("editor-in-chief", "已为您切换到资产库。"); switchTab("assets"); return; }
-  if (/agent|hub|智能体/i.test(text)) { addMsg("editor-in-chief", "已为您切换到 Agent Hub。"); switchTab("agents"); return; }
-  if (/演示/.test(text)) { addMsg("editor-in-chief", "已为您切换到演示链。"); switchTab("demo"); return; }
+  if (!composeVerb && /查看报告|打开报告|报告库|切换到报告|报告列表/.test(text)) {
+    addMsg("editor-in-chief", "已为您切换到报告库。"); switchTab("reports"); return;
+  }
+  if (!composeVerb && /查看资产|资产库|切换到资产/.test(text)) {
+    addMsg("editor-in-chief", "已为您切换到资产库。"); switchTab("assets"); return;
+  }
+  if (!composeVerb && /agent hub|智能体|切换到agent/i.test(text)) {
+    addMsg("editor-in-chief", "已为您切换到 Agent Hub。"); switchTab("agents"); return;
+  }
+  if (!composeVerb && /查看演示|演示链|切换到演示/.test(text)) {
+    addMsg("editor-in-chief", "已为您切换到演示链。"); switchTab("demo"); return;
+  }
   /* 阶段意图 */
   if (chat.stage === "greet" || chat.stage === "live_subject") {
     // 通用主体入口：自由输入公司全名（greet 与 live_subject 同一逻辑，不分预置/联网主体）
     if (/^(你好|您好|hi|hello)$/i.test(text)) {
       addMsg("editor-in-chief", "您好！请输入要编制的公司全名（任意公司，不限行业）。");
     } else if (text.length >= 4 && !/^(确认|开始|取消|重新生成)/i.test(text)) {
-      chat.subject = text.trim();
+      // 自然语言解析：主体 = "关于 X 的" 捕获；报告类型 = 关键词映射
+      const about = text.match(/关于(.+?)的/);
+      chat.subject = about ? about[1].trim() : text.trim();
+      chat.reportType = /年报|年度报告|年度经营/.test(text) ? "annual_report"
+        : /调研|研究|综述|深度分析/.test(text) ? "research"
+        : /客户分析|客户报告|满意度/.test(text) ? "client_analysis"
+        : "annual_report";
       chat.bank = "live";
       const company = chat.subject;
-      addMsg("user", "编制主体：" + esc(company));
-      addMsg("editor-in-chief", "已受理：" + esc(company) + " 2025 年度经营简报。转交资料管理 Agent 装载信源快照。");
+      const typeName = { annual_report: "年度报告", research: "技术调研报告", client_analysis: "客户分析报告" }[chat.reportType];
+      addMsg("user", "编制请求：" + esc(text.slice(0, 60)) + (text.length > 60 ? "……" : ""));
+      addMsg("editor-in-chief", "已受理：<b>" + esc(company) + "</b> " + typeName
+        + "（主体从请求中提取，报告类型自动识别）。转交资料管理 Agent 装载信源快照——若预置库没有该主体资料，请上传 pdf/txt/md 或粘贴文本。");
       chat.stage = "material";
       addMsg("material-agent", "正在装载信源快照……");
       try {
