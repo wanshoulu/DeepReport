@@ -224,7 +224,7 @@
         }
       ],
       "default_args": {
-        "base_url": "http://172.17.0.1:8000",
+        "base_url": "http://172.18.0.1:8000",
         "max_wait_ms": 300000,
         "space_id": "s0",
         "web_search_config_id": 1
