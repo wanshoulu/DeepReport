@@ -1306,7 +1306,7 @@ public final class CheckerHttpServer {
         ArrayNode det2 = s2.withArray("details");
         for (MetricValue m : art.metrics()) {
             StringBuilder ins = new StringBuilder();
-            ins.append(m.key().getDisplayName()).append(" ").append(m.value()).append(" ").append(m.unit());
+            ins.append(m.key()).append(" ").append(m.value()).append(" ").append(m.unit());
             if (m.yoyDelta() != null && !m.yoyDelta().isEmpty()) {
                 boolean sign = m.yoyDelta().startsWith("-") || m.yoyDelta().startsWith("+");
                 ins.append("，同比 ").append(sign ? "" : "+").append(m.yoyDelta())
@@ -1726,7 +1726,7 @@ public final class CheckerHttpServer {
         // 指标数据表
         sb.append("指标数据表（值与单位为准，不得修改）：\n");
         for (MetricValue m : art.metrics()) {
-            sb.append("- ").append(m.key().getDisplayName())
+            sb.append("- ").append(m.key())
                     .append("：").append(m.value()).append(m.unit());
             if (m.yoyDelta() != null && !m.yoyDelta().isEmpty()) {
                 boolean sign = m.yoyDelta().startsWith("-") || m.yoyDelta().startsWith("+");

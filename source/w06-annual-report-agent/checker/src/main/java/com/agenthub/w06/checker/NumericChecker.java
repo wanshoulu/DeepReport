@@ -73,15 +73,15 @@ public final class NumericChecker {
     }
 
     /** 指标 → 约定单位（W01 冻结口径；单位错误即 A07）。 */
-    private static final Map<MetricKey, String> EXPECTED_UNITS = Map.of(
-            MetricKey.OPERATING_REVENUE, "亿元",
-            MetricKey.NET_PROFIT_ATTRIBUTABLE, "亿元",
-            MetricKey.NET_INTEREST_MARGIN, "%",
-            MetricKey.COST_INCOME_RATIO, "%",
-            MetricKey.NPL_BALANCE, "亿元",
-            MetricKey.NPL_RATIO, "%",
-            MetricKey.PROVISION_COVERAGE, "%",
-            MetricKey.CET1_RATIO, "%");
+    private static final Map<String, String> EXPECTED_UNITS = Map.of(
+            "OPERATING_REVENUE", "亿元",
+            "NET_PROFIT_ATTRIBUTABLE", "亿元",
+            "NET_INTEREST_MARGIN", "%",
+            "COST_INCOME_RATIO", "%",
+            "NPL_BALANCE", "亿元",
+            "NPL_RATIO", "%",
+            "PROVISION_COVERAGE", "%",
+            "CET1_RATIO", "%");
 
     /** 原文数字匹配：容忍千分位逗号。 */
     private static final Pattern NUMBER = Pattern.compile("\\d{1,3}(?:,\\d{3})*(?:\\.\\d+)?|\\d+(?:\\.\\d+)?");
@@ -95,13 +95,13 @@ public final class NumericChecker {
         String artifactSha = artifactDigest(draft); // G3
 
         // N1 完整性
-        Map<MetricKey, MetricValue> byKey = new EnumMap<>(MetricKey.class);
+        Map<String, MetricValue> byKey = new HashMap<>();
         Map<String, MetricValue> byKeyStr = new HashMap<>();
         for (MetricValue m : draft.metrics()) {
             if (byKey.put(m.key(), m) != null) {
-                violations.add(v("METRIC_DUPLICATED", m.key().name(), "同一指标出现多条记录", Severity.BLOCKING));
+                violations.add(v("METRIC_DUPLICATED", m.key(), "同一指标出现多条记录", Severity.BLOCKING));
             }
-            byKeyStr.putIfAbsent(m.key().name(), m);
+            byKeyStr.putIfAbsent(m.key(), m);
         }
         if (dictionary != null) {
             // 字典驱动：完整性按配置的指标集（任意行业/报告类型）
@@ -122,21 +122,21 @@ public final class NumericChecker {
 
         for (MetricValue m : draft.metrics()) {
             // N2 单位（字典驱动优先，回退枚举冻结口径）
-            String expected = dictionary != null && dictionary.byKey(m.key().name()) != null
-                    ? dictionary.byKey(m.key().name()).expectedUnit()
+            String expected = dictionary != null && dictionary.byKey(m.key()) != null
+                    ? dictionary.byKey(m.key()).expectedUnit()
                     : EXPECTED_UNITS.get(m.key());
             if (expected != null && !expected.equals(m.unit())) {
-                violations.add(v("UNIT_MISMATCH", m.key().name(),
+                violations.add(v("UNIT_MISMATCH", m.key(),
                         "单位应为 " + expected + "，实际 " + m.unit() + "（A07）", Severity.BLOCKING));
             }
             // N3 数字来源（NOT_FOUND 显式标注不算伪造，但完整性会在别处暴露）
             if (!"NOT_FOUND".equals(m.value()) && !"UNSPECIFIED".equals(m.value())) {
                 String pageText = resolver.textOf(m.sourceDocumentDigest(), m.page());
                 if (pageText == null) {
-                    violations.add(v("SOURCE_UNRESOLVABLE", m.key().name(),
+                    violations.add(v("SOURCE_UNRESOLVABLE", m.key(),
                             "digest/page 无法定位到快照页", Severity.BLOCKING));
                 } else if (!numberPresent(pageText, m.value())) {
-                    violations.add(v("FABRICATED_NUMBER", m.key().name(),
+                    violations.add(v("FABRICATED_NUMBER", m.key(),
                             "值 " + m.value() + " 未在第 " + m.page() + " 页原文出现", Severity.BLOCKING));
                 }
             }
@@ -165,10 +165,10 @@ public final class NumericChecker {
      * 报告正文含"同比+增速"论断时，先按句归属（营业收入 / 净利润），
      * 再用上年度对比页的上期值与本期值复算；定位不到时降级 WARNING（PERIOD_BASE_MISSING）。
      */
-    private void yoyCheck(AnnualReportArtifacts draft, Map<MetricKey, MetricValue> byKey,
+    private void yoyCheck(AnnualReportArtifacts draft, Map<String, MetricValue> byKey,
                           SnapshotTextResolver resolver, List<Violation> out) {
-        MetricValue rev = byKey.get(MetricKey.OPERATING_REVENUE);
-        MetricValue profit = byKey.get(MetricKey.NET_PROFIT_ATTRIBUTABLE);
+        MetricValue rev = byKey.get("OPERATING_REVENUE");
+        MetricValue profit = byKey.get("NET_PROFIT_ATTRIBUTABLE");
         boolean hasRev = rev != null && !"NOT_FOUND".equals(rev.value());
         boolean hasProfit = profit != null && !"NOT_FOUND".equals(profit.value());
         if (!hasRev && !hasProfit) {
@@ -205,7 +205,7 @@ public final class NumericChecker {
                     BigDecimal claimed = new BigDecimal(pm.group(1));
                     if (yoy.abs().subtract(claimed.abs()).abs()
                             .compareTo(new BigDecimal("0.1")) > 0) {
-                        out.add(v("YOY_MISMATCH", current.key().name(),
+                        out.add(v("YOY_MISMATCH", current.key(),
                                 "正文" + subject + "同比 " + pm.group(1) + "% vs 复算 "
                                         + yoy.setScale(2, RoundingMode.HALF_UP) + "%",
                                 Severity.BLOCKING));
@@ -307,10 +307,10 @@ public final class NumericChecker {
         return d.scale() < 0 ? d.setScale(0) : d;
     }
 
-    private void derivedCheck(Map<MetricKey, MetricValue> byKey,
+    private void derivedCheck(Map<String, MetricValue> byKey,
                               SnapshotTextResolver resolver, List<Violation> out) {
-        MetricValue nplRatio = byKey.get(MetricKey.NPL_RATIO);
-        MetricValue nplBalance = byKey.get(MetricKey.NPL_BALANCE);
+        MetricValue nplRatio = byKey.get("NPL_RATIO");
+        MetricValue nplBalance = byKey.get("NPL_BALANCE");
         if (nplRatio == null || nplBalance == null || "NOT_FOUND".equals(nplRatio.value())) {
             return;
         }
@@ -345,10 +345,10 @@ public final class NumericChecker {
     }
 
     /** 口径2：拨备覆盖率复算。基数（贷款减值准备）从不良余额所在页定位；缺失降级 WARNING。 */
-    private void provisionCheck(Map<MetricKey, MetricValue> byKey,
+    private void provisionCheck(Map<String, MetricValue> byKey,
                                 SnapshotTextResolver resolver, List<Violation> out) {
-        MetricValue cov = byKey.get(MetricKey.PROVISION_COVERAGE);
-        MetricValue npl = byKey.get(MetricKey.NPL_BALANCE);
+        MetricValue cov = byKey.get("PROVISION_COVERAGE");
+        MetricValue npl = byKey.get("NPL_BALANCE");
         if (cov == null || npl == null || "NOT_FOUND".equals(cov.value())) {
             return;
         }
@@ -377,10 +377,10 @@ public final class NumericChecker {
     }
 
     /** 口径3：成本收入比复算。基数（业务及管理费）从营业收入所在页定位；缺失降级 WARNING。 */
-    private void costIncomeCheck(Map<MetricKey, MetricValue> byKey,
+    private void costIncomeCheck(Map<String, MetricValue> byKey,
                                  SnapshotTextResolver resolver, List<Violation> out) {
-        MetricValue ratio = byKey.get(MetricKey.COST_INCOME_RATIO);
-        MetricValue rev = byKey.get(MetricKey.OPERATING_REVENUE);
+        MetricValue ratio = byKey.get("COST_INCOME_RATIO");
+        MetricValue rev = byKey.get("OPERATING_REVENUE");
         if (ratio == null || rev == null || "NOT_FOUND".equals(ratio.value())) {
             return;
         }

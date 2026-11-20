@@ -26,42 +26,42 @@ public final class MetricExtractor {
     private MetricExtractor() { }
 
     /** 指标定位规则：名称模式（取首个命中行）→ 行内/行后窗口取值。 */
-    private record Rule(MetricKey key, Pattern name, String unit, boolean wantPct) { }
+    private record Rule(String key, Pattern name, String unit, boolean wantPct) { }
 
     private static final List<Rule> RULES = List.of(
             // 管理层讨论正文（亿元口径）：如 P21 "净利润 3,707.66 亿元、营业收入 8,382.70 亿元"
-            new Rule(MetricKey.OPERATING_REVENUE,
+            new Rule("OPERATING_REVENUE",
                     Pattern.compile("营业收入\\s*([\\d,]+\\.\\d{2})\\s*亿元"), "亿元", false),
-            new Rule(MetricKey.NET_PROFIT_ATTRIBUTABLE,
+            new Rule("NET_PROFIT_ATTRIBUTABLE",
                     Pattern.compile("净利润\\s*([\\d,]+\\.\\d{2})\\s*亿元"), "亿元", false),
-            new Rule(MetricKey.NPL_RATIO,
+            new Rule("NPL_RATIO",
                     Pattern.compile("不良贷款率\\s*([\\d.]+)\\s*%"), "%", true),
-            new Rule(MetricKey.PROVISION_COVERAGE,
+            new Rule("PROVISION_COVERAGE",
                     Pattern.compile("拨备覆盖率\\s*([\\d.]+)\\s*%"), "%", true),
-            new Rule(MetricKey.CET1_RATIO,
+            new Rule("CET1_RATIO",
                     Pattern.compile("核心一级资本充足率\\s*([\\d.]+)\\s*%"), "%", true),
-            new Rule(MetricKey.COST_INCOME_RATIO,
+            new Rule("COST_INCOME_RATIO",
                     Pattern.compile("成本收入比\\s*([\\d.]+)\\s*%"), "%", true),
-            new Rule(MetricKey.NET_INTEREST_MARGIN,
+            new Rule("NET_INTEREST_MARGIN",
                     Pattern.compile("净利息收益率\\s*([\\d.]+)\\s*%"), "%", true),
             // 摘要表"名称（换行）数值"布局：名称行后 120 字符窗口取第一组两位小数
-            new Rule(MetricKey.OPERATING_REVENUE, null, "亿元", false),
-            new Rule(MetricKey.NET_PROFIT_ATTRIBUTABLE, null, "亿元", false),
-            new Rule(MetricKey.NPL_RATIO, null, "%", true),
-            new Rule(MetricKey.PROVISION_COVERAGE, null, "%", true),
-            new Rule(MetricKey.CET1_RATIO, null, "%", true),
-            new Rule(MetricKey.COST_INCOME_RATIO, null, "%", true),
-            new Rule(MetricKey.NET_INTEREST_MARGIN, null, "%", true));
+            new Rule("OPERATING_REVENUE", null, "亿元", false),
+            new Rule("NET_PROFIT_ATTRIBUTABLE", null, "亿元", false),
+            new Rule("NPL_RATIO", null, "%", true),
+            new Rule("PROVISION_COVERAGE", null, "%", true),
+            new Rule("CET1_RATIO", null, "%", true),
+            new Rule("COST_INCOME_RATIO", null, "%", true),
+            new Rule("NET_INTEREST_MARGIN", null, "%", true));
 
     /** 摘要表布局的名称锚点（P16 样式：名称可能带注号换行，数值列紧随其后）。 */
-    private static final Map<MetricKey, String> TABLE_ANCHORS = Map.of(
-            MetricKey.OPERATING_REVENUE, "营业收入",
-            MetricKey.NET_PROFIT_ATTRIBUTABLE, "归属于母公司股东的净利润",
-            MetricKey.NET_INTEREST_MARGIN, "净利息收益率",
-            MetricKey.COST_INCOME_RATIO, "成本收入比",
-            MetricKey.NPL_RATIO, "不良贷款率",
-            MetricKey.PROVISION_COVERAGE, "拨备覆盖率",
-            MetricKey.CET1_RATIO, "核心一级资本充足率");
+    private static final Map<String, String> TABLE_ANCHORS = Map.of(
+            "OPERATING_REVENUE", "营业收入",
+            "NET_PROFIT_ATTRIBUTABLE", "归属于母公司股东的净利润",
+            "NET_INTEREST_MARGIN", "净利息收益率",
+            "COST_INCOME_RATIO", "成本收入比",
+            "NPL_RATIO", "不良贷款率",
+            "PROVISION_COVERAGE", "拨备覆盖率",
+            "CET1_RATIO", "核心一级资本充足率");
 
     private static final Pattern NUM2 = Pattern.compile("([\\d,]+\\.\\d{2})");
 
@@ -118,7 +118,7 @@ public final class MetricExtractor {
                     Matcher n = NUM2.matcher(window);
                     if (n.find()) {
                         String unit = def.expectedUnit() == null || def.expectedUnit().isBlank() ? "%" : def.expectedUnit();
-                        mv = mv(safeEnumKey(def.key()), n.group(1), unit, digest, page, period);
+                        mv = mv(def.key(), n.group(1), unit, digest, page, period);
                         break;
                     }
                 }
@@ -133,20 +133,11 @@ public final class MetricExtractor {
             }
             if (mv == null) {
                 String unit = def.expectedUnit() == null || def.expectedUnit().isBlank() ? "%" : def.expectedUnit();
-                mv = new MetricValue(safeEnumKey(def.key()), "NOT_FOUND", unit, period, "", 0, "");
+                mv = new MetricValue(def.key(), "NOT_FOUND", unit, period, "", 0, "");
             }
             got.put(def.key(), mv);
         }
         return new ArrayList<>(got.values());
-    }
-
-    /** 字典 key 不在 MetricKey 枚举时的安全占位（工件契约要求枚举 key；N1/N2 走字典路径不受影响）。 */
-    private static MetricKey safeEnumKey(String key) {
-        try {
-            return MetricKey.valueOf(key);
-        } catch (IllegalArgumentException e) {
-            return MetricKey.OPERATING_REVENUE;
-        }
     }
 
     /** 旧银行口径路径（硬编码模式，向后兼容 annual_report + banking_8 行为不变）。 */
@@ -156,7 +147,7 @@ public final class MetricExtractor {
         if (pages != null) {
             pages.forEach(pageList::add);
         }
-        Map<MetricKey, MetricValue> got = new EnumMap<>(MetricKey.class);
+        Map<String, MetricValue> got = new LinkedHashMap<>();
 
         for (Rule rule : RULES) {
             if (got.containsKey(rule.key())) continue;
@@ -196,21 +187,21 @@ public final class MetricExtractor {
 
         // 归母净利润专项：正文"净利润 X 亿元"可能是含少数股东的口径——若材料同页
         // 出现"归属于母公司"字样才采信，否则 NOT_FOUND（不冒充归母口径）。
-        MetricValue profit = got.get(MetricKey.NET_PROFIT_ATTRIBUTABLE);
+        MetricValue profit = got.get("NET_PROFIT_ATTRIBUTABLE");
         if (profit != null && profit.page() > 0) {
             String text = textOfPage(pageList, profit.page());
             if (text == null || !text.contains("归属于母公司")) {
                 if (text == null || !text.contains("归属于本行")) {
-                    got.remove(MetricKey.NET_PROFIT_ATTRIBUTABLE);
+                    got.remove("NET_PROFIT_ATTRIBUTABLE");
                 }
             }
         }
 
         List<MetricValue> out = new ArrayList<>();
         for (MetricKey k : MetricKey.values()) {
-            MetricValue v = got.get(k);
+            MetricValue v = got.get(k.name());
             if (v == null) {
-                out.add(new MetricValue(k, "NOT_FOUND", expectedUnit(k), period, "", 0, ""));
+                out.add(new MetricValue(k.name(), "NOT_FOUND", expectedUnit(k.name()), period, "", 0, ""));
             } else {
                 out.add(v);
             }
@@ -218,15 +209,15 @@ public final class MetricExtractor {
         return out;
     }
 
-    private static MetricValue mv(MetricKey key, String value, String unit, String digest, int page, String period) {
+    private static MetricValue mv(String key, String value, String unit, String digest, int page, String period) {
         String excerpt = value; // 证据片段即数值本身（digest+page 已可打开溯源）
         String excerptDigest = sha256(excerpt);
         return new MetricValue(key, value, unit, period, digest, page, excerptDigest);
     }
 
-    private static String expectedUnit(MetricKey k) {
+    private static String expectedUnit(String k) {
         return switch (k) {
-            case OPERATING_REVENUE, NET_PROFIT_ATTRIBUTABLE, NPL_BALANCE -> "亿元";
+            case "OPERATING_REVENUE", "NET_PROFIT_ATTRIBUTABLE", "NPL_BALANCE" -> "亿元";
             default -> "%";
         };
     }

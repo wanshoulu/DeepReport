@@ -9,7 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 public record MetricValue(
-        @JsonProperty("key") MetricKey key,
+        @JsonProperty("key") String key,                // 泛化：枚举名（银行8指标）或字典键（REVENUE/GROSS_MARGIN…）
         @JsonProperty("value") String value,            // 原文口径字符串，如 "3374.88"
         @JsonProperty("unit") String unit,              // 亿元 / % 等，错误单位是 A07 反例
         @JsonProperty("period") String period,          // 如 "2025年度" / "2024年度"
@@ -22,7 +22,7 @@ public record MetricValue(
         @JsonProperty("delta_unit") DeltaUnit deltaUnit
 ) {
     /** 兼容旧调用点：无同比变动的指标。 */
-    public MetricValue(MetricKey key, String value, String unit, String period,
+    public MetricValue(String key, String value, String unit, String period,
                        String sourceDocumentDigest, int page, String evidenceExcerptDigest) {
         this(key, value, unit, period, sourceDocumentDigest, page, evidenceExcerptDigest, null, null);
     }
