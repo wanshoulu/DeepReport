@@ -156,7 +156,8 @@ public final class NumericChecker {
         return new CheckResult(CHECKER_ID, CHECKER_VERSION,
                 violations.isEmpty() ? CheckStatus.PASSED
                         : (waiting ? CheckStatus.WAITING_HUMAN : CheckStatus.FAILED),
-                violations, artifactSha);
+                violations, artifactSha,
+                java.time.Instant.now().toString());
     }
 
     /**

@@ -145,7 +145,8 @@ public final class CitationChecker {
         }
         return new CheckResult(CHECKER_ID, CHECKER_VERSION,
                 violations.isEmpty() ? CheckStatus.PASSED : CheckStatus.FAILED,
-                violations, NumericChecker.artifactDigest(draft)); // G3：与数值核验绑定同一工件摘要
+                violations, NumericChecker.artifactDigest(draft), // G3：与数值核验绑定同一工件摘要
+                java.time.Instant.now().toString());
     }
 
     /**
