@@ -732,12 +732,15 @@ const AGENT_META = {
   "capital-analyst":     { name: "资本管理 Agent", kind: "ANALYST", av: "本" },
   "disclosure-officer":  { name: "披露合规 Agent", kind: "ANALYST", av: "披" },
   "chart-agent":         { name: "图表绘制 Agent", kind: "ANALYST", av: "图" },
+  "writer-agent":        { name: "写作 Agent", kind: "ANALYST", av: "写" },
   "numeric-checker":     { name: "数值核验器", kind: "CHECKER", av: "数" },
   "citation-checker":    { name: "引用核验器", kind: "CHECKER", av: "引" },
   "approver":            { name: "交付批准官", kind: "APPROVER", av: "批" }
 };
 
-const chat = { stage: "greet", bank: "cmb", artifact: null, taskId: null, busy: false };
+/* 对话状态：reportType=annual_report|general；subject=通用报告主题；mode=brief|long_form */
+const chat = { stage: "greet", bank: "cmb", artifact: null, taskId: null, busy: false,
+  reportType: "annual_report", subject: "", mode: "long_form" };
 
 function addMsg(agentId, html) {
   const log = $("#chat-log");
@@ -770,16 +773,67 @@ $("#quick-row").addEventListener("click", e => {
   if (fn) { setQuick([]); fn(); }
 });
 
-/* 对话状态机：greet → bank → material → clarify → generating → (fix) → wait_approval → done */
+/* 对话状态机：greet → (bank|subject) → material → clarify → generating → (fix) → wait_approval → done */
 function greet() {
   chat.stage = "greet";
+  chat.reportType = "annual_report"; chat.subject = ""; chat.mode = "long_form";
   addMsg("editor-in-chief",
-    "您好，我是主编编排 Agent（editor-in-chief）。这里由多专业 agent 协同完成年度经营简报的编制：<br>"
+    "您好，我是主编编排 Agent（editor-in-chief）。这里由多专业 agent 协同完成报告编制：<br>"
     + "资料装载 → 口径澄清 → 分节成稿 → 确定性核验 → 具名批准交付。<br>"
-    + "首先请选择编制主体（支持多家银行的年报快照）。");
-  const opts = (state.banks.length ? state.banks.filter(b => b.bank !== "live") : [{ bank: "cmb", company: "招商银行" }])
-    .map(b => ({ label: b.company + " · 2025 年度", cls: b.bank === "cmb" ? "primary" : "", fn: () => pickBank(b) }));
-  setQuick(opts, "点击选择编制主体：");
+    + "支持<b>年报域</b>（银行年度经营简报）与<b>通用报告域</b>（基于导入资料的调研/分析类报告）。请选择报告类型：");
+  const opts = [
+    { label: "通用报告（导入资料编制）", cls: "primary", fn: pickGeneral }
+  ].concat(
+    (state.banks.length ? state.banks.filter(b => b.bank !== "live") : [{ bank: "cmb", company: "招商银行" }])
+      .map(b => ({ label: b.company + " · 2025 年度", cls: b.bank === "cmb" ? "" : "", fn: () => pickBank(b) })));
+  setQuick(opts, "点击选择报告类型：");
+}
+
+/* 通用报告域：主题受理 → live 快照资料装载（无年报口径澄清） */
+function pickGeneral() {
+  setQuick([]);
+  addMsg("user", "编制通用报告。");
+  chat.reportType = "general"; chat.bank = "live";
+  addMsg("editor-in-chief",
+    "已受理：通用报告编制。资料以导入为主——可直接粘贴文本（登记为编制依据），"
+    + "或使用「导入资料」上传文件。<br>请输入报告主题（如「XX 行业渠道调研」），或点击示例主题：");
+  chat.stage = "subject";
+  setQuick([
+    { label: "示例：消费品牌渠道调研", fn: () => setSubject("消费品牌渠道调研") },
+    { label: "示例：上市公司投资价值分析", fn: () => setSubject("上市公司投资价值分析") }
+  ], "输入报告主题：");
+}
+
+function setSubject(s) {
+  if (!s || !s.trim()) return;
+  setQuick([]);
+  addMsg("user", "报告主题：" + s.trim());
+  chat.subject = s.trim();
+  addMsg("editor-in-chief", "主题已受理：" + esc(chat.subject) + "。转交资料管理 Agent 装载导入资料。");
+  loadGeneralMaterial();
+}
+
+async function loadGeneralMaterial() {
+  chat.stage = "material";
+  addMsg("material-agent", "正在装载导入资料（live 快照集）……");
+  try {
+    const [sources] = await Promise.all([jget("/v1/sources")]);
+    state.sources = sources;
+    const m = state.manifests["live"];
+    const pages = m ? Object.keys(m.page_digests || {}) : [];
+    addMsg("material-agent",
+      (pages.length
+        ? "已装载导入资料：<br>· live 快照集 P" + pages.join(" / P") + "（sha256 已登记，可引用核验）"
+        : "当前暂无导入资料——报告将基于骨架与引用纪律编制，建议先粘贴文本补充资料。")
+      + "<br>可直接粘贴文本补充资料，或点击下方按钮开始编制。");
+    setQuick([
+      { label: "资料齐备，开始编制（长文成稿）", cls: "primary", fn: () => startGeneration(true) },
+      { label: "简报模式（模板成稿）", fn: () => { chat.mode = "brief"; startGeneration(true); } }
+    ], "选择成稿模式，也可在下方补充资料：");
+  } catch (e) {
+    addMsg("material-agent", '<span style="color:var(--destructive)">资料装载失败：' + esc(e.message) + "</span>");
+    setQuick([{ label: "重试装载", cls: "primary", fn: loadGeneralMaterial }]);
+  }
 }
 
 async function pickBank(b) {
@@ -857,12 +911,17 @@ function answerClarify(correct) {
 
 async function startGeneration(correct) {
   chat.stage = "generating";
-  const bank = state.banks.find(x => x.bank === chat.bank) || { bank: "cmb", company: "招商银行" };
-  addMsg("editor-in-chief", "开始编制（" + esc(bank.company) + "）。先向服务端登记任务（获取任务编号，报告库可实时查看进度）……");
+  const isGeneral = chat.reportType !== "annual_report";
+  const bank = isGeneral
+    ? { bank: "live", company: chat.subject || "自定主体" }
+    : (state.banks.find(x => x.bank === chat.bank) || { bank: "cmb", company: "招商银行" });
+  addMsg("editor-in-chief", "开始编制（" + esc(bank.company) + (isGeneral ? " · 通用报告 · " + esc(chat.mode === "brief" ? "简报模式" : "长文成稿") : " · 年度经营简报") + "）。先向服务端登记任务（获取任务编号，报告库可实时查看进度）……");
   let base;
   try {
-    base = chat.bank === "cmb" ? clone(state.positive)
-      : await jget("/v1/artifacts/template?bank=" + encodeURIComponent(chat.bank));
+    base = isGeneral
+      ? await jget("/v1/artifacts/template?bank=live&report_type=general&subject_hint=" + encodeURIComponent(chat.subject || ""))
+      : (chat.bank === "cmb" ? clone(state.positive)
+        : await jget("/v1/artifacts/template?bank=" + encodeURIComponent(chat.bank)));
   } catch (e) {
     addMsg("editor-in-chief", '<span style="color:var(--destructive)">模板工件加载失败：' + esc(e.message) + "</span>");
     setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
@@ -877,7 +936,8 @@ async function startGeneration(correct) {
     if (sec) sec.body = sec.body.replace(new RegExp("(" + escRe(lbl) + "[^。]*?(?:上升|下降))(\\d+(?:\\.\\d+)?)个百分点", "g"), "$1$2%");
   }
   const r = await jpost("/v1/tasks", {
-    task: { status: "GENERATING", summary: bank.company + " 2025 年度经营简报（对话式编制）" },
+    task: { status: "GENERATING", summary: bank.company
+      + (isGeneral ? " 通用报告（对话式编制）" : " 2025 年度经营简报（对话式编制）") },
     artifact: base
   });
   if (!r.ok) {
@@ -890,13 +950,18 @@ async function startGeneration(correct) {
   chat.artifact = base;
   addMsg("editor-in-chief",
     "任务已登记：<span class=\"mono\">" + esc(chat.taskId) + "</span>。启动六工位流水线（查数 → 分析 → 图表 → 写作 → 核验 → 主编），各工位按骨架配置分派……");
-  // 六工位流水线：播报内容全部来自服务端 stages[]（headline/details），前端只渲染不编造
-  const p = await jpost("/v1/pipeline/run", { bank: chat.bank, task_id: chat.taskId });
+  // 六工位流水线：播报内容全部来自服务端 stages[]（headline/details/artifact），前端只渲染不编造
+  const p = await jpost("/v1/pipeline/run", {
+    bank: chat.bank, task_id: chat.taskId,
+    report_type: chat.reportType, subject_hint: chat.subject || "", mode: isGeneral ? chat.mode : "brief"
+  });
   if (!p.ok || !p.data || !p.data.stages) {
     addMsg("editor-in-chief", '<span style="color:var(--destructive)">流水线执行失败：HTTP ' + (p.status || "—") + " " + esc((p.data && p.data.error) || "") + "</span>");
     setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
     return;
   }
+  // 通用域/长文模式：writer-agent 服务端成稿（含核验后终稿）——如实采纳服务端工件，前端不本地编造
+  if (isGeneral && p.data.artifact) chat.artifact = p.data.artifact;
   for (const st of p.data.stages) {
     if (st.stage_id === "writing") continue; // 写作工位在下方逐节播报
     const agentOf = { material: "material-agent", chart: "chart-agent", checking: "numeric-checker", consolidation: "editor-in-chief" };
@@ -907,12 +972,20 @@ async function startGeneration(correct) {
     const more = det.length > (st.stage_id === "analysis" ? 4 : 2) ? '<span style="font-size:12px;color:var(--muted)">…共 ' + det.length + " 条</span>" : "";
     addMsg(aid, "【" + esc(st.name) + "工位】" + esc(st.headline) + head + more);
   }
-  // 写作工位：按服务端 details（节序/标题/责任 agent 来自骨架配置）逐节播报
+  // 写作工位：headline 如实播报（含长文模式与回退说明）；节行按服务端 details 逐节渲染，
+  // 节号兼容年报域 S-n 与通用域 G-n；责任标注兼容「分析责任 / 责任」两种服务端格式
   const wr = p.data.stages.find(s => s.stage_id === "writing");
+  if (wr) {
+    await jpost("/v1/agents/load", { agent_id: "writer-agent", task_id: chat.taskId });
+    addMsg("writer-agent", "【写作工位】" + esc(wr.headline || ""));
+  }
   for (const line of (wr && wr.details) || []) {
-    const m = line.match(/^(S-\d+)\s+(.*)$/);
-    if (!m) continue;
-    const parts = m[2].split(" · 责任 ");
+    const m = line.match(/^([SG]-\d+)\s+(.*)$/);
+    if (!m) { // 非节行（如 writer-agent 不可达的回退说明）如实播报，不编造
+      addMsg("writer-agent", esc(line));
+      continue;
+    }
+    const parts = m[2].split(/ · (?:分析)?责任 /);
     const sec = chat.artifact.sections.find(s => s.section_id === m[1]);
     if (!sec) continue;
     const aid = ((parts[1] || "").match(/^\S+/) || ["editor-in-chief"])[0];
@@ -927,7 +1000,7 @@ async function startGeneration(correct) {
   }
   const nCharts = (chat.artifact.charts || []).length;
   addMsg("editor-in-chief",
-    "草稿完成（" + chat.artifact.metrics.length + " 项指标 · " + chat.artifact.citations.length
+    "草稿完成（" + (chat.artifact.metrics || []).length + " 项指标 · " + (chat.artifact.citations || []).length
     + " 条引用 · " + chat.artifact.sections.length + " 节正文"
     + (nCharts ? " · " + nCharts + " 幅图表" : "") + "）。提交确定性核验，先数值后引用。");
   runNumericCheck();
@@ -990,7 +1063,8 @@ async function runCitationCheck() {
     "引用核验 PASSED（v" + esc(c.data.checker_version) + "）：" + chat.artifact.citations.length
     + " 条引用摘录指纹一致、页内字面存在、信源均在注册表内。");
   await jpost("/v1/tasks", {
-    task: { task_id: chat.taskId, status: "GENERATED", summary: (chat.artifact.report_period || "2025 年度") + "经营简报：两项核验 PASSED，等待具名批准" },
+    task: { task_id: chat.taskId, status: "GENERATED", summary: (chat.artifact.report_period || "")
+      + (chat.reportType === "annual_report" ? "经营简报：" : "通用报告：") + "两项核验 PASSED，等待具名批准" },
     artifact: chat.artifact
   });
   chat.stage = "wait_approval";
@@ -1046,8 +1120,10 @@ function handleFreeInput(text) {
   if (/演示/.test(text)) { addMsg("editor-in-chief", "已为您切换到演示链。"); switchTab("demo"); return; }
   /* 阶段意图 */
   if (chat.stage === "greet") {
-    if (/你好|您好|hi|hello/i.test(text)) {
-      addMsg("editor-in-chief", "您好！请选择编制主体（可点击下方快捷按钮）。");
+    if (/通用|调研|分析报告|客户分析/.test(text)) {
+      pickGeneral();
+    } else if (/你好|您好|hi|hello/i.test(text)) {
+      addMsg("editor-in-chief", "您好！请选择报告类型（可点击下方快捷按钮）。");
     } else if (/工商/.test(text)) {
       pickBank(state.banks.find(x => x.bank === "icbc") || { bank: "icbc", company: "中国工商银行" });
     } else if (/建设/.test(text)) {
@@ -1055,11 +1131,15 @@ function handleFreeInput(text) {
     } else if (/确认|招商|2025/.test(text)) {
       pickBank(state.banks.find(x => x.bank === "cmb") || { bank: "cmb", company: "招商银行" });
     } else {
-      addMsg("editor-in-chief", "请先选择编制主体：招商银行 / 中国工商银行 / 中国建设银行 · 2025 年度（可点击下方快捷按钮）。");
+      addMsg("editor-in-chief", "请先选择报告类型：通用报告，或 招商银行 / 中国工商银行 / 中国建设银行 · 2025 年度（可点击下方快捷按钮）。");
     }
+  } else if (chat.stage === "subject") {
+    setSubject(text);
   } else if (chat.stage === "material") {
-    if (/齐备|开始|编制/.test(text)) { startClarify(); }
-    else {
+    if (/齐备|开始|编制/.test(text)) {
+      if (chat.reportType === "annual_report") startClarify();
+      else startGeneration(true);
+    } else {
       addMsg("material-agent", "正在将补充资料落盘注册（与联网抓取同一 sha256 纪律门）……");
       importPasted(text);
     }
