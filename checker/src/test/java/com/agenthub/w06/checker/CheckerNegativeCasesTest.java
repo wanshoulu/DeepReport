@@ -187,6 +187,29 @@ class CheckerNegativeCasesTest {
         mustHave(r, "METRIC_MISSING");
     }
 
+    // ———— 通用域（非年报）：metrics 允许 null/空 ————
+
+    @Test
+    void emptyMetricsPassInGeneralDomain() {
+        // 通用报告（调研/分析等）可能没有 8 项标准指标：空指标不触发 METRIC_MISSING
+        ReportSection sec = new ReportSection("G-4", "四、核心发现",
+                "结合导入资料与公开信息，被调研主体的业务结构保持稳定，无重大不利变化。",
+                List.of());
+        CheckResult r = new NumericChecker().check(draft(List.of(), List.of(), List.of(sec)), RESOLVER);
+        assertEquals(CheckStatus.PASSED, r.status(), "通用域空指标应 PASSED: " + r.violations());
+    }
+
+    @Test
+    void nullMetricsDoesNotThrow() {
+        ReportSection sec = new ReportSection("G-4", "四、核心发现",
+                "结合导入资料与公开信息，被调研主体的业务结构保持稳定，无重大不利变化。",
+                List.of());
+        AnnualReportArtifacts art = new AnnualReportArtifacts("TASK-GEN-001", "某调研主体",
+                "以导入资料为准", null, null, List.of(), List.of(sec), null);
+        CheckResult r = new NumericChecker().check(art, RESOLVER);
+        assertEquals(CheckStatus.PASSED, r.status(), "metrics=null 不应抛异常且应 PASSED: " + r.violations());
+    }
+
     @Test
     void wrongUnitIsBlocking() {
         List<MetricValue> metrics = validMetrics().stream()

@@ -31,7 +31,7 @@ import java.util.regex.Pattern;
 public final class NumericChecker {
 
     public static final String CHECKER_ID = "numeric-checker";
-    public static final String CHECKER_VERSION = "0.2.1";
+    public static final String CHECKER_VERSION = "0.2.2";
 
     /** G3：工件摘要用 Jackson 序列化（与 /v1/artifacts/digest 同一规范化路径）。 */
     private static final com.fasterxml.jackson.databind.ObjectMapper DIGEST_MAPPER =
@@ -70,20 +70,25 @@ public final class NumericChecker {
         List<Violation> violations = new ArrayList<>();
         String artifactSha = artifactDigest(draft); // G3
 
-        // N1 完整性
+        // 通用域守卫：metrics 允许 null/空（年报域强制 8 指标，通用域报告可无标准指标）
+        List<MetricValue> ms = draft.metrics() == null ? List.of() : draft.metrics();
+
+        // N1 完整性（8 指标枚举齐备仅在存在指标记录时校验）
         Map<MetricKey, MetricValue> byKey = new EnumMap<>(MetricKey.class);
-        for (MetricValue m : draft.metrics()) {
+        for (MetricValue m : ms) {
             if (byKey.put(m.key(), m) != null) {
                 violations.add(v("METRIC_DUPLICATED", m.key().name(), "同一指标出现多条记录", Severity.BLOCKING));
             }
         }
-        for (MetricKey k : MetricKey.values()) {
-            if (!byKey.containsKey(k)) {
-                violations.add(v("METRIC_MISSING", k.name(), "八指标缺失：" + k.getDisplayName(), Severity.BLOCKING));
+        if (!ms.isEmpty()) {
+            for (MetricKey k : MetricKey.values()) {
+                if (!byKey.containsKey(k)) {
+                    violations.add(v("METRIC_MISSING", k.name(), "八指标缺失：" + k.getDisplayName(), Severity.BLOCKING));
+                }
             }
         }
 
-        for (MetricValue m : draft.metrics()) {
+        for (MetricValue m : ms) {
             // N2 单位
             String expected = EXPECTED_UNITS.get(m.key());
             if (expected != null && !expected.equals(m.unit())) {
@@ -110,7 +115,7 @@ public final class NumericChecker {
         yoyCheck(draft, byKey, resolver, violations);
 
         // N7 变动口径：比率变动误写 % / 金额变动误写个百分点 → 拦截
-        deltaUnitCheck(draft, violations);
+        deltaUnitCheck(ms, draft.sections(), violations);
 
         boolean waiting = violations.stream().anyMatch(x -> x.severity() == Severity.WARNING)
                 && violations.stream().noneMatch(x -> x.severity() == Severity.BLOCKING);
@@ -215,11 +220,11 @@ public final class NumericChecker {
      * 金额类（不良余额）→「亿元」；增长率（营收/净利同比）才用「%」。
      * 工件的 yoy_delta/delta_unit 是归属指标的口径事实，正文短语与口径不符即拦截。
      */
-    private void deltaUnitCheck(AnnualReportArtifacts draft, List<Violation> out) {
+    private void deltaUnitCheck(List<MetricValue> ms, List<ReportSection> sections, List<Violation> out) {
         Set<BigDecimal> ratioDeltas = new HashSet<>();
         Set<BigDecimal> percentDeltas = new HashSet<>();
         Set<BigDecimal> yuanDeltas = new HashSet<>();
-        for (MetricValue m : draft.metrics()) {
+        for (MetricValue m : ms) {
             if (m.yoyDelta() == null || m.deltaUnit() == null) {
                 continue;
             }
@@ -230,7 +235,7 @@ public final class NumericChecker {
                 case YUAN -> yuanDeltas.add(d);
             }
         }
-        for (ReportSection sec : draft.sections()) {
+        for (ReportSection sec : sections == null ? List.<ReportSection>of() : sections) {
             var m = DELTA_PHRASE.matcher(sec.body());
             while (m.find()) {
                 BigDecimal num = normalizeDelta(m.group(2));
