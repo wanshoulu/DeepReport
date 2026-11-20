@@ -103,7 +103,7 @@ final class AgentChatClient {
             String result = answer.toString().trim();
             return result.isEmpty() ? null : result;
         } catch (Exception e) {
-            System.err.println("AgentChatClient: " + e.getMessage());
+            System.err.println("AgentChatClient: " + e.getClass().getName() + ": " + e.getMessage());
             return null;
         }
     }

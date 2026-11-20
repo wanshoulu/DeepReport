@@ -30,6 +30,10 @@
  *  POST /v1/agents/install {agent_id}    市场目录 agent 安装注册 → 加入运行时
  *  POST /v1/agents/load {agent_id,task_id} 运行时 agent 按任务动态按需加载（记录最近加载）
  *  GET  /v1/skills                       技能注册表（skill→agent 绑定关系，registered_agents 实时反查）
+ *  GET  /v1/graph                        协作图谱：主 agent / 专业 agent / skill / MCP 工具节点与
+ *                                       关联关系（团队注册 / 技能绑定 / 工具注册 / 资料获取调用）；
+ *                                       pipeline run 各 stage 另携 nodes/skills/tools 参与标注，
+ *                                       前端按 stage 依次高亮形成任务执行动态 graph
  *  POST /v1/agents/register              自定义 agent 注册 {name,kind,description,capabilities[]} → 运行时
  *  POST /v1/agents/{id}/skills           skill 绑定/解绑给 agent {skill_id, action: bind|unbind}
  *  POST /v1/agents/editor-in-chief/team  agent 注册给主编团队/退出 {agent_id, action: register|unregister}
@@ -385,7 +389,7 @@ public final class CheckerHttpServer {
                 return;
             }
             // 通用域 / 无正例工件（如 live 导入快照）：按骨架合成基座工件，指标为空合法
-            AnnualReportArtifacts gen = synthesizeBase(structure, b, subject, reportType);
+            AnnualReportArtifacts gen = synthesizeBase(structure, b, subject, reportType, null);
             respond(ex, 200, MAPPER.valueToTree(gen));
             return;
         }
@@ -509,6 +513,10 @@ public final class CheckerHttpServer {
         }
         if ("/v1/skills".equals(path) && "GET".equals(method)) {
             handleSkillsList(ex);
+            return;
+        }
+        if ("/v1/graph".equals(path) && "GET".equals(method)) {
+            respond(ex, 200, graphData());
             return;
         }
         if ("/v1/agents".equals(path) && "GET".equals(method)) {
@@ -755,18 +763,79 @@ public final class CheckerHttpServer {
         respond(ex, 200, out);
     }
 
+    /** 主题词切分与归一：subject_hint 按标点/空白切分、剔除报告类后缀（投研/调研/分析/行业报告等），
+     *  取长度 ≥2 的词（去重保序），供信源相关性匹配（title 或页文本命中任一主题词即相关）。 */
+    private static List<String> subjectTokens(String hint) {
+        if (hint == null || hint.isBlank()) {
+            return List.of();
+        }
+        List<String> toks = new ArrayList<>();
+        for (String raw : hint.split("[\\s，,。；;：:、·\\-—()（）]+")) {
+            String t = raw.strip()
+                    .replaceAll("(的)?(投研|调研|分析|行业|市场|通用|研究|深度)?(研究报告|报告)$", "")
+                    .strip();
+            if (t.length() >= 2 && !toks.contains(t)) {
+                toks.add(t);
+            }
+        }
+        return toks;
+    }
+
+    /** 通用域主题圈定：live 快照信源按主题词过滤；无主题词时返回全部信源（行为不变）。
+     *  投研等主题报告只引用与主题相关的资料，杜绝跨主题串台（如银行资料混入公司投研报告）。 */
+    private static List<JsonNode> sourcesForSubject(BankSnap live, List<String> tokens) {
+        List<JsonNode> all = new ArrayList<>();
+        for (JsonNode src : live.sourcesNode) {
+            all.add(src);
+        }
+        if (tokens.isEmpty()) {
+            return all;
+        }
+        List<JsonNode> matched = new ArrayList<>();
+        for (JsonNode src : all) {
+            if (srcMatches(src, tokens, live)) {
+                matched.add(src);
+            }
+        }
+        return matched;
+    }
+
+    /** 信源与主题相关性：title 命中即相关；否则任一页文本命中主题词即相关。 */
+    private static boolean srcMatches(JsonNode src, List<String> tokens, BankSnap live) {
+        String title = src.path("title").asText("");
+        for (String t : tokens) {
+            if (title.contains(t)) {
+                return true;
+            }
+        }
+        for (JsonNode pno : src.path("pages")) {
+            String text = live.byPageNumber.get(pno.asInt());
+            if (text == null) {
+                continue;
+            }
+            for (String t : tokens) {
+                if (text.contains(t)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /**
      * 用户导入资料挂载（live 快照集 → 工件引用）：把已注册导入资料的每一页登记为可引用论断
      * （digest/page/excerpt 三元组由服务端按落盘文本生成，excerpt 逐字取自页文本 → L1 确定性
-     * 核验天然通过；claim_text 与 excerpt 一致 → L2 支持度判定为 SUPPORTED），并挂到首个
-     * 分析节的 claim_ids 使其进入写作任务书的引用清单与快照页原文——writer-agent 可直接
+     * 核验天然通过；claim_text 与 excerpt 一致 → L2 支持度判定为 SUPPORTED），挂到全部分析节
+     * 的 claim_ids 使其进入写作任务书的引用清单与快照页原文——writer-agent 可在各分析节直接
      * 以 [C-n] 引用用户导入的资料。无导入资料时工件原样返回。
+     * sourcesToAttach 为主题圈定后的信源集（subjectTokens 为空时=全部 live 信源）。
      */
     private static AnnualReportArtifacts attachImportedClaims(AnnualReportArtifacts art,
                                                               SnapshotHttpResolver resolver,
-                                                              List<String> analysisIds) {
+                                                              List<String> analysisIds,
+                                                              List<JsonNode> sourcesToAttach) {
         BankSnap live = resolver.banks.get(ToolGateway.LIVE_BANK);
-        if (live == null || live.sourcesNode.isEmpty() || analysisIds.isEmpty()) {
+        if (live == null || sourcesToAttach.isEmpty() || analysisIds.isEmpty()) {
             return art;
         }
         int next = 1;
@@ -778,7 +847,7 @@ public final class CheckerHttpServer {
         }
         List<Citation> added = new ArrayList<>();
         outer:
-        for (JsonNode src : live.sourcesNode) {
+        for (JsonNode src : sourcesToAttach) {
             for (JsonNode pno : src.path("pages")) {
                 int page = pno.asInt();
                 String text = live.byPageNumber.get(page);
@@ -808,13 +877,11 @@ public final class CheckerHttpServer {
         citations.addAll(added);
         List<String> newIds = added.stream().map(Citation::claimId).toList();
         List<ReportSection> sections = new ArrayList<>();
-        boolean attached = false;
         for (ReportSection s : art.sections()) {
             List<String> ids = s.claimIds();
-            if (!attached && analysisIds.contains(s.sectionId())) {
+            if (analysisIds.contains(s.sectionId())) {
                 ids = new ArrayList<>(ids);
                 ids.addAll(newIds);
-                attached = true;
             }
             sections.add(new ReportSection(s.sectionId(), s.title(), s.body(), ids));
         }
@@ -888,13 +955,14 @@ public final class CheckerHttpServer {
      * {comparison_pages} 就地填充），指标与引用为空合法——事实性陈述由后续写作/核验层补齐。
      */
     private static AnnualReportArtifacts synthesizeBase(JsonNode structure, BankSnap snap,
-                                                        String subject, String reportType) {
+                                                        String subject, String reportType,
+                                                        List<JsonNode> subjectSources) {
         JsonNode bankTitles = structure.path("banks").path(snap.bank).path("titles");
         String company = (subject != null && !subject.isBlank()) ? subject
                 : (snap.company != null && !snap.company.isBlank() ? snap.company : "自定主体");
         String snapshotVersion = snap.snapshotVersion == null || snap.snapshotVersion.isBlank()
                 ? "（未注册版本）" : snap.snapshotVersion;
-        String primaryPages = primaryPagesLabel(snap, 8);
+        String primaryPages = primaryPagesLabel(snap, 8, subjectSources);
         List<ReportSection> sections = new ArrayList<>();
         JsonNode order = structure.path("section_order");
         for (int i = 0; i < order.size(); i++) {
@@ -932,12 +1000,25 @@ public final class CheckerHttpServer {
                 .replace("{comparison_pages}", comparisonPages);
     }
 
-    /** 资料集页清单摘要：manifest.sources 按序拼接 P 页码，超 maxPages 项截断加「等」。 */
-    private static String primaryPagesLabel(BankSnap snap, int maxPages) {
+    /**
+     * 资料集页清单摘要：manifest.sources 按序拼接 P 页码，超 maxPages 项截断加「等」。
+     * subjectSources 非空时只统计主题圈定信源的页（通用域防垃圾页混入页清单）；null 视为全量。
+     */
+    private static String primaryPagesLabel(BankSnap snap, int maxPages, List<JsonNode> subjectSources) {
         Set<Integer> pages = new TreeSet<>();
-        for (JsonNode src : snap.sourcesNode) {
-            for (JsonNode p : src.path("pages")) {
-                pages.add(p.asInt());
+        if (subjectSources != null && !subjectSources.isEmpty()) {
+            // 主题圈定：按信源 content_sha256 在本快照 sourcePages 内查页（跨快照信源自然落空）
+            for (JsonNode src : subjectSources) {
+                Set<Integer> sp = snap.sourcePages.get(src.path("content_sha256").asText());
+                if (sp != null) {
+                    pages.addAll(sp);
+                }
+            }
+        } else {
+            for (JsonNode src : snap.sourcesNode) {
+                for (JsonNode p : src.path("pages")) {
+                    pages.add(p.asInt());
+                }
             }
         }
         if (pages.isEmpty()) {
@@ -981,6 +1062,12 @@ public final class CheckerHttpServer {
             return;
         }
         BankSnap snap = resolver.scope(bank);
+        // 主题圈定提前：基座合成的页清单（{primary_pages} 占位）与引用池共用同一圈定结果，
+        // 防 live 库无关页混入 G-7/G-2 静态节的页清单摘要
+        List<String> subjToks = subjectTokens(subjectHint);
+        BankSnap liveForAttach = resolver.banks.get(ToolGateway.LIVE_BANK);
+        List<JsonNode> subjectSources = liveForAttach == null
+                ? List.of() : sourcesForSubject(liveForAttach, subjToks);
         Path f = snap.dir.resolve("positive-artifact.json");
         AnnualReportArtifacts art;
         if (Files.isRegularFile(f) && "annual_report".equals(reportType)) {
@@ -988,7 +1075,7 @@ public final class CheckerHttpServer {
             art = MAPPER.treeToValue(MAPPER.readTree(f.toFile()), AnnualReportArtifacts.class);
         } else {
             // 通用域 / 无银行正例工件（如 live 导入快照）：按骨架合成基座工件，指标为空合法
-            art = synthesizeBase(structure, snap, subjectHint, reportType);
+            art = synthesizeBase(structure, snap, subjectHint, reportType, subjectSources);
         }
 
         // 节 → 责任 agent / role 映射自所选报告类型的骨架配置（不写死「第几节归谁」）
@@ -1009,14 +1096,15 @@ public final class CheckerHttpServer {
         }
 
         // 用户导入资料（live 快照集）→ 挂载为可引用论断（digest/page/excerpt 服务端生成，
-        // fail-closed 纪律不变）：brief/long_form 均可引用；无导入资料时工件原样返回
+        // fail-closed 纪律不变）：brief/long_form 均可引用；通用域按 subject_hint 主题圈定
+        // 相关信源（title/页文本命中主题词），无关信源不进引用池，杜绝跨主题串台
         List<String> analysisIds = new ArrayList<>();
         for (ReportSection sec : art.sections()) {
             if ("analysis".equals(sectionRole.getOrDefault(sec.sectionId(), "analysis"))) {
                 analysisIds.add(sec.sectionId());
             }
         }
-        art = attachImportedClaims(art, resolver, analysisIds);
+        art = attachImportedClaims(art, resolver, analysisIds, subjectSources);
 
         // long_form 模式（0.3.7 架构分工）：Java 只做确定性编排——组装任务书（纯数据）、
         // 解析 [S-n] 成稿、调度核验与反思回路；任务分解与成稿由 openjiuwen deep agent
@@ -1041,6 +1129,7 @@ public final class CheckerHttpServer {
 
         // 1) 查数：快照装载 + 指标索引
         ObjectNode s1 = stageNode("material", "查数", "material-agent", "装载冻结快照与指标索引");
+        markParticipants(s1, List.of("editor-in-chief", "material-agent"), reportType);
         ObjectNode d1 = s1.putObject("data");
         d1.put("snapshot_version", snap.snapshotVersion);
         d1.put("sources", snap.sourcesNode.size());
@@ -1048,12 +1137,25 @@ public final class CheckerHttpServer {
         d1.put("metrics_indexed", art.metrics().size());
         ArrayNode det1 = s1.withArray("details");
         for (JsonNode src : snap.sourcesNode) {
+            if (!subjToks.isEmpty() && !srcMatches(src, subjToks, snap)) {
+                continue; // 通用域按 subject_hint 圈定资料集：主题无关信源不进清单与引用池
+            }
             det1.add(src.path("title").asText("（未命名信源）") + " — " + src.path("pages").size() + " 页");
         }
-        BankSnap liveSnap = resolver.banks.get(ToolGateway.LIVE_BANK);
-        if (liveSnap != null && liveSnap.sourcesNode.size() > 0) {
-            det1.add("用户导入资料 " + liveSnap.sourcesNode.size() + " 份（live 快照集已注册，"
-                    + "已挂载为可引用论断）: " + liveSnap.sourcesNode.path(0).path("title").asText("") + " 等");
+        if (subjToks.isEmpty()) {
+            BankSnap liveSnap = resolver.banks.get(ToolGateway.LIVE_BANK);
+            if (liveSnap != null && liveSnap.sourcesNode.size() > 0) {
+                det1.add("用户导入资料 " + liveSnap.sourcesNode.size() + " 份（live 快照集已注册，"
+                        + "已挂载为可引用论断）: " + liveSnap.sourcesNode.path(0).path("title").asText("") + " 等");
+            }
+        } else {
+            int skipped = snap.sourcesNode.size() - subjectSources.size();
+            det1.add("主题圈定「" + subjectHint + "」：相关信源 " + subjectSources.size() + " 份挂载为可引用论断"
+                    + (skipped > 0 ? "，" + skipped + " 份主题无关信源未纳入" : ""));
+            if (subjectSources.isEmpty()) {
+                det1.add("资料集内暂无与主题相关的信源：请通过「补充资料」导入或经 MCP 工具抓取"
+                        + "（snapshot_commit 落盘注册）后编制，正文将如实标注资料范围");
+            }
         }
         det1.add("指标索引 " + art.metrics().size() + " 项，口径与单位以指标字典为准");
         if (!ToolGateway.REGISTRY.isEmpty()) {
@@ -1062,10 +1164,18 @@ public final class CheckerHttpServer {
                     + String.join(" / ", ToolGateway.REGISTRY.keySet())
                     + " —— 外部素材须 snapshot_commit 落盘注册后方可引用");
         }
+        if (!ToolGateway.REGISTRY.isEmpty()) {
+            ArrayNode tools1 = s1.putArray("tools");
+            ToolGateway.REGISTRY.keySet().forEach(tools1::add);
+        }
         stages.add(s1);
 
         // 2) 分析：逐指标洞察（值·单位·同比口径），口径文案由 DeltaUnit 承载
         ObjectNode s2 = stageNode("analysis", "分析", String.join(", ", analysts), "逐指标洞察（值 · 单位 · 同比口径）");
+        List<String> p2 = new ArrayList<>();
+        p2.add("editor-in-chief");
+        p2.addAll(analysts);
+        markParticipants(s2, p2, reportType);
         ArrayNode det2 = s2.withArray("details");
         for (MetricValue m : art.metrics()) {
             StringBuilder ins = new StringBuilder();
@@ -1081,6 +1191,7 @@ public final class CheckerHttpServer {
 
         // 3) 图表：类型/标题/挂载节随图表数据文件，chart-agent 只渲染不改数
         ObjectNode s3 = stageNode("chart", "图表", "chart-agent", "内联 SVG 图表绘制与挂载校验");
+        markParticipants(s3, List.of("editor-in-chief", "chart-agent"), reportType);
         ArrayNode det3 = s3.withArray("details");
         for (Map<String, Object> ch : art.charts()) {
             det3.add("[" + ch.get("id") + " " + ch.get("type") + "] " + ch.get("title")
@@ -1094,6 +1205,7 @@ public final class CheckerHttpServer {
                 ? "任务书分派 → writer-agent 自主分解成稿 → 核验违规反思修订（openjiuwen）"
                 : "按骨架配置逐节成稿（名称保留 / 深度收缩）";
         ObjectNode s4 = stageNode("writing", "写作", "writer-agent", s4Headline);
+        markParticipants(s4, List.of("editor-in-chief", "writer-agent"), reportType);
         s4.put("mode", mode);
         ArrayNode det4 = s4.withArray("details");
         if (llmFallbackNote != null) {
@@ -1119,6 +1231,7 @@ public final class CheckerHttpServer {
         CheckResult num = NUMERIC.check(art, resolver.scopedFor(art));
         CheckResult cit = CITATION.check(art, resolver.scopedFor(art), sources);
         ObjectNode s5 = stageNode("checking", "核验", "numeric-checker, citation-checker", "N1-N7 数值核验 + C1-C2 引用核验（确定性，无 LLM）");
+        markParticipants(s5, List.of("editor-in-chief", "numeric-checker", "citation-checker"), reportType);
         s5.withArray("details").add("数值核验 " + num.status()
                 + (num.violations().isEmpty() ? "" : "，违规 " + num.violations().size() + " 条"));
         s5.withArray("details").add("引用核验 " + cit.status()
@@ -1140,10 +1253,38 @@ public final class CheckerHttpServer {
 
         // 6) 主编：汇总 + 批准指引（批准绑定工件内容指纹）
         ObjectNode s6 = stageNode("consolidation", "主编", "editor-in-chief", "汇总核验结论并出具批准指引");
+        markParticipants(s6, List.of("editor-in-chief", "approver"), reportType);
+        if (!"annual_report".equals(reportType) && SKILL_REGISTRY.containsKey("general-report")) {
+            s6.withArray("skills").add("general-report");
+        }
         s6.withArray("details").add("工件内容指纹 " + digest + "（规模：" + artifactBrief(art) + "）");
         s6.withArray("details").add("批准指引：POST /v1/approvals?task_id=" + finalTaskId
                 + "（approver 具名；批准绑定内容指纹，工件一改批准即失效）");
         stages.add(s6);
+
+        // 任务规划（主 agent 任务理解 → 参与对象派定）：全 stage 参与对象并集，
+        // 前端先呈现规划结果，再按 stage 顺序动态高亮形成任务执行 graph
+        Set<String> planAgents = new LinkedHashSet<>();
+        Set<String> planSkills = new LinkedHashSet<>();
+        Set<String> planTools = new LinkedHashSet<>();
+        for (JsonNode st : stages) {
+            for (JsonNode n : st.path("nodes")) {
+                planAgents.add(n.asText());
+            }
+            for (JsonNode n : st.path("skills")) {
+                planSkills.add(n.asText());
+            }
+            for (JsonNode n : st.path("tools")) {
+                planTools.add(n.asText());
+            }
+        }
+        ObjectNode plan = MAPPER.createObjectNode();
+        plan.put("report_type", reportType);
+        plan.put("mode", mode);
+        plan.put("summary", "主 agent 任务理解与规划：「" + art.company() + " · " + art.reportPeriod() + "」（"
+                + ("long_form".equals(mode) ? "长文" : "简报") + "模式）分派 " + (planAgents.size() - 1)
+                + " 个专业 agent、引用 " + planSkills.size() + " 项 skill、联动 " + planTools.size()
+                + " 个 MCP 工具；执行链 查数 → 分析 → 图表 → 写作 → 核验 → 主编");
 
         ObjectNode out = MAPPER.createObjectNode();
         out.put("task_id", finalTaskId);
@@ -1154,6 +1295,7 @@ public final class CheckerHttpServer {
         out.set("artifact", MAPPER.valueToTree(TASK_ARTIFACTS.get(finalTaskId)));
         out.set("checks", checksNode(num, cit));
         out.set("stages", stages);
+        out.set("plan", plan);
         respond(ex, 200, out);
     }
 
@@ -1350,7 +1492,8 @@ public final class CheckerHttpServer {
         sb.append("2. 每节一个块，块首行只写 [").append(secToken(reportType))
           .append("]（n 为章节编号，如 [").append(general ? "G-4" : "S-1")
           .append("]），正文从下一行开始；\n");
-        sb.append("3. 数据陈述标注对应引用编号 [C-n]；派生值标注「基于 [C-k] 计算」并给出算式；\n");
+        sb.append("3. 数据陈述标注对应引用编号 [C-n]；凡使用引用清单或快照页原文中的数据/事实，"
+                + "必须标注其 [C-n]——未标注引用的数据陈述视同编造；派生值标注「基于 [C-k] 计算」并给出算式；\n");
         sb.append("4. 不编造快照页原文之外的数据。\n");
         return sb.toString();
     }
@@ -1444,6 +1587,39 @@ public final class CheckerHttpServer {
         n.putArray("details");
         n.putObject("data");
         return n;
+    }
+
+    /**
+     * 阶段参与标注（任务执行动态图谱数据源）：给 stage 挂 nodes（参与 agent，含主编编排）、
+     * skills（参与技能 = 参与 agent 已绑定技能并集；通用域剔除年报域专用技能 annual-report /
+     * long-form-writing，避免跨域误导）、tools（参与 MCP 工具，仅资料获取工位调用工具网关）。
+     * 前端按 stage 顺序依次高亮这些对象，形成任务执行的动态 graph；plan 汇总取全量并集。
+     */
+    private static void markParticipants(ObjectNode stage, List<String> agents, String reportType) {
+        boolean general = !"annual_report".equals(reportType);
+        ArrayNode nodes = stage.putArray("nodes");
+        for (String id : new LinkedHashSet<>(agents)) { // 去重（analysis 工位主编重复入列时只标一次）
+            nodes.add(id);
+        }
+        Set<String> skills = new LinkedHashSet<>();
+        for (String id : agents) {
+            ObjectNode a = AGENT_RUNTIME.get(id);
+            if (a == null) {
+                continue;
+            }
+            for (JsonNode s : a.path("enabled_skills")) {
+                String sid = s.asText();
+                if (general && ("annual-report".equals(sid) || "long-form-writing".equals(sid)
+                        || "banking-domain".equals(sid))) {
+                    continue;
+                }
+                skills.add(sid);
+            }
+        }
+        ArrayNode sk = stage.putArray("skills");
+        for (String s : skills) {
+            sk.add(s);
+        }
     }
 
     /**
@@ -1679,9 +1855,9 @@ public final class CheckerHttpServer {
                 new String[]{"annual-report", "citation-style"}, boot);
         putAgent(AGENT_RUNTIME, "writer-agent", "长文写作 Agent", "WRITER", "1.0.0",
                 "受理长文写作任务书，经 openjiuwen deep agent 自主分解章节写作任务并逐节成稿；"
-                        + "写作方法与流程来自 annual-report 技能，核验违规在同一会话内反思修订",
+                        + "写作方法与流程来自报告编制技能（年报域/通用域），核验违规在同一会话内反思修订",
                 new String[]{"任务分解", "章节成稿", "反思修订"},
-                new String[]{"annual-report", "long-form-writing"}, boot);
+                new String[]{"annual-report", "long-form-writing", "general-report", "general-long-form-writing"}, boot);
         putAgent(AGENT_RUNTIME, "chart-agent", "图表绘制 Agent", "RENDERER", "1.0.0",
                 "受控图表绘制：按图表数据文件与骨架配置挂载节位渲染内联 SVG，只渲染不改数、不发明图表",
                 new String[]{"图表绘制", "挂载校验"},
@@ -1867,6 +2043,98 @@ public final class CheckerHttpServer {
     private static boolean hasSkill(ObjectNode agent, String skillId) {
         for (JsonNode s : agent.path("enabled_skills")) {
             if (s.asText().equals(skillId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ———————————————————— 协作图谱（GET /v1/graph）————————————————————
+
+    /**
+     * 协作图谱：主 agent / 专业 agent / skill / MCP 工具四类节点，及其关联关系
+     * （团队注册 register、技能绑定 bind、工具注册 serve、资料获取调用 call）。
+     * 数据全部来自运行时注册表（AGENT_RUNTIME / SKILL_REGISTRY / ToolGateway.REGISTRY），
+     * Agent Hub 安装注销、技能绑定解绑、工具配置变更即刻反映到图谱，前端零硬编码。
+     * pipeline run 各 stage 另携 nodes/skills/tools 参与标注，前端据此高亮形成
+     * 任务执行的动态 graph（见 handlePipelineRun 的 markParticipants）。
+     */
+    private static ObjectNode graphData() {
+        ObjectNode out = MAPPER.createObjectNode();
+        ArrayNode nodes = out.putArray("nodes");
+        ArrayNode edges = out.putArray("edges");
+
+        ObjectNode chief = AGENT_RUNTIME.get("editor-in-chief");
+        if (chief != null) {
+            nodes.add(graphNode("agent:editor-in-chief", "main", chief.path("name").asText("主编编排 Agent"),
+                    chief.path("kind").asText("ORCHESTRATOR"), chief.path("description").asText(), "runtime"));
+        }
+        for (ObjectNode a : AGENT_RUNTIME.values()) {
+            String id = a.path("agent_id").asText();
+            if ("editor-in-chief".equals(id)) {
+                continue;
+            }
+            nodes.add(graphNode("agent:" + id, "agent", a.path("name").asText(id),
+                    a.path("kind").asText(), a.path("description").asText(), "runtime"));
+            if (chief != null && jsonArrayHas(chief.path("team"), id)) {
+                addEdge(edges, "agent:editor-in-chief", "agent:" + id, "register", "团队注册");
+            }
+            for (JsonNode sk : a.path("enabled_skills")) {
+                if (SKILL_REGISTRY.containsKey(sk.asText())) {
+                    addEdge(edges, "agent:" + id, "skill:" + sk.asText(), "bind", "技能绑定");
+                }
+            }
+        }
+        // 市场目录 agent：未安装注册，虚线呈现（state=market），无关联边
+        for (ObjectNode a : AGENT_CATALOG.values()) {
+            nodes.add(graphNode("agent:" + a.path("agent_id").asText(), "agent",
+                    a.path("name").asText(), a.path("kind").asText(),
+                    a.path("description").asText() + "（市场目录未安装）", "market"));
+        }
+        for (ObjectNode s : SKILL_REGISTRY.values()) {
+            nodes.add(graphNode("skill:" + s.path("skill_id").asText(), "skill",
+                    s.path("name").asText(), "SKILL", s.path("path").asText(), "runtime"));
+        }
+        nodes.add(graphNode("mcp:gateway", "mcp", "MCP 工具网关", "GATEWAY",
+                "统一工具入口 POST /v1/tools/call（deploy/tools.json 配置驱动）；"
+                        + "联网抓取产物须经 snapshot_commit 落盘注册后方可引用", "runtime"));
+        for (ObjectNode t : ToolGateway.REGISTRY.values()) {
+            String tid = t.path("tool_id").asText();
+            nodes.add(graphNode("mcp:" + tid, "mcp", tid, "TOOL",
+                    t.path("description").asText(), "runtime"));
+            addEdge(edges, "mcp:gateway", "mcp:" + tid, "serve", "工具注册");
+        }
+        if (AGENT_RUNTIME.containsKey("material-agent")) {
+            addEdge(edges, "agent:material-agent", "mcp:gateway", "call", "资料获取");
+        }
+        out.put("node_count", nodes.size());
+        out.put("edge_count", edges.size());
+        return out;
+    }
+
+    private static ObjectNode graphNode(String id, String type, String label,
+                                        String kind, String desc, String state) {
+        ObjectNode n = MAPPER.createObjectNode();
+        n.put("id", id);
+        n.put("type", type);
+        n.put("label", label);
+        n.put("kind", kind);
+        n.put("desc", desc);
+        n.put("state", state);
+        return n;
+    }
+
+    private static void addEdge(ArrayNode edges, String from, String to, String kind, String label) {
+        ObjectNode e = edges.addObject();
+        e.put("from", from);
+        e.put("to", to);
+        e.put("kind", kind);
+        e.put("label", label);
+    }
+
+    private static boolean jsonArrayHas(JsonNode arr, String v) {
+        for (JsonNode x : arr) {
+            if (v.equals(x.asText())) {
                 return true;
             }
         }
