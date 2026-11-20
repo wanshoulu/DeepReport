@@ -20,9 +20,11 @@ services:
   material-agent:
     build: ../agents
     environment: &agent-env
-      LLM_PROVIDER: ${W06_LLM_PROVIDER}
+      LLM_PROVIDER: ${W06_LLM_PROVIDER:-OpenAI}
       LLM_API_KEY: ${W06_LLM_API_KEY_FILE:/run/secrets/llm-key}   # 密钥不进镜像/日志（#16 How|5）
-      LLM_MODEL: ${W06_LLM_MODEL}
+      LLM_API_BASE: ${W06_LLM_API_BASE:-https://dashscope.aliyuncs.com/compatible-mode/v1}   # qwen OpenAI 兼容端点（10:12 实测）
+      LLM_MODEL: ${W06_LLM_MODEL:-qwen-plus}
+      LLM_MODEL_FLASH: ${W06_LLM_MODEL_FLASH:-qwen3.8-flash}
     volumes:
       - annual-report-snapshot:/snapshot:ro                        # 只读快照
     networks: [w06-net]
