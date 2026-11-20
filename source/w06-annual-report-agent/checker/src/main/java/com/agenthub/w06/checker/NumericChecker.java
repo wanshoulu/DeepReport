@@ -114,7 +114,7 @@ public final class NumericChecker {
             }
         } else {
             for (MetricKey k : MetricKey.values()) {
-                if (!byKey.containsKey(k)) {
+                if (!byKey.containsKey(k.name())) {
                     violations.add(v("METRIC_MISSING", k.name(), "八指标缺失：" + k.getDisplayName(), Severity.BLOCKING));
                 }
             }
