@@ -1299,8 +1299,18 @@ public final class CheckerHttpServer {
 
         ArrayNode stages = MAPPER.createArrayNode();
 
+        // 主体材料覆盖检查：live 库中信源标题是否含主体核心名（与抽取工位同一判定）
+        boolean subjectMatched = false;
+        if (subjectHint != null && !subjectHint.isBlank() && snap.sourcesNode != null) {
+            String core = subjectHint.replaceAll("(股份|有限|集团)*公司$", "").trim().toLowerCase();
+            for (JsonNode src : snap.sourcesNode) {
+                if (src.path("title").asText("").toLowerCase().contains(core)) { subjectMatched = true; break; }
+            }
+        }
+
         // 1) 查数：快照装载 + 指标索引
-        ObjectNode s1 = stageNode("material", "查数", "material-agent", "装载冻结快照与指标索引");
+        ObjectNode s1 = stageNode("material", "查数", "material-agent",
+                subjectMatched ? "装载信源快照与指标索引" : "装载信源快照（警告：未找到该主体的专属材料）");
         ObjectNode d1 = s1.putObject("data");
         d1.put("snapshot_version", snap.snapshotVersion);
         d1.put("sources", snap.sourcesNode.size());
@@ -1316,6 +1326,10 @@ public final class CheckerHttpServer {
                     + "已挂载为可引用论断）: " + liveSnap.sourcesNode.path(0).path("title").asText("") + " 等");
         }
         det1.add("指标索引 " + art.metrics().size() + " 项，口径与单位以指标字典为准");
+        if (!subjectMatched) {
+            det1.add("⚠ 该主体的专属材料未在信源库中找到——下列信源是混合库占位内容，抽取的数值不可作为该主体结论。"
+                    + "请通过「导入资料」上传或粘贴该主体的真实材料后重新编制。");
+        }
         if (!ToolGateway.REGISTRY.isEmpty()) {
             d1.put("tools_available", ToolGateway.REGISTRY.size());
             det1.add("联网工具 " + ToolGateway.REGISTRY.size() + " 个（POST /v1/tools/call）: "
