@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>W06 年报工作台 · 年度经营简报（多银行）</title>
+<title>DeepReport · 通用报告编制</title>
 <style>
 /* ———— SkillHub 设计 token（与 skill hub 站点同源）———— */
 :root {
@@ -443,18 +443,15 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 </head>
 <body>
 <header class="topbar">
-  <div class="brand"><span class="brand-mark">W06</span>年报工作台<span class="brand-en">Annual Report Workbench</span></div>
+  <div class="brand"><span class="brand-mark">DR</span>DeepReport<span class="brand-en">General Report Engine</span></div>
   <div class="top-status">
     <span id="health-badge" class="badge neutral">连接中…</span>
     <span class="mono" id="health-ver"></span>
   </div>
 </header>
 <nav class="tabs" id="tabs">
-  <button class="tab active" data-view="chat">对话</button>
-  <button class="tab" data-view="assets">资产库</button>
+  <button class="tab active" data-view="chat">对话编制</button>
   <button class="tab" data-view="reports">报告库</button>
-  <button class="tab" data-view="agents">Agent Hub</button>
-  <button class="tab" data-view="demo">演示链</button>
 </nav>
 <main>
   <section class="view active" id="view-chat">
@@ -468,10 +465,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
       </form>
     </div>
   </section>
-  <section class="view" id="view-assets"></section>
   <section class="view" id="view-reports"></section>
-  <section class="view" id="view-agents"></section>
-  <section class="view" id="view-demo"></section>
 </main>
 <div class="drawer-mask" id="drawer-mask"></div>
 <aside class="drawer" id="drawer"></aside>
@@ -733,7 +727,7 @@ async function startGeneration(correct) {
     if (sec) sec.body = sec.body.replace(new RegExp("(" + escRe(lbl) + "[^。]*?(?:上升|下降))(\\d+(?:\\.\\d+)?)个百分点", "g"), "$1$2%");
   }
   const r = await jpost("/v1/tasks", {
-    task: { status: "GENERATING", summary: bank.company + " 2025 年度经营简报（对话式编制）" },
+    task: { status: "GENERATING", summary: bank.company + " " + ({ annual_report: "年度报告", research: "技术调研报告", client_analysis: "客户分析报告" }[chat.reportType || "annual_report"]) + "（对话式编制）" },
     artifact: base
   });
   if (!r.ok) {
@@ -986,15 +980,7 @@ async function handleFreeInput(text) {
   if (!composeVerb && /查看报告|打开报告|报告库|切换到报告|报告列表/.test(text)) {
     addMsg("editor-in-chief", "已为您切换到报告库。"); switchTab("reports"); return;
   }
-  if (!composeVerb && /查看资产|资产库|切换到资产/.test(text)) {
-    addMsg("editor-in-chief", "已为您切换到资产库。"); switchTab("assets"); return;
-  }
-  if (!composeVerb && /agent hub|智能体|切换到agent/i.test(text)) {
-    addMsg("editor-in-chief", "已为您切换到 Agent Hub。"); switchTab("agents"); return;
-  }
-  if (!composeVerb && /查看演示|演示链|切换到演示/.test(text)) {
-    addMsg("editor-in-chief", "已为您切换到演示链。"); switchTab("demo"); return;
-  }
+  /* 资产库/Agent Hub/演示链 已随 DeepReport 化移除，不再提供页签跳转 */
   /* 阶段意图 */
   if (chat.stage === "greet" || chat.stage === "live_subject") {
     // 通用主体入口：自由输入公司全名（greet 与 live_subject 同一逻辑，不分预置/联网主体）
