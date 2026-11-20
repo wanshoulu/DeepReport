@@ -765,6 +765,13 @@ async function startGeneration(correct) {
     setQuick([{ label: "重试", cls: "primary", fn: () => startGeneration(correct) }]);
     return;
   }
+  // 服务端真实产物回填（metrics/sections/citations/tables 来自管线工位，替代空壳）
+  chat.pipelineChecks = p.data.checks || null;
+  if (p.data.artifact) {
+    chat.artifact = p.data.artifact;
+    chat.artifact.task_id = chat.taskId;
+    if (p.data.company) chat.artifact.company = p.data.company;
+  }
   for (const st of p.data.stages) {
     if (st.stage_id === "writing") continue; // 写作工位在下方逐节播报
     const agentOf = { material: "material-agent", chart: "chart-agent", checking: "numeric-checker", consolidation: "editor-in-chief" };
@@ -803,7 +810,13 @@ async function startGeneration(correct) {
 
 async function runNumericCheck() {
   await jpost("/v1/agents/load", { agent_id: "numeric-checker", task_id: chat.taskId });
-  const n = await jpost("/v1/checks/numeric", chat.artifact);
+  // 管线已在服务端完成核验（checks 存于 chat.pipelineChecks）时不再重复提交
+  const checks = chat.pipelineChecks || null;
+  if (checks && checks.numeric && checks.numeric.status === "PASSED") {
+    addMsg("numeric-checker", "数值核验 PASSED（管线工位已完成，指纹绑定工件）");
+    return runCitationCheck(checks);
+  }
+  const n = await jpost("/v1/checks/numeric", Object.assign({ report_type: chat.reportType || "annual_report" }, chat.artifact));
   if (!n.ok || !n.data) {
     addMsg("numeric-checker", '<span style="color:var(--destructive)">核验请求失败：HTTP ' + n.status + "</span>");
     return;
@@ -842,8 +855,12 @@ async function applyFix() {
   runNumericCheck();
 }
 
-async function runCitationCheck() {
+async function runCitationCheck(pipelineChecks) {
   await jpost("/v1/agents/load", { agent_id: "citation-checker", task_id: chat.taskId });
+  if (pipelineChecks && pipelineChecks.citation && pipelineChecks.citation.status === "PASSED") {
+    addMsg("citation-checker", "引用核验 PASSED（管线工位已完成）");
+    return gotoApproval();
+  }
   const c = await jpost("/v1/checks/citation", chat.artifact);
   if (!c.ok || !c.data) {
     addMsg("citation-checker", '<span style="color:var(--destructive)">核验请求失败：HTTP ' + c.status + "</span>");
@@ -857,8 +874,13 @@ async function runCitationCheck() {
   addMsg("citation-checker",
     "引用核验 PASSED（v" + esc(c.data.checker_version) + "）：" + chat.artifact.citations.length
     + " 条引用摘录指纹一致、页内字面存在、信源均在注册表内。");
+  await gotoApproval();
+}
+
+async function gotoApproval() {
+  const typeName = { annual_report: "年度报告", research: "技术调研报告", client_analysis: "客户分析报告" }[chat.reportType || "annual_report"];
   await jpost("/v1/tasks", {
-    task: { task_id: chat.taskId, status: "GENERATED", summary: (chat.artifact.report_period || "2025 年度") + "经营简报：两项核验 PASSED，等待具名批准" },
+    task: { task_id: chat.taskId, status: "GENERATED", summary: (chat.artifact.company || chat.subject || "主体") + " " + typeName + "：两项核验 PASSED，等待具名批准" },
     artifact: chat.artifact
   });
   chat.stage = "wait_approval";
@@ -1006,7 +1028,14 @@ async function handleFreeInput(text) {
     } else if (text.length >= 4 && !/^(确认|开始|取消|重新生成)/i.test(text)) {
       // 自然语言解析：主体 = "关于 X 的" 捕获；报告类型 = 关键词映射
       const about = text.match(/关于(.+?)的/);
-      chat.subject = about ? about[1].trim() : text.trim();
+      if (about) {
+        chat.subject = about[1].trim();
+      } else {
+        // 兜底："写一份dataagent的技术调研报告" → 提取宾语核心
+        const m2 = text.match(/写(?:一份|个|篇)?(.+?)的(?:技术调研|调研|研究|年度|客户分析|分析)?报告/)
+          || text.match(/(?:调研|研究|分析)报告[：:，,\s]*([\w\u4e00-\u9fa5]+)/);
+        chat.subject = m2 ? m2[1].trim() : text.trim();
+      }
       chat.reportType = /年报|年度报告|年度经营/.test(text) ? "annual_report"
         : /调研|研究|综述|深度分析/.test(text) ? "research"
         : /客户分析|客户报告|满意度/.test(text) ? "client_analysis"

@@ -419,7 +419,20 @@ public final class CheckerHttpServer {
             return;
         }
         if ("/v1/checks/numeric".equals(path) && "POST".equals(method)) {
-            handleCheck(ex, resolver, draft -> NUMERIC.check(draft, resolver.scopedFor(draft)));
+            // report_type 驱动字典核验（research/client_analysis 用各自指标字典；annual_report/缺省用银行八指标）
+            byte[] raw = ex.getRequestBody().readAllBytes();
+            com.fasterxml.jackson.databind.JsonNode bodyNode;
+            try {
+                bodyNode = MAPPER.readTree(raw);
+            } catch (Exception e) {
+                respond(ex, 400, errorNode("bad_request", "工件 JSON 解析失败: " + e.getMessage()));
+                return;
+            }
+            String rt = bodyNode.path("report_type").asText("annual_report");
+            ((com.fasterxml.jackson.databind.node.ObjectNode) bodyNode).remove("report_type");
+            byte[] stripped = MAPPER.writeValueAsBytes(bodyNode);
+            handleCheck(ex, stripped, resolver,
+                    draft -> dictCheckerFor(rt).check(draft, resolver.scopedFor(draft)));
             return;
         }
         if ("/v1/checks/citation".equals(path) && "POST".equals(method)) {
@@ -613,7 +626,12 @@ public final class CheckerHttpServer {
     private static void handleCheck(HttpExchange ex, SnapshotHttpResolver resolver,
                                     java.util.function.Function<AnnualReportArtifacts, CheckResult> checker)
             throws IOException {
-        byte[] body = ex.getRequestBody().readAllBytes();
+        handleCheck(ex, ex.getRequestBody().readAllBytes(), resolver, checker);
+    }
+
+    private static void handleCheck(HttpExchange ex, byte[] body, SnapshotHttpResolver resolver,
+                                    java.util.function.Function<AnnualReportArtifacts, CheckResult> checker)
+            throws IOException {
         AnnualReportArtifacts draft;
         try {
             draft = MAPPER.readValue(body, AnnualReportArtifacts.class);
