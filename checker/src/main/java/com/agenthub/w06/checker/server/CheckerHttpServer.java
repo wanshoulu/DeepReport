@@ -39,6 +39,7 @@
  *  POST /v1/agents/editor-in-chief/team  agent 注册给主编团队/退出 {agent_id, action: register|unregister}
  *  DELETE /v1/agents/{id}                运行时注销（主编根节点除外；市场安装的退回市场目录）
  *  GET  /                                 workbench.html（工作台，五页签版）
+ *  GET  /echarts.min.js                   ECharts 库静态文件（协作图谱力导向渲染依赖）
  *
  * 环境变量：CHECKER_PORT（默认 18095）、SNAPSHOT_DIR（默认 /snapshot）、
  *          STATIC_DIR（默认 /app，含 workbench.html / testpage.html / demo/）
@@ -560,6 +561,16 @@ public final class CheckerHttpServer {
                 return;
             }
             ex.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+            respondRaw(ex, 200, Files.readAllBytes(f));
+            return;
+        }
+        if ("/echarts.min.js".equals(path)) {
+            Path f = staticDir.resolve("echarts.min.js");
+            if (!Files.isRegularFile(f)) {
+                respond(ex, 404, errorNode("not_found", "echarts.min.js 未部署"));
+                return;
+            }
+            ex.getResponseHeaders().set("Content-Type", "application/javascript; charset=utf-8");
             respondRaw(ex, 200, Files.readAllBytes(f));
             return;
         }

@@ -146,8 +146,8 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .gp-plan b { color: var(--fg); font-weight: 600; }
 .gp-legend { display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; font-size: 10.5px; color: var(--muted); }
 .gp-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 4px; vertical-align: 1px; }
-.gp-body { flex: 1; overflow: auto; padding: 4px 2px; }
-.gp-body svg { width: 100%; height: auto; display: block; }
+.gp-body { flex: 1; position: relative; }
+#gp-chart { width: 100%; height: 100%; }
 .gp-status { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; min-height: 36px; line-height: 1.5; }
 .gp-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #b8bec8; flex: none; }
 .gp-status.run { color: #3b7bf5; }
@@ -155,31 +155,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .gp-status.done { color: var(--success); }
 .gp-status.done .dot { background: var(--success); }
 @keyframes gpPulse { 0%,100% { box-shadow: 0 0 0 2px rgba(59,123,245,.3); } 50% { box-shadow: 0 0 0 5px rgba(59,123,245,.12); } }
-/* SVG 元素状态：静态拓扑全彩可见；运行中未参与对象淡显、参与对象按类型点亮 */
-.gg-edge { stroke: #d9dde5; stroke-width: 1.4; fill: none; transition: stroke .3s, opacity .3s, stroke-width .3s; }
-.gg-edge.k-register { stroke-dasharray: 5 3; }
-.gg-edge.lit { stroke-width: 2.2; }
-.gg-edge.lit.k-register { stroke: #8a5fd0; stroke-dasharray: none; }
-.gg-edge.lit.k-bind { stroke: #3b7bf5; }
-.gg-edge.lit.k-serve { stroke: #17937c; }
-.gg-edge.lit.k-call { stroke: #d98b21; }
-.gg-node rect { fill: #fff; stroke: #d3d7e0; stroke-width: 1.3; transition: all .3s; }
-.gg-node text { font-size: 11px; fill: #6a7280; text-anchor: middle; font-family: var(--sans); pointer-events: none; }
-.gg-node.t-main rect { stroke: #b9a3e8; fill: #faf7ff; }
-.gg-node.t-main text { fill: #6a3fc0; font-weight: 650; }
-.gg-node.t-market rect { stroke-dasharray: 4 3; fill: #fafafa; }
-.gg-node.lit rect { stroke-width: 2; }
-.gg-node.lit.t-main rect { fill: #efe8fb; stroke: #8a5fd0; }
-.gg-node.lit.t-agent rect { fill: #e7f0fe; stroke: #3b7bf5; }
-.gg-node.lit.t-agent text { fill: #1d5fbf; font-weight: 600; }
-.gg-node.lit.t-skill rect { fill: #e5f4f1; stroke: #17937c; }
-.gg-node.lit.t-skill text { fill: #0f6e5d; font-weight: 600; }
-.gg-node.lit.t-mcp rect { fill: #fdf3e3; stroke: #d98b21; }
-.gg-node.lit.t-mcp text { fill: #a36808; font-weight: 600; }
-.gg-node.now rect { animation: gpNodeGlow 1s ease-in-out 1; }
-@keyframes gpNodeGlow { 0%,100% { stroke-width: 2; } 50% { stroke-width: 3.6; filter: drop-shadow(0 0 4px rgba(59,123,245,.55)); } }
-svg.g-running .gg-node:not(.lit) { opacity: .3; }
-svg.g-running .gg-edge:not(.lit) { opacity: .16; }
+/* 图谱渲染由 ECharts 力导向图承担（节点/边状态在 JS 内建模，见协作图谱模块） */
 .chat-log { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
 .chat-msg { display: flex; gap: 10px; max-width: 94%; }
 .chat-msg.user { flex-direction: row-reverse; margin-left: auto; max-width: 80%; }
@@ -526,6 +502,7 @@ svg.g-running .gg-edge:not(.lit) { opacity: .16; }
 </main>
 <div class="drawer-mask" id="drawer-mask"></div>
 <aside class="drawer" id="drawer"></aside>
+<script src="echarts.min.js"></script>
 <script>
 "use strict";
 /* ———————————————————— 基础工具 ———————————————————— */
@@ -1824,15 +1801,20 @@ function toast(msg) {
   toast._h = setTimeout(() => { t.style.opacity = "0"; }, 3000);
 }
 
-/* ———— 协作图谱（报告编制页右侧）：注册拓扑静态图 + 任务执行动态点亮 ———— */
-const GRAPH = { data: null, running: false, lit: new Set() };
+/* ———— 协作图谱（报告编制页右侧）：ECharts 力导向拓扑 + 任务执行动态点亮 ———— */
+const GRAPH = { data: null, chart: null, running: false, lit: new Set() };
 const GP_ECOLOR = { register: "#8a5fd0", bind: "#3b7bf5", serve: "#17937c", call: "#d98b21" };
+const GP_CATS = [
+  { name: "主 agent", color: "#8a5fd0" }, { name: "专业 agent", color: "#3b7bf5" },
+  { name: "skill", color: "#17937c" }, { name: "MCP 工具", color: "#d98b21" },
+  { name: "市场目录", color: "#98a0ab" }
+];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function initGraphPanel() {
   const p = document.getElementById("graph-panel");
   if (!p) return;
-  p.innerHTML = '<div class="gp-head"><h3>协作图谱 <span style="font-weight:400;font-size:11px;color:var(--muted)">主 agent · 专业 agent · skill · MCP</span></h3>'
+  p.innerHTML = '<div class="gp-head"><h3>协作图谱 <span style="font-weight:400;font-size:11px;color:var(--muted)">拖拽节点 · 滚轮缩放 · 悬停看详情</span></h3>'
     + '<div class="gp-plan" id="gp-plan">注册拓扑加载中…</div></div>'
     + '<div class="gp-legend">'
     + '<span><i style="background:' + GP_ECOLOR.register + '"></i>团队注册</span>'
@@ -1840,11 +1822,15 @@ async function initGraphPanel() {
     + '<span><i style="background:' + GP_ECOLOR.serve + '"></i>工具注册</span>'
     + '<span><i style="background:' + GP_ECOLOR.call + '"></i>资料获取</span>'
     + "</div>"
-    + '<div class="gp-body" id="gp-body"></div>'
+    + '<div class="gp-body"><div id="gp-chart"></div></div>'
     + '<div class="gp-status" id="gp-status"><span class="dot"></span><span id="gp-status-text">空闲 —— 任务开始后按主 agent 规划依次点亮参与对象</span></div>';
+  if (window.echarts) {
+    GRAPH.chart = echarts.init(document.getElementById("gp-chart"));
+    window.addEventListener("resize", () => { if (GRAPH.chart) GRAPH.chart.resize(); });
+  }
   try {
     GRAPH.data = await jget("/v1/graph");
-    drawGraph();
+    renderGraph();
     $("#gp-plan").innerHTML = "注册拓扑：<b>" + GRAPH.data.node_count + "</b> 节点 · <b>" + GRAPH.data.edge_count
       + "</b> 关联边。任务开始后由主 agent 任务理解规划分派，参与对象依次点亮。";
   } catch (e) {
@@ -1852,61 +1838,62 @@ async function initGraphPanel() {
   }
 }
 
-function drawGraph() {
-  const d = GRAPH.data;
-  const body = document.getElementById("gp-body");
-  if (!body || !d) return;
-  const nodes = d.nodes || [], edges = d.edges || [];
-  const W = 430, pos = {};
-  let y = 24;
-  const rowOf = (items, h, w, gap) => {
-    for (let i = 0; i < items.length; i++) {
-      const r = Math.floor(i / 5), c = i % 5;
-      const inRow = Math.min(items.length - r * 5, 5);
-      const span = inRow * w + (inRow - 1) * gap;
-      pos[items[i].id] = { x: (W - span) / 2 + w / 2 + c * (w + gap), y: y + r * (h + 9), w, h };
-    }
-    y += Math.ceil(items.length / 5) * (h + 9);
-  };
-  const rt = t => nodes.filter(n => n.type === t && n.state === "runtime");
-  const market = nodes.filter(n => n.type === "agent" && n.state === "market");
-  const mains = nodes.filter(n => n.type === "main");
-  rowOf(mains, 34, 170, 0); y += 6;
-  rowOf(rt("agent"), 32, 74, 6);
-  if (market.length) rowOf(market, 26, 74, 6);
-  y += 12; rowOf(rt("skill"), 28, 80, 4);
-  y += 12; rowOf(rt("mcp"), 30, 80, 4);
-  const H = y + 4;
-  const anchor = (id, top) => { const p = pos[id]; return p ? { x: p.x, y: top ? p.y : p.y + p.h } : null; };
-  let edgeSvg = "";
-  for (const e of edges) {
-    const a = anchor(e.from, false), b = anchor(e.to, true);
-    if (!a || !b) continue;
-    const mx = (a.x + b.x) / 2;
-    edgeSvg += '<path class="gg-edge k-' + esc(e.kind) + '" data-from="' + esc(e.from) + '" data-to="' + esc(e.to)
-      + '" d="M' + a.x + "," + a.y + " C" + mx + "," + a.y + " " + mx + "," + b.y + " " + b.x + "," + b.y
-      + '"><title>' + esc(e.label) + "</title></path>";
-  }
-  let nodeSvg = "";
-  for (const n of [...mains, ...rt("agent"), ...market, ...rt("skill"), ...rt("mcp")]) {
-    const p = pos[n.id];
-    if (!p) continue;
-    nodeSvg += '<g class="gg-node t-' + (n.state === "market" ? "market" : n.type) + '" data-id="' + esc(n.id) + '">'
-      + '<rect x="' + (p.x - p.w / 2) + '" y="' + p.y + '" width="' + p.w + '" height="' + p.h + '" rx="7"></rect>'
-      + '<text x="' + p.x + '" y="' + (p.y + p.h / 2 + 4) + '">' + esc(shortLabel(n.label)) + "</text>"
-      + "<title>" + esc(n.label + " · " + n.kind + (n.state === "market" ? "（市场目录未安装）" : "（运行时）"))
-      + (n.desc ? "\n" + n.desc : "") + "</title></g>";
-  }
-  body.innerHTML = '<svg id="gp-svg" viewBox="0 0 ' + W + " " + H + '" preserveAspectRatio="xMidYMin meet">'
-    + edgeSvg + nodeSvg + "</svg>";
+/** 节点类别索引：0 主 agent / 1 专业 agent / 2 skill / 3 MCP / 4 市场目录。 */
+function gpCat(n) {
+  return n.state === "market" ? 4 : n.type === "main" ? 0
+    : n.type === "agent" ? 1 : n.type === "skill" ? 2 : 3;
+}
+
+function renderGraph() {
+  const chart = GRAPH.chart, d = GRAPH.data;
+  if (!chart || !d) return;
+  const nodes = (d.nodes || []).map(n => {
+    const cat = gpCat(n), col = GP_CATS[cat].color, lit = GRAPH.lit.has(n.id);
+    const dim = GRAPH.running && !lit && n.type !== "main";
+    return {
+      id: n.id, name: shortLabel(n.label), category: cat,
+      symbol: n.type === "main" ? "roundRect" : "circle",
+      symbolSize: n.type === "main" ? [92, 34] : cat === 1 ? 36 : cat === 3 ? 30 : cat === 4 ? 24 : 26,
+      itemStyle: { color: col, borderColor: "#fff", borderWidth: lit ? 2 : 1,
+        opacity: dim ? 0.14 : 1, shadowBlur: lit ? 14 : 0, shadowColor: col },
+      label: { show: true, position: "bottom", distance: 3, fontSize: cat === 4 ? 9 : 10.5,
+        color: dim ? "#c9cdd5" : "#3a4150", fontWeight: n.type === "main" ? 700 : 500 },
+      tip: n.label + " · " + n.kind + (n.state === "market" ? "（市场目录未安装）" : "（运行时）")
+        + (n.desc ? "\n" + n.desc : "")
+    };
+  });
+  const links = (d.edges || []).map(e => {
+    const lit = GRAPH.running && GRAPH.lit.has(e.from) && GRAPH.lit.has(e.to);
+    return {
+      source: e.from, target: e.to, klabel: e.label,
+      lineStyle: { color: GP_ECOLOR[e.kind] || "#b6bcc6", width: lit ? 2.4 : 1.1,
+        opacity: GRAPH.running && !lit ? 0.05 : GRAPH.running ? 0.85 : 0.3,
+        curveness: 0.12, type: e.kind === "register" ? "dashed" : "solid" }
+    };
+  });
+  chart.setOption({
+    tooltip: { confine: true, backgroundColor: "rgba(255,255,255,.97)", borderColor: "#e3e6ec",
+      extraCssText: "box-shadow:0 2px 10px rgba(0,0,0,.10);max-width:270px;white-space:pre-wrap;",
+      textStyle: { color: "#2a2f38", fontSize: 11 },
+      formatter: p => p.dataType === "edge" ? esc(p.data.klabel || "") : "<b>" + esc(p.data.tip) + "</b>" },
+    legend: [{ bottom: 4, left: "center", icon: "circle", itemWidth: 9, itemHeight: 9, itemGap: 9,
+      textStyle: { fontSize: 10, color: "#6a7280" }, data: GP_CATS.map(c => c.name) }],
+    series: [{
+      id: "graph", type: "graph", layout: "force", roam: true, draggable: true,
+      categories: GP_CATS.map(c => ({ name: c.name, itemStyle: { color: c.color } })),
+      force: { repulsion: 340, edgeLength: [40, 130], gravity: 0.16, friction: 0.2, layoutAnimation: false },
+      scaleLimit: { min: 0.5, max: 3 },
+      emphasis: { focus: "adjacency", lineStyle: { width: 3 }, label: { fontWeight: 700 } },
+      data: nodes, links: links
+    }]
+  });
 }
 
 function shortLabel(s) {
   s = String(s || "");
-  return s.length > 9 ? s.slice(0, 8) + "…" : s;
+  return s.length > 12 ? s.slice(0, 11) + "…" : s;
 }
 
-function gpNodeEl(id) { return document.querySelector('#gp-body .gg-node[data-id="' + id + '"]'); }
 function setGpStatus(cls, text) {
   const s = document.getElementById("gp-status");
   if (!s) return;
@@ -1914,31 +1901,7 @@ function setGpStatus(cls, text) {
   const t = document.getElementById("gp-status-text");
   if (t) t.textContent = text;
 }
-function gpLight(id, current) {
-  const el = gpNodeEl(id);
-  if (el) {
-    el.classList.add("lit");
-    if (current) {
-      el.classList.remove("now"); void el.getBoundingClientRect();
-      el.classList.add("now");
-      setTimeout(() => el.classList.remove("now"), 1100);
-    }
-  }
-  GRAPH.lit.add(id);
-  gpRelightEdges();
-}
-function gpRelightEdges() {
-  document.querySelectorAll("#gp-body .gg-edge").forEach(e => {
-    e.classList.toggle("lit", GRAPH.running && GRAPH.lit.has(e.dataset.from) && GRAPH.lit.has(e.dataset.to));
-  });
-}
-function graphBeginRun(plan) {
-  GRAPH.running = true;
-  const svg = document.getElementById("gp-svg");
-  if (svg) svg.classList.add("g-running");
-  if (plan && plan.summary) $("#gp-plan").innerHTML = "<b>主 agent 规划</b> — " + esc(plan.summary);
-  setGpStatus("run", "主 agent 任务理解与规划中…");
-}
+function gpLight(id) { GRAPH.lit.add(id); renderGraph(); }
 async function graphStage(st) {
   if (!GRAPH.data || !st) return;
   const ids = ["agent:editor-in-chief"];
@@ -1950,19 +1913,22 @@ async function graphStage(st) {
   if ((st.skills || []).length) parts.push("skill×" + st.skills.length);
   if ((st.tools || []).length) parts.push("MCP 工具×" + st.tools.length);
   setGpStatus("run", "【" + (st.name || st.stage_id || "") + "工位】" + (st.headline || "") + "　参与：" + (parts.join(" · ") || "—"));
-  for (const id of ids) { gpLight(id, true); await sleep(110); }
+  for (const id of ids) { gpLight(id); await sleep(120); }
+}
+function graphBeginRun(plan) {
+  GRAPH.running = true;
+  if (plan && plan.summary) $("#gp-plan").innerHTML = "<b>主 agent 规划</b> — " + esc(plan.summary);
+  setGpStatus("run", "主 agent 任务理解与规划中…");
+  renderGraph();
 }
 function graphFinish() {
-  setGpStatus("done", "任务执行完成 —— 本次任务参与对象保持点亮（按类型着色），未参与的保持淡显");
+  setGpStatus("done", "任务执行完成 —— 本次任务参与对象保持点亮，未参与的保持淡显");
 }
 function graphReset() {
   GRAPH.running = false;
   GRAPH.lit.clear();
-  const svg = document.getElementById("gp-svg");
-  if (svg) svg.classList.remove("g-running");
-  document.querySelectorAll("#gp-body .gg-node.lit, #gp-body .gg-node.now").forEach(el => el.classList.remove("lit", "now"));
-  gpRelightEdges();
   setGpStatus("", "空闲 —— 任务开始后按主 agent 规划依次点亮参与对象");
+  renderGraph();
 }
 
 function fmtBytes(b) {
