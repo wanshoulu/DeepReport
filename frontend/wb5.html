@@ -462,7 +462,8 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
       <div class="chat-log" id="chat-log"></div>
       <div class="quick-row" id="quick-row"></div>
       <form class="chat-input" id="chat-form" autocomplete="off">
-        <input id="chat-input" placeholder="自由输入：确认主体 / 粘贴补充资料 / 口径问答 / 重新生成 / 跳转页签……">
+        <label class="btn" style="white-space:nowrap;cursor:pointer;flex:none">导入资料<input type="file" id="doc-file" multiple accept=".pdf,.txt,.md,.markdown" style="display:none"></label>
+        <input id="chat-input" placeholder="自由输入：写一份关于XX的报告 / 粘贴补充资料 / 口径问答……">
         <button class="btn primary" type="submit">发送</button>
       </form>
     </div>
@@ -890,6 +891,88 @@ function resetChat() {
   $("#chat-log").innerHTML = "";
   chat.stage = "greet"; chat.bank = "cmb"; chat.artifact = null; chat.taskId = null;
   greet();
+}
+
+/* ---- 本地文档导入（live 快照集 + sha256 注册纪律门，从 annual 版移植）---- */
+let DOC_PENDING = [];
+async function b64Of(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+$("#doc-file").addEventListener("change", e => {
+  const files = Array.from(e.target.files || []);
+  if (!files.length) return;
+  DOC_PENDING = files;
+  e.target.value = "";
+  openImportDrawer();
+});
+function closeDrawer() {
+  $("#drawer").classList.remove("open");
+  $("#drawer-mask").classList.remove("open");
+}
+async function openImportDrawer() {
+  const drawer = $("#drawer");
+  if (!drawer) return;
+  const rows = DOC_PENDING.map((f, i) =>
+    '<div class="d-block"><div class="d-label">文件 ' + (i + 1) + '</div><div class="d-val">'
+    + esc(f.name) + " · " + (f.size / 1024).toFixed(1) + " KB</div></div>").join("");
+  drawer.innerHTML =
+    '<h3>导入本地资料<button class="d-close" onclick="closeDrawer()">×</button></h3>'
+    + '<div class="d-block"><div class="d-label">纪律门</div><div class="d-val">资料将落盘 live 快照集并经 sha256 '
+    + "注册进信源注册表，注册后引用核验（C1/C2）与数值核验即刻接受；生成报告时自动挂载为可引用论断，writer-agent 可直接引用。</div></div>"
+    + rows
+    + '<div class="d-block"><div class="d-label">信源标题（可改）</div>'
+    + '<input id="doc-title" style="width:100%" value="'
+    + esc(DOC_PENDING[0] ? DOC_PENDING[0].name.replace(/\.[^.]+$/, "") : "本地资料") + '"></div>'
+    + '<div class="d-block"><div class="d-label">权威等级</div>'
+    + '<select id="doc-authority" style="width:100%">'
+    + '<option value="PRIMARY_OFFICIAL">PRIMARY_OFFICIAL（官方一手，可支撑指标值）</option>'
+    + '<option value="SECONDARY_INSTITUTIONAL">SECONDARY_INSTITUTIONAL（机构二手）</option>'
+    + '<option value="TERTIARY_AGGREGATED">TERTIARY_AGGREGATED（聚合三手）</option>'
+    + "</select></div>"
+    + '<div class="d-block"><button class="btn primary" id="doc-submit">确认导入</button> '
+    + '<span id="doc-status" class="digest"></span></div>';
+  drawer.classList.add("open");
+  $("#drawer-mask").classList.add("open");
+  $("#doc-submit").addEventListener("click", submitImport);
+}
+async function submitImport() {
+  const st = $("#doc-status");
+  if (st) st.textContent = "解析与落盘中……";
+  try {
+    const files = [];
+    for (const f of DOC_PENDING) files.push({ filename: f.name, content_base64: await b64Of(f) });
+    const title = ($("#doc-title") || {}).value || "";
+    const authority = ($("#doc-authority") || {}).value || "PRIMARY_OFFICIAL";
+    const r = await jpost("/v1/documents/import", { title, authority, files });
+    closeDrawer();
+    if (r.ok && r.data && r.data.ok) {
+      addDocResultMsg(r.data);
+      if (chat.stage === "greet" || chat.stage === "live_subject") {
+        addMsg("editor-in-chief", "资料已就绪。请输入要编制的公司/主题名（或「写一份关于 XX 的报告」），开始编制。");
+      } else {
+        setQuick([{ label: "资料齐备，开始编制", cls: "primary", fn: startClarify }]);
+      }
+    } else {
+      addMsg("material-agent", "资料导入失败：" + esc((r.data || {}).error || "HTTP " + r.status));
+    }
+  } catch (e) {
+    closeDrawer();
+    addMsg("material-agent", "资料导入异常：" + esc(String(e)));
+  }
+}
+function addDocResultMsg(data, head) {
+  const rows = (data.imported || []).map(x =>
+    "<li>「" + esc(x.commit.title) + "」→ " + esc(x.commit.source_id)
+    + " · 快照 P" + (x.commit.snapshot_pages || []).map(p => p.snapshot_page).join("、P")
+    + " · 指纹 " + esc(String(x.commit.content_sha256 || "").slice(0, 16)) + "</li>").join("");
+  const errs = (data.errors || []).map(x => "<li>" + esc(x.filename) + "：" + esc(x.error) + "</li>").join("");
+  addMsg("material-agent", (head || "本地资料导入完成，已落盘 live 快照集并注册进信源注册表：")
+    + "<ul>" + rows + "</ul>" + (errs ? "部分文件未成功：<ul>" + errs + "</ul>" : "")
+    + "生成报告时将自动挂载为可引用论断（[C-n]），writer-agent 可直接引用。");
 }
 
 /* 自由输入：全局意图 + 阶段意图匹配 */
