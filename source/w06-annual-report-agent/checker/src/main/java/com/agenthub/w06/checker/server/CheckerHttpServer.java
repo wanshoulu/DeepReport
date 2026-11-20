@@ -938,6 +938,10 @@ public final class CheckerHttpServer {
      *  （label/role/agent schema）。纯字段映射，无报告类型特判。 */
     private static ObjectNode adaptSkeleton(JsonNode skel, JsonNode profile) {
         ObjectNode out = MAPPER.createObjectNode();
+        // metric_profile 透传（metricDictFor 按报告类型查字典的依据）
+        if (profile != null && profile.has("metric_profile")) {
+            out.put("metric_profile", profile.path("metric_profile").asText(""));
+        }
         out.set("section_order", skel.path("section_order").deepCopy());
         ObjectNode sections = out.putObject("sections");
         String analyst = profile == null ? null : profile.path("analyst").asText(null);
