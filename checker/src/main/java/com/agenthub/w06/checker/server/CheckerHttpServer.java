@@ -2429,7 +2429,9 @@ public final class CheckerHttpServer {
             for (JsonNode a : st.path("runtime")) {
                 String id = a.path("agent_id").asText();
                 if (!id.isBlank() && !AGENT_RUNTIME.containsKey(id) && !"editor-in-chief".equals(id)) {
-                    AGENT_RUNTIME.put(id, (ObjectNode) a);
+                    ObjectNode restored = (ObjectNode) a;
+                    mergeSwarmCard(restored, id); // Swarm 卡片字段随包合并（与 putAgent 同源）
+                    AGENT_RUNTIME.put(id, restored);
                 }
             }
             for (JsonNode a : st.path("catalog")) {
