@@ -2175,11 +2175,13 @@ public final class CheckerHttpServer {
                 new String[]{"编排", "成稿", "核验", "批准", "通用"});
     }
 
-    /** 注册真 Skill：skill_id=slug（=目录名），name=中文显示名（S3：display_name 语义）。 */
+    /** 注册真 Skill：skill_id=name=slug（=目录名），中文显示名入 display_name.zh（openJiuwen 范式）。 */
     private static void putSkill(String id, String name, String path, String desc, String[] tags) {
         ObjectNode s = MAPPER.createObjectNode();
         s.put("skill_id", id);
-        s.put("name", name);
+        s.put("name", id);
+        ObjectNode dn = s.putObject("display_name");
+        dn.put("zh", name);
         s.put("path", path);
         s.put("description", desc);
         ArrayNode t = s.putArray("tags");

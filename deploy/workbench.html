@@ -1510,7 +1510,7 @@ async function renderAssets() {
 
   const skillTiles = (skills.length ? skills : []).map(s =>
     '<div class="asset-tile clickable" onclick="openAssetDetail(\'skill\',\'' + esc(s.skill_id) + '\')">'
-    + '<div class="t-head"><span class="t-name">' + esc(s.name) + '</span><span class="badge neutral">已注册 ' + (s.registered_count || 0) + " agent</span></div>"
+    + '<div class="t-head"><span class="t-name">' + esc((s.display_name||{}).zh || s.name) + '</span><span class="badge neutral">已注册 ' + (s.registered_count || 0) + " agent</span></div>"
     + '<div class="t-ver">' + esc(s.path) + "</div>"
     + '<div class="t-desc">' + esc(s.description) + "</div>"
     + '<div class="t-foot">' + (s.tags || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
@@ -1519,7 +1519,7 @@ async function renderAssets() {
   await ensureMcpData();
   const mcpTiles = MCP_SERVERS.map(s =>
     '<div class="asset-tile clickable" onclick="openAssetDetail(\'mcp\',\'' + esc(s.server_id) + '\')">'
-    + '<div class="t-head"><span class="t-name">' + esc(s.name) + '</span><span class="t-ver">' + esc(s.ep) + "</span></div>"
+    + '<div class="t-head"><span class="t-name">' + esc((s.display_name||{}).zh || s.name) + '</span><span class="t-ver">' + esc(s.ep) + "</span></div>"
     + '<div class="t-desc">' + esc(s.desc) + "</div>"
     + '<div class="t-foot">' + s.apis.map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
     + '<div class="t-summary">点击查看接口详情</div></div>').join("");
@@ -1670,7 +1670,7 @@ async function openAgentDetail(id) {
     html += '<div class="d-block"><div class="d-label">技能绑定（已启用 ' + (a.enabled_skills || []).length + " 项）</div>"
       + skills.map(s => {
         const on = (a.enabled_skills || []).includes(s.skill_id);
-        return '<div class="d-bind-row"><span class="b-name">' + esc(s.name) + '</span><span class="b-sub">'
+        return '<div class="d-bind-row"><span class="b-name">' + esc((s.display_name||{}).zh || s.name) + '</span><span class="b-sub">'
           + esc(s.skill_id) + (on ? " · 已绑定" : " · 未绑定") + '</span><span class="b-ops">'
           + (on
             ? '<button class="btn sm danger" onclick="toggleSkillBinding(\'' + esc(id) + '\',\'' + esc(s.skill_id) + '\',\'unbind\')">解绑</button>'
@@ -1743,7 +1743,7 @@ async function openSkillDetail(id) {
   if (!s) { alert("未找到 skill：" + id); return; }
   await ensureAgentsData();
   const ras = s.registered_agents || [];
-  let html = "<h3>Skill 详情 · " + esc(s.name)
+  let html = "<h3>Skill 详情 · " + esc((s.display_name||{}).zh || s.name)
     + '<button class="d-close" onclick="closeDrawer()">×</button></h3>'
     + '<div class="d-block"><div class="d-label">技能标识</div><div class="d-val mono">' + esc(s.skill_id) + "</div></div>"
     + '<div class="d-block"><div class="d-label">技能文件</div><div class="d-val mono">' + esc(s.path) + "</div></div>"
@@ -2291,7 +2291,7 @@ async function openMcpDetail(id) {
   const agents = state.agentsData ? state.agentsData.runtime : [];
   // 该 MCP 已绑定给哪些 agent
   const bound = agents.filter(a => (a.mcps || []).includes(id));
-  let html = "<h3>MCP 详情 · " + esc(s.name)
+  let html = "<h3>MCP 详情 · " + esc((s.display_name||{}).zh || s.name)
     + '<button class="d-close" onclick="closeDrawer()">×</button></h3>'
     + '<div class="d-block"><div class="d-label">服务端点</div><div class="d-val mono">' + esc(s.endpoint) + "</div></div>"
     + '<div class="d-block"><div class="d-label">协议</div><div class="d-val mono">' + esc(s.protocol) + "</div></div>"
