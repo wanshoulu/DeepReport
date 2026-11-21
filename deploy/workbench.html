@@ -2177,7 +2177,13 @@ function setGpStatus(cls, text) {
   const t = document.getElementById("gp-status-text");
   if (t) t.textContent = text;
 }
-function gpLight(id) { GRAPH.lit.add(id); renderGraph(); }
+function gpLight(id) { // G10：点亮前校验节点存在，标注悬空 id 时在状态条提示而非静默
+  if (!GRAPH.data || !(GRAPH.data.nodes || []).some(n => n.id === id)) {
+    const s = document.getElementById("gp-status-text");
+    if (s) s.textContent = "点亮对象不在注册拓扑：" + id + "（标注与注册表漂移，请检查）";
+  }
+  GRAPH.lit.add(id); renderGraph();
+}
 async function graphStage(st) {
   if (!GRAPH.data || !st) return;
   // S1：工具参与时同步点亮网关节点，让 serve/call 关系边能亮（不再孤立）

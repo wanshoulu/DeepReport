@@ -25,6 +25,21 @@ import java.time.Duration;
 
 final class AgentChatClient {
 
+    /** M11：一次 chat 的执行留痕——agent 实际加载的技能、调用过的工具（SSE 事件捕获）。 */
+    record ChatTrace(java.util.List<String> skillsLoaded, java.util.List<String> toolsCalled) {
+        static ChatTrace empty() { return new ChatTrace(java.util.List.of(), java.util.List.of()); }
+        boolean isEmpty() { return skillsLoaded.isEmpty() && toolsCalled.isEmpty(); }
+        String brief() {
+            java.util.List<String> parts = new java.util.ArrayList<>();
+            if (!skillsLoaded.isEmpty()) parts.add("技能加载: " + String.join(", ", skillsLoaded));
+            if (!toolsCalled.isEmpty()) parts.add("工具调用: " + String.join(", ", toolsCalled));
+            return String.join("；", parts);
+        }
+    }
+
+    /** 最近一次 chat 的留痕（线程内可见；checker 为单流水线线程模型，够用）。 */
+    static volatile ChatTrace LAST_TRACE = ChatTrace.empty();
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final String AGENT_URL = System.getenv()
@@ -52,6 +67,8 @@ final class AgentChatClient {
      * @return agent 生成的文本；连接失败/超时 → null（调用方降级）
      */
     static String chat(String message, String sessionId) {
+        LAST_TRACE = ChatTrace.empty(); // M11：每次会话重置留痕
+        LAST_TRACE = ChatTrace.empty(); // M11：每次会话重置留痕
         try {
             ObjectNode body = MAPPER.createObjectNode();
             body.put("message", message);
@@ -95,7 +112,23 @@ final class AgentChatClient {
                                         + data.path("error").asText());
                                 return null;
                             }
-                            default -> { /* phase, hb, done, skill_load, tool — 忽略 */ }
+                            case "skill_load" -> { // M11：捕获实际加载的技能进留痕
+                                String sk = data.path("skill").asText("");
+                                if (!sk.isEmpty()) {
+                                    java.util.List<String> l = new java.util.ArrayList<>(LAST_TRACE.skillsLoaded());
+                                    if (!l.contains(sk)) l.add(sk);
+                                    LAST_TRACE = new ChatTrace(l, LAST_TRACE.toolsCalled());
+                                }
+                            }
+                            case "tool" -> { // M11：捕获实际调用的工具进留痕
+                                String tn = data.path("tool").asText("");
+                                if (!tn.isEmpty()) {
+                                    java.util.List<String> l = new java.util.ArrayList<>(LAST_TRACE.toolsCalled());
+                                    if (!l.contains(tn)) l.add(tn);
+                                    LAST_TRACE = new ChatTrace(LAST_TRACE.skillsLoaded(), l);
+                                }
+                            }
+                            default -> { /* phase, hb, done — 忽略 */ }
                         }
                     }
                 }

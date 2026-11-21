@@ -1150,7 +1150,10 @@ public final class CheckerHttpServer {
         //    LLM 不可达或网络失败只记录原因，绝不阻断流水线 ——
         ObjectNode dsData = null;
         // 门控（S5-1）：深搜仅通用域触发；年报域保持冻结快照纪律，避免外部网页污染引用池
-        if (!"annual_report".equals(reportType) && !subjToks.isEmpty()
+        // P2-17：DEEP_SEARCH_ENABLED=false 可整体关闭（默认开）
+        boolean deepSearchEnabled = !"false".equalsIgnoreCase(
+                System.getenv().getOrDefault("DEEP_SEARCH_ENABLED", "true"));
+        if (deepSearchEnabled && !"annual_report".equals(reportType) && !subjToks.isEmpty()
                 && !ToolGateway.REGISTRY.isEmpty()) {
             try {
                 dsData = deepSearch(subjectHint, snapshotDir, resolver, sources);
@@ -1721,18 +1724,20 @@ public final class CheckerHttpServer {
         StringBuilder gathered = new StringBuilder(); // 已收集资料要点（供下轮查询规划与充分性评估）
         Set<String> seenUrls = new HashSet<>();       // 已命中 URL（跨轮去重，防重复抓取与重复落盘）
         int totalCommitted = 0;
-        final int maxRounds = 3;
+        int llmCalls = 0;                            // P2-17：LLM 调用计数
+        final int maxRounds = Integer.parseInt(System.getenv().getOrDefault("DEEP_SEARCH_MAX_ROUNDS", "3")); // P2-17：轮次上限可配
+        final int maxLlmCalls = Integer.parseInt(System.getenv().getOrDefault("DEEP_SEARCH_MAX_LLM_CALLS", "8")); // P2-17：LLM 预算
         for (int r = 1; r <= maxRounds; r++) {
             ObjectNode rd = rounds.addObject();
             rd.put("round", r);
             // a) deep-search agent 规划本轮查询（LLM；解析失败或不可达 → 降级默认查询）
             List<String> queries = new ArrayList<>();
-            String planResp = AgentChatClient.chat("你是深度调研 agent（deep-search）。研究主题：" + subject
+            String planResp = llmCalls++ < maxLlmCalls ? AgentChatClient.chat("你是深度调研 agent（deep-search）。研究主题：" + subject
                     + "。已有资料要点：" + (gathered.length() == 0 ? "（无，首轮）"
                             : gathered.substring(0, Math.min(gathered.length(), 1500)))
                     + "。请规划本轮 2 个互补的联网搜索查询，覆盖主题的关键事实"
                     + "（公司概况/主营业务/经营与财务数据/客户与市场/风险），避免与已有资料重复。"
-                    + "只输出 JSON：{\"queries\": [\"查询1\", \"查询2\"]}", sessionId);
+                    + "只输出 JSON：{\"queries\": [\"查询1\", \"查询2\"]}", sessionId) : null; // P2-17：预算耗尽降级默认查询
             if (planResp != null) {
                 queries = jsonStringArray(planResp, "queries");
             }
@@ -1800,10 +1805,10 @@ public final class CheckerHttpServer {
             rd.put("committed", c);
             // d) deep-search agent 评估资料充分性（最后一轮不再评估）
             if (r < maxRounds) {
-                String evalResp = AgentChatClient.chat("深度调研充分性评估。研究主题：" + subject
+                String evalResp = llmCalls++ < maxLlmCalls ? AgentChatClient.chat("深度调研充分性评估。研究主题：" + subject
                         + "。已收集资料要点：" + (gathered.length() == 0 ? "（尚无有效资料）" : gathered)
                         + "。作为一份深度调研/投研报告的资料基础是否已充分？只输出 JSON："
-                        + "{\"sufficient\": true 或 false, \"reason\": \"一句话理由\"}", sessionId);
+                        + "{\"sufficient\": true 或 false, \"reason\": \"一句话理由\"}", sessionId) : null; // P2-17
                 boolean sufficient = false;
                 if (evalResp != null) {
                     try {
