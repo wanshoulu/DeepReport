@@ -2296,13 +2296,16 @@ public final class CheckerHttpServer {
             respond(ex, 404, errorNode("unknown_skill", "无此 skill: " + skillId));
             return;
         }
-        String rel = java.net.URLDecoder.decode(
-                ex.getRequestURI().getQuery() == null ? ""
-                        : ex.getRequestURI().getQuery().replaceFirst("(?s)^.*?[?&]path=", "")
-                                .replaceFirst("&.*$", ""),
-                java.nio.charset.StandardCharsets.UTF_8);
-        if (rel.isBlank()) {
-            rel = "SKILL.md";
+        String rel = "SKILL.md";
+        String q = ex.getRequestURI().getRawQuery();
+        if (q != null) {
+            for (String kv : q.split("&")) {
+                if (kv.startsWith("path=")) {
+                    rel = java.net.URLDecoder.decode(kv.substring("path=".length()),
+                            java.nio.charset.StandardCharsets.UTF_8);
+                    break;
+                }
+            }
         }
         Path skillRoot = STATIC_DIR_BASE.resolve(s.path("path").asText()).getParent();
         Path target = skillRoot.resolve(rel).normalize();
