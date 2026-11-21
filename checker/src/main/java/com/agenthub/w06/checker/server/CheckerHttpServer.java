@@ -1198,6 +1198,18 @@ public final class CheckerHttpServer {
             }
         }
         art = attachImportedClaims(art, resolver, analysisIds, subjectSources);
+        // S11.2：深搜后刷新 report_period（synthesizeBase 时深搜尚未发生，彼时标注会退化为"以导入资料为准"）
+        if ("annual_report" != reportType && !subjectSources.isEmpty()) {
+            String latest = "—";
+            for (JsonNode s : subjectSources) {
+                String at = s.path("fetched_at").asText("");
+                if (!at.isEmpty() && at.compareTo(latest) > 0) latest = at;
+            }
+            if (!"—".equals(latest)) latest = latest.substring(0, Math.min(10, latest.length()));
+            String refreshed = "基于联网检索信源 " + subjectSources.size() + " 份（最近抓取 " + latest + "）";
+            art = new AnnualReportArtifacts(art.taskId(), art.company(), refreshed, art.generatedAt(),
+                    art.metrics(), art.citations(), art.sections(), art.charts());
+        }
 
         // long_form 模式（0.3.7 架构分工）：Java 只做确定性编排——组装任务书（纯数据）、
         // 解析 [S-n] 成稿、调度核验与反思回路；任务分解与成稿由 openjiuwen deep agent
