@@ -2629,7 +2629,15 @@ public final class CheckerHttpServer {
                          String id = rec.path("task").path("task_id").asText("");
                          if (!id.isBlank() && !TASKS.containsKey(id)) {
                              TASKS.put(id, (ObjectNode) rec.path("task"));
-                             // 工件全文不回灌（摘要足够报告库列表展示）；详情按需从文件重建
+                             // S11.4 P0：任务号计数器推进到磁盘已有最大号——否则重启后计数器
+                             // 复位，新任务复用旧号会覆盖历史报告（实测 GENERAL-5 被覆盖）
+                             int dash = id.lastIndexOf('-');
+                             if (dash > 0 && dash < id.length() - 1) {
+                                 try {
+                                     int seq = Integer.parseInt(id.substring(dash + 1));
+                                     TASK_SEQ.updateAndGet(cur -> Math.max(cur, seq));
+                                 } catch (NumberFormatException ignore) { }
+                             }
                              System.out.println("task state restored: " + id);
                          }
                      } catch (Exception e) {
