@@ -1,0 +1,23 @@
+{
+  "registry_source": "deploy/mcp-servers.json（配置驱动）",
+  "servers": [
+    {
+      "server_id": "deepreport-capability-mcp",
+      "name": "DeepReport 能力 MCP 服务",
+      "protocol": "MCP (JSON-RPC 2.0, HTTP)",
+      "endpoint": "http://172.17.0.1:8090/mcp",
+      "desc": "报表合成与图表渲染能力：table_compose / chart_render（真 MCP server，容器 deepreport-mcp）",
+      "apis": ["initialize", "tools/list", "tools/call"],
+      "tools": [
+        {
+          "name": "table_compose",
+          "description": "按行列契约合成结构化报表表格（JSON-RPC tools/call，返回 structuredContent）"
+        },
+        {
+          "name": "chart_render",
+          "description": "按数据系列与类型契约渲染图表（返回 structuredContent，含 SVG/数据回执）"
+        }
+      ]
+    }
+  ]
+}

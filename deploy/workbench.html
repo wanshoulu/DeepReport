@@ -185,7 +185,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .gp-status.done { color: var(--success); }
 .gp-status.done .dot { background: var(--success); }
 @keyframes gpPulse { 0%,100% { box-shadow: 0 0 0 2px rgba(59,123,245,.3); } 50% { box-shadow: 0 0 0 5px rgba(59,123,245,.12); } }
-/* 图谱渲染由 ECharts 力导向图承担（节点/边状态在 JS 内建模，见协作图谱模块） */
+/* 图谱渲染由 AntV G6 力导向图承担（节点/边状态在 JS 内建模，见协作图谱模块） */
 .chat-log { flex: 1; overflow-y: auto; padding: 18px 20px; display: flex; flex-direction: column; gap: 16px; }
 .chat-msg { display: flex; gap: 10px; max-width: 94%; }
 .chat-msg.user { flex-direction: row-reverse; margin-left: auto; max-width: 80%; }
@@ -1684,14 +1684,14 @@ async function openAgentDetail(id) {
             : '<div style="font-size:12px;color:var(--muted);margin-top:6px">' + esc(srcLabel) + "：注销即从运行时删除。</div>"))
       + "</div>";
   }
-    // 运行时装配状态（bind 即装配：指令注入/工具挂载/A2A 通道）
+    // 运行时装配状态（当前为绑定关系视图；内容装载在 openJiuwen agent 侧按需发生）
   try {
     const asm = await jget("/v1/agents/" + encodeURIComponent(id) + "/assembly");
     if (asm && asm.assembly) {
       const sk = asm.assembly.skills || {};
       const skIds = Object.keys(sk);
       const a2a = (asm.assembly.a2a || {}).channels || [];
-      let asmHtml = '<div class="d-block"><div class="d-label">运行时装配 · 注册即装配（对齐 DeepAgent 动态装配）</div>';
+      let asmHtml = '<div class="d-block"><div class="d-label">运行时装配 · 当前为绑定关系视图（DeepAgent 侧内容装载按需发生）</div>';
       if (skIds.length) {
         asmHtml += '<div style="font-size:12px;color:var(--muted);margin-bottom:4px">已装配技能 ' + skIds.length + ' 个：</div>';
         for (const sid of skIds) {
@@ -1699,7 +1699,9 @@ async function openAgentDetail(id) {
           asmHtml += '<div class="d-bind-row"><span class="b-name">' + esc(sid) + '</span><span class="b-sub">'
             + (e2.mode === "full"
               ? "指令注入 " + fmtBytes(e2.instructions_bytes) + " · 工具 " + (e2.tools || []).length + " 个 · 资源 " + (e2.resources || []).length + " 份"
-              : "仅元数据（包文件缺失）")
+              : (e2.mode === "metadata_only"
+                  ? "仅元数据（注册表内无此技能定义：悬空绑定）"
+                  : "绑定关系已注册（内容按需装载在 openJiuwen agent 侧，经 skill_tool 读取）"))
             + '</span></div>';
           if ((e2.tools || []).length) {
             asmHtml += '<div style="font-size:11.5px;color:var(--muted);margin:-2px 0 6px 8px" class="mono">'
@@ -1862,7 +1864,7 @@ async function initGraphPanel() {
       container: document.getElementById("gp-chart"),
       width: body.clientWidth || 430,
       height: Math.max(360, body.clientHeight || 480),
-      plugins: [new G6.Grid(),
+      plugins: [ // S1：该构建下 Grid 插件不渲染（背景网格由 CSS 承担），移除无效插件
         new G6.Minimap({ size: [118, 88], type: "delegate", className: "gp-minimap",
           delegateStyle: { fill: "#e2e7f0", stroke: "#b6bcc6" } }),
         new G6.Tooltip({ itemTypes: ["node", "edge"], offsetX: 12, offsetY: 8,
@@ -1949,14 +1951,41 @@ async function initGraphPanel() {
   if (fit) fit.onclick = () => {
     if (GRAPH.chart) { GRAPH.chart.fitView(); renderGraph(); renderInfoCard(); }
   };
+  if (!window.G6) {
+    // S1：G6 加载失败降级——文本拓扑 + 明确提示，不再白板
+    try {
+      const d = await jget("/v1/graph");
+      GRAPH.data = d;
+      $("#gp-plan").innerHTML = "图谱引擎（G6）加载失败，降级为文本拓扑：<b>" + d.node_count + "</b> 节点 · <b>"
+        + d.edge_count + "</b> 边。已注册 agent："
+        + (d.nodes || []).filter(x => x.type === "agent" || x.type === "main")
+            .map(x => esc(x.label)).join("、");
+      $("#gp-chart").innerHTML = '<div style="padding:18px;color:#a32d2d;font-size:13px;line-height:1.8">'
+        + 'g6.min.js 不可用（网络或部署问题）。<br>拓扑数据接口 /v1/graph 正常，可刷新重试或检查部署。</div>';
+    } catch (e) {
+      $("#gp-plan").textContent = "图谱加载失败：" + e.message;
+    }
+    return;
+  }
+  window.gpReloadTopology = async function () { // S1：Hub 安装/绑定/卸载后重拉拓扑（注册表变更即刻反映）
+    try {
+      const d = await jget("/v1/graph");
+      if (!GRAPH.chart) { GRAPH.data = d; return; }
+      gpInitPos(d); GRAPH.data = d; GRAPH.lit.clear();
+      GRAPH.chart.changeData({ nodes: buildNodes(), edges: buildEdges() });
+      GRAPH.chart.render(); renderGraph();
+      $("#gp-plan").innerHTML = "注册拓扑：<b>" + d.node_count + "</b> 节点 · <b>" + d.edge_count + "</b> 关联边。";
+    } catch (e) { /* 拉取失败保留旧拓扑 */ }
+  };
   try {
-    GRAPH.data = await jget("/v1/graph");
-    gpInitPos(GRAPH.data);
+    const gd = await jget("/v1/graph");
+    gpInitPos(gd);
+    GRAPH.data = gd;
     if (GRAPH.chart) {
       GRAPH.chart.data({ nodes: buildNodes(), edges: buildEdges() });
       GRAPH.chart.render();
     }
-    $("#gp-plan").innerHTML = "注册拓扑：<b>" + GRAPH.data.node_count + "</b> 节点 · <b>" + GRAPH.data.edge_count
+    $("#gp-plan").innerHTML = "注册拓扑：<b>" + gd.node_count + "</b> 节点 · <b>" + gd.edge_count
       + "</b> 关联边。点击节点/边查看详情；任务开始后由主 agent 规划分派，参与对象依次点亮并流动。";
   } catch (e) {
     $("#gp-plan").textContent = "图谱加载失败：" + e.message;
@@ -1996,7 +2025,10 @@ function buildNodes() {
       type: "circle",
       size: isMain ? 56 : cat === 1 ? 34 : cat === 3 ? 28 : cat === 4 ? 22 : 24,
       x: n.x, y: n.y,
-      style: { fill: col, stroke: "#fff", lineWidth: isMain ? 3 : 1.5, opacity: 1, cursor: "pointer" },
+      style: { fill: col, stroke: "#fff", lineWidth: isMain ? 3 : 1.5,
+        opacity: n.state === "market" ? 0.6 : 1,                       // S1：市场目录（未安装）降透明
+        lineDash: n.state === "market" ? [4, 3] : null,                 // S1：后端注释承诺的「虚线呈现」落地
+        cursor: "pointer" },
       labelCfg: { position: "bottom", offset: 4,
         style: { fill: "#39404d", fontSize: cat === 4 ? 9 : isMain ? 12 : 10.5,
           fontWeight: isMain ? 700 : 500 } }
@@ -2146,7 +2178,9 @@ function setGpStatus(cls, text) {
 function gpLight(id) { GRAPH.lit.add(id); renderGraph(); }
 async function graphStage(st) {
   if (!GRAPH.data || !st) return;
-  const ids = ["agent:editor-in-chief"];
+  // S1：工具参与时同步点亮网关节点，让 serve/call 关系边能亮（不再孤立）
+  const ids = (st.tools || []).length ? ["agent:editor-in-chief", "mcp:gateway"]
+    : ["agent:editor-in-chief"];
   (st.nodes || []).forEach(a => { if (!ids.includes("agent:" + a)) ids.push("agent:" + a); });
   (st.skills || []).forEach(s => { const id = "skill:" + s; if (!ids.includes(id)) ids.push(id); });
   (st.tools || []).forEach(t => { const id = "mcp:" + t; if (!ids.includes(id)) ids.push(id); });
@@ -2160,6 +2194,8 @@ async function graphStage(st) {
 function graphBeginRun(plan) {
   GRAPH.running = true;
   GRAPH.flowSpeed = 0.8;
+  GRAPH.lit.clear();            // S1：新任务清空上一任务点亮，防跨任务污染
+  GRAPH.focus = null;
   if (plan && plan.summary) $("#gp-plan").innerHTML = "<b>主 agent 规划</b> — " + esc(plan.summary);
   setGpStatus("run", "主 agent 任务理解与规划中…");
   renderGraph();
@@ -2304,6 +2340,7 @@ function openRuleDetail(id) {
 async function afterAgentMutation(reopenId) {
   try { state.agentsData = await jget("/v1/agents"); } catch (e) { state.agentsData = { runtime: [], catalog: [] }; }
   try { state.skillsData = await jget("/v1/skills"); } catch (e) { state.skillsData = []; }
+  if (typeof gpReloadTopology === "function") gpReloadTopology(); // S1：注册表变更即刻反映到协作图谱
   renderAssets();
   refreshAgents();
   if (reopenId) openAgentDetail(reopenId); else closeDrawer();

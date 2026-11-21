@@ -97,6 +97,7 @@ public final class CheckerHttpServer {
     // 报告库（任务历史，内存态：容器存活期内刷新不丢）
     static final Map<String, ObjectNode> TASKS = new LinkedHashMap<>();               // task_id -> 任务记录
     static final Map<String, AnnualReportArtifacts> TASK_ARTIFACTS = new HashMap<>();  // task_id -> 交付工件
+    static Path STATIC_DIR_BASE = Path.of(System.getenv().getOrDefault("STATIC_DIR", "/app")); // S1：技能文件/MCP 清单读取根
     static final AtomicInteger TASK_SEQ = new AtomicInteger(2);                       // 启动预置 001–004，preload 后新任务从 005 递增
 
     // Agent Hub：运行时（已注册，可动态加载）+ 市场目录（可安装注册）
@@ -279,7 +280,7 @@ public final class CheckerHttpServer {
     public static void main(String[] args) throws IOException {
         int port = Integer.parseInt(System.getenv().getOrDefault("CHECKER_PORT", "18095"));
         Path snapshotDir = Path.of(System.getenv().getOrDefault("SNAPSHOT_DIR", "/snapshot"));
-        Path staticDir = Path.of(System.getenv().getOrDefault("STATIC_DIR", "/app"));
+        Path staticDir = STATIC_DIR_BASE;
         loadReportStructure(staticDir);               // 骨架配置（节序/标题/静态正文/责任 agent 唯一事实源）
         ToolGateway.load(staticDir);                  // MCP 工具网关注册表（deploy/tools.json 配置驱动）
 
@@ -518,6 +519,19 @@ public final class CheckerHttpServer {
         }
         if ("/v1/graph".equals(path) && "GET".equals(method)) {
             respond(ex, 200, graphData());
+            return;
+        }
+        if (path.matches("/v1/skills/[^/]+/files") && "GET".equals(method)) {
+            handleSkillFile(ex, path); // S1：技能包文件读取（工作台内容预览）
+            return;
+        }
+        if ("/v1/mcp".equals(path) && "GET".equals(method)) {
+            handleMcpList(ex); // S1：MCP 服务清单（资产库页；配置驱动 deploy/mcp-servers.json）
+            return;
+        }
+        if (path.matches("/v1/agents/[^/]+/assembly") && "GET".equals(method)) {
+            handleAgentAssembly(ex, path.substring("/v1/agents/".length(),
+                    path.length() - "/assembly".length())); // S1：运行时装配视图（真实绑定数据）
             return;
         }
         if ("/v1/agents".equals(path) && "GET".equals(method)) {
@@ -1090,6 +1104,20 @@ public final class CheckerHttpServer {
             art = synthesizeBase(structure, snap, subjectHint, reportType, subjectSources);
         }
 
+        // S5-5：taskId 提前回填——请求带了 task_id（对话流预登记）直接用；未带则按报告库
+        // 编号规则先取号，保证 runLongForm 会话 ID 与任务可互查（消除 w06-lf-null-*）。
+        // 注意 registerTask 尾部 upsert 会以最终工件重算 digest，此处只取号不落库。
+        if (art.taskId() == null || art.taskId().isBlank()) {
+            String preId = taskId != null && !taskId.isBlank() ? taskId
+                    : "TASK-" + reportType.toUpperCase().replace('_', '-') + "-"
+                        + TASK_SEQ.incrementAndGet();
+            art = new AnnualReportArtifacts(preId, art.company(), art.reportPeriod(),
+                    art.generatedAt(), art.metrics(), art.citations(), art.sections(), art.charts());
+            if (taskId == null || taskId.isBlank()) {
+                taskId = preId; // 后续 registerTask(preId) 沿用此号 upsert
+            }
+        }
+
         // 节 → 责任 agent / role 映射自所选报告类型的骨架配置（不写死「第几节归谁」）
         Map<String, String> sectionAgent = new LinkedHashMap<>();
         Map<String, String> sectionRole = new LinkedHashMap<>();
@@ -1120,7 +1148,9 @@ public final class CheckerHttpServer {
         //    live 快照集后重算引用池，让新资料即刻可引用可核验。调研是增强不是门禁：fail-open，
         //    LLM 不可达或网络失败只记录原因，绝不阻断流水线 ——
         ObjectNode dsData = null;
-        if (!subjToks.isEmpty() && !ToolGateway.REGISTRY.isEmpty()) {
+        // 门控（S5-1）：深搜仅通用域触发；年报域保持冻结快照纪律，避免外部网页污染引用池
+        if (!"annual_report".equals(reportType) && !subjToks.isEmpty()
+                && !ToolGateway.REGISTRY.isEmpty()) {
             try {
                 dsData = deepSearch(subjectHint, snapshotDir, resolver, sources);
             } catch (Exception dsEx) {
@@ -1705,12 +1735,13 @@ public final class CheckerHttpServer {
                     + "只输出 JSON：{\"queries\": [\"查询1\", \"查询2\"]}", sessionId);
             if (planResp != null) {
                 queries = jsonStringArray(planResp, "queries");
-                rd.put("plan_source", "deep-search agent LLM 规划");
-            } else {
-                rd.put("plan_source", "LLM 不可达，降级默认查询");
             }
             if (queries.isEmpty()) {
                 queries = List.of(subject + " 最新经营数据", subject + " 公司分析");
+                rd.put("plan_source", planResp == null
+                        ? "LLM 不可达，降级默认查询" : "LLM 返回不可解析，降级默认查询"); // S5-3 诚实留痕
+            } else {
+                rd.put("plan_source", "deep-search agent LLM 规划");
             }
             ArrayNode qn = rd.putArray("queries");
             for (String q : queries) {
@@ -1752,6 +1783,7 @@ public final class CheckerHttpServer {
                     ObjectNode sArgs = MAPPER.createObjectNode();
                     sArgs.put("url", hit[1]);
                     sArgs.put("title", title);
+                    sArgs.put("authority", authorityForUrl(hit[1])); // S5-4 信源权威分级
                     sArgs.set("pages", pages);
                     ObjectNode cr = ToolGateway.call(toolReq("snapshot_commit", sArgs), snapshotDir, resolver, sources);
                     if (cr.path("ok").asBoolean()) {
@@ -1772,8 +1804,19 @@ public final class CheckerHttpServer {
                         + "。已收集资料要点：" + (gathered.length() == 0 ? "（尚无有效资料）" : gathered)
                         + "。作为一份深度调研/投研报告的资料基础是否已充分？只输出 JSON："
                         + "{\"sufficient\": true 或 false, \"reason\": \"一句话理由\"}", sessionId);
-                boolean sufficient = evalResp != null && evalResp.contains("\"sufficient\"")
-                        && evalResp.toLowerCase().contains("true");
+                boolean sufficient = false;
+                if (evalResp != null) {
+                    try {
+                        int b0 = evalResp.indexOf('{');
+                        int e0 = evalResp.lastIndexOf('}');
+                        if (b0 >= 0 && e0 > b0) {
+                            sufficient = MAPPER.readTree(evalResp.substring(b0, e0 + 1))
+                                    .path("sufficient").asBoolean(false);
+                        }
+                    } catch (Exception parseEx) {
+                        sufficient = false; // 解析失败按「不充分」继续搜，不提前收束（S5-2）
+                    }
+                }
                 rd.put("sufficient", sufficient);
                 if (sufficient) {
                     out.put("stopped_reason", "deep-search agent 评估资料已充分，提前收束");
@@ -1784,6 +1827,20 @@ public final class CheckerHttpServer {
         out.put("round_count", rounds.size());
         out.put("committed_count", totalCommitted);
         return out;
+    }
+
+    /** 依据来源域名粗分权威级；无法判定时保守标 TERTIARY_AGGREGATED（不虚报一手信源）。S5-4 */
+    private static String authorityForUrl(String url) {
+        String u = url.toLowerCase();
+        if (u.contains(".gov.cn") || u.contains(".gov.") || u.contains("cninfo.com.cn")
+                || u.contains("sse.com.cn") || u.contains("szse.cn") || u.contains("pbc.gov.cn")) {
+            return "PRIMARY_OFFICIAL";
+        }
+        if (u.contains("cnki") || u.contains("research") || u.contains("annualreport")
+                || u.contains(".edu.") || u.contains(".org.")) {
+            return "SECONDARY_INSTITUTIONAL";
+        }
+        return "TERTIARY_AGGREGATED";
     }
 
     /** 构造统一工具调用请求 {tool_name, arguments}（MCP 风格）。 */
@@ -2229,6 +2286,102 @@ public final class CheckerHttpServer {
     }
 
     /** 技能注册表：GET /v1/skills，含每个技能已注册（绑定）的运行时 agent 反查。 */
+    /** S1：技能包文件读取 GET /v1/skills/{id}/files?path=<相对路径>。
+     *  路径穿越防护：只允许 SKILL_REGISTRY 中该技能 path 所在目录树内的文件。 */
+    private static void handleSkillFile(HttpExchange ex, String path) throws IOException {
+        String skillId = path.substring("/v1/skills/".length(),
+                path.length() - "/files".length());
+        ObjectNode s = SKILL_REGISTRY.get(skillId);
+        if (s == null) {
+            respond(ex, 404, errorNode("unknown_skill", "无此 skill: " + skillId));
+            return;
+        }
+        String rel = java.net.URLDecoder.decode(
+                ex.getRequestURI().getQuery() == null ? ""
+                        : ex.getRequestURI().getQuery().replaceFirst("(?s)^.*?[?&]path=", "")
+                                .replaceFirst("&.*$", ""),
+                java.nio.charset.StandardCharsets.UTF_8);
+        if (rel.isBlank()) {
+            rel = "SKILL.md";
+        }
+        Path skillRoot = STATIC_DIR_BASE.resolve(s.path("path").asText()).getParent();
+        Path target = skillRoot.resolve(rel).normalize();
+        if (!target.startsWith(skillRoot) || !Files.isRegularFile(target)) {
+            respond(ex, 404, errorNode("file_not_found",
+                    "技能包内无此文件: " + rel + "（合法根: " + skillRoot + "）"));
+            return;
+        }
+        String text = Files.readString(target, StandardCharsets.UTF_8);
+        ObjectNode out = MAPPER.createObjectNode();
+        out.put("skill_id", skillId);
+        out.put("path", rel);
+        out.put("bytes", text.getBytes(StandardCharsets.UTF_8).length);
+        out.put("lines", text.split("\n", -1).length);
+        out.put("content", text);
+        respond(ex, 200, out);
+    }
+
+    /** S1：MCP 服务清单 GET /v1/mcp（deploy/mcp-servers.json 配置驱动；缺文件时空清单+提示）。 */
+    private static void handleMcpList(HttpExchange ex) throws IOException {
+        ArrayNode arr = MAPPER.createArrayNode();
+        Path f = STATIC_DIR_BASE.resolve("mcp-servers.json");
+        if (Files.isRegularFile(f)) {
+            try {
+                JsonNode cfg = MAPPER.readTree(f.toFile());
+                for (JsonNode s : cfg.path("servers")) {
+                    ObjectNode out = s.deepCopy();
+                    arr.add(out);
+                }
+            } catch (Exception e) {
+                respond(ex, 500, errorNode("mcp_config_invalid", String.valueOf(e)));
+                return;
+            }
+        }
+        ObjectNode out = MAPPER.createObjectNode();
+        out.put("registry_source", "deploy/mcp-servers.json（配置驱动）");
+        out.set("servers", arr);
+        respond(ex, 200, out);
+    }
+
+    /** S1：运行时装配视图 GET /v1/agents/{id}/assembly。
+     *  如实呈现当前注册表绑定关系：skills=已绑定技能（mode=metadata，正文装载在
+     *  openJiuwen agent 侧按需发生，见 long-form 任务书的 skill_tool 指令）；
+     *  a2a/mcps 当前未接通道（S7 架构补全后填充），不虚报「指令注入 N bytes」。 */
+    private static void handleAgentAssembly(HttpExchange ex, String agentId) throws IOException {
+        ObjectNode a = AGENT_RUNTIME.get(agentId);
+        if (a == null) {
+            if (AGENT_CATALOG.containsKey(agentId)) {
+                respond(ex, 409, errorNode("not_installed",
+                        agentId + " 尚未安装注册（市场目录），无装配"));
+            } else {
+                respond(ex, 404, errorNode("unknown_agent", "无此 agent: " + agentId));
+            }
+            return;
+        }
+        ObjectNode asm = MAPPER.createObjectNode();
+        ObjectNode skills = asm.putObject("skills");
+        for (JsonNode sk : a.path("enabled_skills")) {
+            ObjectNode sid = skills.putObject(sk.asText());
+            sid.put("mode", "metadata");
+            ObjectNode meta = SKILL_REGISTRY.get(sk.asText());
+            if (meta != null) {
+                sid.put("description", meta.path("description").asText(""));
+                sid.put("path", meta.path("path").asText(""));
+            } else {
+                sid.put("mode", "metadata_only");
+                sid.put("note", "注册表内无此技能定义（悬空绑定）");
+            }
+        }
+        asm.putObject("a2a").putArray("channels");
+        asm.putObject("mcps");
+        ObjectNode out = MAPPER.createObjectNode();
+        out.set("agent_id", MAPPER.createObjectNode().put("agent_id", agentId));
+        ObjectNode body = MAPPER.createObjectNode();
+        body.put("agent_id", agentId);
+        body.set("assembly", asm);
+        respond(ex, 200, body);
+    }
+
     private static void handleSkillsList(HttpExchange ex) throws IOException {
         ArrayNode arr = MAPPER.createArrayNode();
         for (ObjectNode s : SKILL_REGISTRY.values()) {
