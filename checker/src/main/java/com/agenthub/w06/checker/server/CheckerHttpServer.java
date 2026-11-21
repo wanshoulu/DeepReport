@@ -2446,7 +2446,10 @@ public final class CheckerHttpServer {
             }
             for (JsonNode a : st.path("catalog")) {
                 String id = a.path("agent_id").asText();
-                if (!id.isBlank() && !AGENT_RUNTIME.containsKey(id) && !AGENT_CATALOG.containsKey(id)) {
+                // S7.4：catalog 恢复时剔除 seed 已注册的同 id（install/uninstall 往返残留），
+                // 且跳过 runtime 已装的——保证 catalog 只存「真正未安装的市场候选」
+                boolean seeded = AGENT_CATALOG.containsKey(id);
+                if (!id.isBlank() && !seeded && !AGENT_RUNTIME.containsKey(id)) {
                     ObjectNode restoredC = (ObjectNode) a;
                     mergeSwarmCard(restoredC, id); // Swarm 卡片字段随包合并（catalog 恢复同源）
                     AGENT_CATALOG.put(id, restoredC);
@@ -2521,9 +2524,15 @@ public final class CheckerHttpServer {
                 }
             }
         }
-        // 市场目录 agent：未安装注册，虚线呈现（state=market），无关联边
+        // 市场目录 agent：未安装注册，虚线呈现（state=market），无关联边。
+        // S7.4 修复：catalog 里 state=RUNNING/已装进 runtime 的条目（install 后残留）跳过——
+        // 同一 agent 不允许出现 runtime+market 双节点。
         for (ObjectNode a : AGENT_CATALOG.values()) {
-            nodes.add(graphNode("agent:" + a.path("agent_id").asText(), "agent",
+            String cid = a.path("agent_id").asText();
+            if (AGENT_RUNTIME.containsKey(cid) || "editor-in-chief".equals(cid)) {
+                continue;
+            }
+            nodes.add(graphNode("agent:" + cid, "agent",
                     a.path("name").asText(), a.path("role").asText(),
                     a.path("description").asText() + "（市场目录未安装）", "market"));
         }
