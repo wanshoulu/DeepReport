@@ -2211,7 +2211,7 @@ public final class CheckerHttpServer {
                 if (m.has(k)) a.set(k, m.get(k));
             }
         } catch (Exception e) {
-            // 卡片缺失不阻塞注册
+            System.err.println("mergeSwarmCard(" + id + ") failed: " + e.getMessage());
         }
     }
 
@@ -2437,7 +2437,9 @@ public final class CheckerHttpServer {
             for (JsonNode a : st.path("catalog")) {
                 String id = a.path("agent_id").asText();
                 if (!id.isBlank() && !AGENT_RUNTIME.containsKey(id) && !AGENT_CATALOG.containsKey(id)) {
-                    AGENT_CATALOG.put(id, (ObjectNode) a);
+                    ObjectNode restoredC = (ObjectNode) a;
+                    mergeSwarmCard(restoredC, id); // Swarm 卡片字段随包合并（catalog 恢复同源）
+                    AGENT_CATALOG.put(id, restoredC);
                 }
             }
             System.out.println("registry state restored: runtime=" + AGENT_RUNTIME.size()
