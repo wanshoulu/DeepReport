@@ -506,6 +506,11 @@ public final class CheckerHttpServer {
             String id = path.substring("/v1/tasks/".length());
             ObjectNode task = TASKS.get(id);
             AnnualReportArtifacts artifact = TASK_ARTIFACTS.get(id);
+            if (artifact == null) {
+                // S10.4：重启后内存工件缺失——从持久化任务文件重建摘要工件（sections_full/metrics_full 反序列化）
+                artifact = loadArtifactFromDisk(id);
+                if (artifact != null) TASK_ARTIFACTS.put(id, artifact);
+            }
             if (task == null || artifact == null) {
                 respond(ex, 404, errorNode("task_not_found", "报告库无任务 " + id));
                 return;
@@ -2541,6 +2546,47 @@ public final class CheckerHttpServer {
         } catch (Exception e) {
             System.err.println("loadTaskState: " + e.getMessage());
         }
+    }
+
+    /** S10.4：从磁盘任务文件重建工件（重启后 /v1/tasks/{id} 详情 404 修复）。
+     *  taskState 落盘含 task 记录 + sections_full/metrics_full 摘要 → 反序列化为可展示工件。 */
+    private static AnnualReportArtifacts loadArtifactFromDisk(String id) {
+        Path f = taskStateDir().resolve(id + ".json");
+        if (!Files.isRegularFile(f)) return null;
+        try {
+            JsonNode rec = MAPPER.readTree(f.toFile());
+            JsonNode artNode = rec.path("artifact");
+            ObjectNode full = MAPPER.createObjectNode();
+            full.put("task_id", id);
+            full.put("company", artNode.path("company").asText(taskStateCompany(rec)));
+            full.put("report_period", artNode.path("report_period").asText(""));
+            // sections_full → sections
+            ArrayNode secs = full.putArray("sections");
+            for (JsonNode s : artNode.path("sections_full")) {
+                ObjectNode sn = secs.addObject();
+                sn.put("section_id", s.path("section_id").asText());
+                sn.put("title", s.path("title").asText());
+                sn.put("body", s.path("body").asText());
+            }
+            // metrics_full → metrics
+            ArrayNode mts = full.putArray("metrics");
+            for (JsonNode mv : artNode.path("metrics_full")) {
+                ObjectNode mn = mts.addObject();
+                mn.put("name", mv.path("name").asText());
+                mn.put("value", mv.path("value").asText());
+                mn.put("unit", mv.path("unit").asText());
+                mn.put("page", mv.path("page").asInt());
+            }
+            // 经 contract 反序列化（忽略未知字段）
+            return MAPPER.treeToValue(full, AnnualReportArtifacts.class);
+        } catch (Exception e) {
+            System.err.println("loadArtifactFromDisk(" + id + "): " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static String taskStateCompany(JsonNode rec) {
+        return rec.path("task").path("company").asText("");
     }
 
     /** S3.5：注册表持久化——把运行时状态（AGENT_RUNTIME/AGENT_CATALOG/SKILL 绑定）原子写

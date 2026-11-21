@@ -1468,7 +1468,7 @@ async function viewPage(no, digestHint) {
 /* MCP 注册表：动态加载真 MCP（GET /v1/mcp），bind 即装配全限定名工具 */
 let MCP_SERVERS = [];
 async function ensureMcpData() {
-  if (!MCP_SERVERS.length) try { MCP_SERVERS = await jget("/v1/mcp"); } catch (e) { MCP_SERVERS = []; }
+  if (!MCP_SERVERS.length) try { const r = await jget("/v1/mcp"); MCP_SERVERS = Array.isArray(r) ? r : (r.servers || []); } catch (e) { MCP_SERVERS = []; } // S10.4：/v1/mcp 返回 {servers:[...]}，取字段再 map
   return MCP_SERVERS;
 }
 const RULE_ASSETS = [
@@ -1521,7 +1521,7 @@ async function renderAssets() {
     '<div class="asset-tile clickable" onclick="openAssetDetail(\'mcp\',\'' + esc(s.server_id) + '\')">'
     + '<div class="t-head"><span class="t-name">' + esc((s.display_name||{}).zh || s.name) + '</span><span class="t-ver">' + esc(s.ep) + "</span></div>"
     + '<div class="t-desc">' + esc(s.desc) + "</div>"
-    + '<div class="t-foot">' + s.apis.map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
+    + '<div class="t-foot">' + (s.apis || s.endpoints || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
     + '<div class="t-summary">点击查看接口详情</div></div>').join("");
 
   const pageChips = Object.keys(m.page_digests).map(no =>
