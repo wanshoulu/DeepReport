@@ -1854,6 +1854,12 @@ async function initGraphPanel() {
   p.innerHTML = '<div class="gp-head"><h3>协作图谱 <button class="gp-btn" id="gp-fit">重置视图</button>'
     + '<span style="font-weight:400;font-size:11px;color:var(--muted)">拖拽 · 缩放 · 点节点看详情</span></h3>'
     + '<div class="gp-plan" id="gp-plan">注册拓扑加载中…</div></div>'
+    + '<div class="gp-legend gp-legend-exec">'
+    + '<span style="color:var(--muted);font-size:11px">执行形态：</span>'
+    + '<span><b style="color:var(--fg)">ReAct</b>=推理循环 agent</span>'
+    + '<span><b style="color:var(--fg)">DeepAgent</b>=双层循环+技能</span>'
+    + '<span><b style="color:var(--fg)">Workflow</b>=确定性流水线工位</span>'
+    + "</div>"
     + '<div class="gp-legend">'
     + '<span><i style="background:' + GP_ECOLOR.register + '"></i>团队注册</span>'
     + '<span><i style="background:' + GP_ECOLOR.bind + '"></i>技能绑定</span>'

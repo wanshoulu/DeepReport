@@ -2217,14 +2217,30 @@ public final class CheckerHttpServer {
         }
     }
 
-    /** 注册 agent：name=中文显示名（display_name 语义）；kind 改名 role（S3：语义角色，
-     *  避免与 openJiuwen Hub 的资产类型 plugin_type 字段冲突）。 */
+    /** S7.5：执行形态注册表（实测代码审计结论）——
+     *  react：writer-agent（任务书→续写→反思多轮会话）、deep-search（规划→搜索→评估多轮循环）、
+     *         editor-in-chief 的对话流（ReAct 编排）、w06-orchestrator root（openjiuwen ReAct 16 轮）；
+     *  deepagent：外部 skill-app-agent（harness DeepAgent）；
+     *  workflow：其余确定性工位（查数/分析/图表/核验/批准——编排器调度，无自主循环）。 */
+    private static final java.util.Map<String, String> EXEC_FORM = java.util.Map.of(
+            "editor-in-chief", "react",
+            "writer-agent", "react",
+            "deep-search", "react",
+            "w06-orchestrator", "deepagent",
+            "skill-app-agent", "deepagent");
+
+    /** 注册 agent：name=中文显示名（display_name 语义）；kind 改名 role（S3：语义角色）。
+     *  S7.5：exec_form 执行形态（图谱可视化第三维度）——
+     *    workflow     确定性流水线工位（编排器调度，无自主循环）
+     *    react        ReAct 循环 agent（LLM 多轮推理+工具调用）
+     *    deepagent    DeepAgent（openjiuwen harness，双层 Agent Loop+技能+todo） */
     private static void putAgent(Map<String, ObjectNode> pool, String id, String name, String kind,
                                  String version, String desc, String[] caps, String[] skills, String registeredAt) {
         ObjectNode a = MAPPER.createObjectNode();
         a.put("agent_id", id);
         a.put("name", name);
         a.put("role", kind);
+        a.put("exec_form", EXEC_FORM.getOrDefault(id, "workflow")); // S7.5：执行形态
         mergeSwarmCard(a, id); // Swarm 规范卡片字段：agents/packages/<id>/manifest.json（双语 display/category/tags/quick_inputs）
         a.put("version", version);
         a.put("description", desc);
@@ -2505,16 +2521,20 @@ public final class CheckerHttpServer {
 
         ObjectNode chief = AGENT_RUNTIME.get("editor-in-chief");
         if (chief != null) {
-            nodes.add(graphNode("agent:editor-in-chief", "main", chief.path("name").asText("主编编排 Agent"),
-                    chief.path("role").asText("ORCHESTRATOR"), chief.path("description").asText(), "runtime"));
+            ObjectNode gn = graphNode("agent:editor-in-chief", "main", chief.path("name").asText("主编编排 Agent"),
+                    chief.path("role").asText("ORCHESTRATOR"), chief.path("description").asText(), "runtime");
+            gn.put("exec_form", chief.path("exec_form").asText("react")); // S7.5
+            nodes.add(gn);
         }
         for (ObjectNode a : AGENT_RUNTIME.values()) {
             String id = a.path("agent_id").asText();
             if ("editor-in-chief".equals(id)) {
                 continue;
             }
-            nodes.add(graphNode("agent:" + id, "agent", a.path("name").asText(id),
-                    a.path("role").asText(), a.path("description").asText(), "runtime"));
+            ObjectNode gn = graphNode("agent:" + id, "agent", a.path("name").asText(id),
+                    a.path("role").asText(), a.path("description").asText(), "runtime");
+            gn.put("exec_form", a.path("exec_form").asText("workflow")); // S7.5：执行形态
+            nodes.add(gn);
             if (chief != null && jsonArrayHas(chief.path("team"), id)) {
                 addEdge(edges, "agent:editor-in-chief", "agent:" + id, "register", "团队注册");
             }
@@ -2532,9 +2552,11 @@ public final class CheckerHttpServer {
             if (AGENT_RUNTIME.containsKey(cid) || "editor-in-chief".equals(cid)) {
                 continue;
             }
-            nodes.add(graphNode("agent:" + cid, "agent",
+            ObjectNode gn = graphNode("agent:" + cid, "agent",
                     a.path("name").asText(), a.path("role").asText(),
-                    a.path("description").asText() + "（市场目录未安装）", "market"));
+                    a.path("description").asText() + "（市场目录未安装）", "market");
+            gn.put("exec_form", a.path("exec_form").asText("workflow")); // S7.5
+            nodes.add(gn);
         }
         for (ObjectNode s : SKILL_REGISTRY.values()) {
             nodes.add(graphNode("skill:" + s.path("skill_id").asText(), "skill",
