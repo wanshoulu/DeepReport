@@ -2264,6 +2264,14 @@ public final class CheckerHttpServer {
             }
             return;
         }
+        for (JsonNode sk : a.path("enabled_skills")) { // Swarm 对齐：安装口同样 fail-closed
+            if (!SKILL_REGISTRY.containsKey(sk.asText())) {
+                respond(ex, 409, errorNode("dangling_skill_binding",
+                        id + " 的 enabled_skills 引用未注册技能: " + sk.asText()
+                                + "，请先修复技能注册表"));
+                return;
+            }
+        }
         a.put("status", "RUNNING");
         a.put("registered_at", Instant.now().toString());
         AGENT_RUNTIME.put(id, a);
@@ -2724,6 +2732,23 @@ respond(ex, 200, a.deepCopy());
             return;
         }
         String kind = body.path("role").asText(body.path("kind").asText("ANALYST")); // S3：role 优先，兼容旧 kind 字段
+        // Swarm 对齐（fail-closed）：注册时校验 enabled_skills 与 role——
+        // 未知技能引用 / 非法 role 在注册口拒绝，不让漂移进入运行时（swarm: unknown member raise before any resource touched）。
+        java.util.Set<String> ROLES = java.util.Set.of("ORCHESTRATOR", "ANALYST", "RESEARCHER",
+                "WRITER", "RENDERER", "CHECKER", "APPROVER");
+        if (!ROLES.contains(kind)) {
+            respond(ex, 400, errorNode("invalid_role",
+                    "role 须为 " + ROLES + " 之一，收到: " + kind));
+            return;
+        }
+        for (JsonNode sk : body.path("enabled_skills")) {
+            if (!SKILL_REGISTRY.containsKey(sk.asText())) {
+                respond(ex, 400, errorNode("unknown_skill",
+                        "enabled_skills 引用未注册技能: " + sk.asText()
+                                + "（已注册: " + SKILL_REGISTRY.keySet() + "）"));
+                return;
+            }
+        }
         if (!List.of("ORCHESTRATOR", "ANALYST", "WRITER", "RENDERER", "CHECKER", "APPROVER").contains(kind)) {
             respond(ex, 400, errorNode("bad_request",
                     "kind 须为 ORCHESTRATOR|ANALYST|WRITER|RENDERER|CHECKER|APPROVER"));
@@ -2754,7 +2779,13 @@ respond(ex, 200, a.deepCopy());
         a.put("source", "CUSTOM");
         a.put("status", "RUNNING");
         a.set("capabilities", caps);
-        a.putArray("enabled_skills");
+        if (body.path("enabled_skills").isArray()) { // Swarm 对齐：注册即消费技能绑定（fail-closed 校验已在上方）
+            for (JsonNode sk : body.path("enabled_skills")) {
+                a.putArray("enabled_skills").add(sk.asText());
+            }
+        } else {
+            a.putArray("enabled_skills");
+        }
         a.put("registered_at", Instant.now().toString());
         a.putNull("last_loaded_task");
         a.putNull("last_loaded_at");
