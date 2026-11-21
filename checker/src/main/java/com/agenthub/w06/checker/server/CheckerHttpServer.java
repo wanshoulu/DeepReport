@@ -433,7 +433,7 @@ public final class CheckerHttpServer {
             return;
         }
         if ("/v1/pipeline/run".equals(path) && "POST".equals(method)) {
-            handlePipelineRun(ex, resolver, sources);
+            handlePipelineRun(ex, snapshotDir, resolver, sources);
             return;
         }
         if ("/v1/tools".equals(path) && "GET".equals(method)) {
@@ -1054,7 +1054,8 @@ public final class CheckerHttpServer {
      * 六工位受控生成流水线（确定性重放，无 LLM）：查数 → 分析 → 图表 → 写作 → 核验 → 主编。
      * 分派/标题/节序全部来自骨架配置与工件数据，服务端零机构特判；换银行=换数据配置。
      */
-    private static void handlePipelineRun(HttpExchange ex, SnapshotHttpResolver resolver,
+    private static void handlePipelineRun(HttpExchange ex, Path snapshotDir,
+                                          SnapshotHttpResolver resolver,
                                           List<SourceEntry> sources) throws IOException {
         if (STRUCTURE == null) {
             respond(ex, 503, errorNode("structure_missing", "骨架配置 report-structure.json 未加载"));
@@ -1115,6 +1116,24 @@ public final class CheckerHttpServer {
                 analysisIds.add(sec.sectionId());
             }
         }
+        // —— deep-search agent（通用域主题任务）：LLM 驱动多轮联网深搜，抓取产物落盘注册进
+        //    live 快照集后重算引用池，让新资料即刻可引用可核验。调研是增强不是门禁：fail-open，
+        //    LLM 不可达或网络失败只记录原因，绝不阻断流水线 ——
+        ObjectNode dsData = null;
+        if (!subjToks.isEmpty() && !ToolGateway.REGISTRY.isEmpty()) {
+            try {
+                dsData = deepSearch(subjectHint, snapshotDir, resolver, sources);
+            } catch (Exception dsEx) {
+                dsData = MAPPER.createObjectNode();
+                dsData.put("agent", "deep-search");
+                dsData.put("error", "执行失败: " + (dsEx.getMessage() == null
+                        ? dsEx.getClass().getSimpleName() : dsEx.getMessage()));
+            }
+            if (dsData.path("committed_count").asInt(0) > 0) {
+                BankSnap liveFresh = resolver.banks.get(ToolGateway.LIVE_BANK);
+                subjectSources = liveFresh == null ? List.of() : sourcesForSubject(liveFresh, subjToks);
+            }
+        }
         art = attachImportedClaims(art, resolver, analysisIds, subjectSources);
 
         // long_form 模式（0.3.7 架构分工）：Java 只做确定性编排——组装任务书（纯数据）、
@@ -1138,10 +1157,20 @@ public final class CheckerHttpServer {
 
         ArrayNode stages = MAPPER.createArrayNode();
 
-        // 1) 查数：快照装载 + 指标索引
-        ObjectNode s1 = stageNode("material", "查数", "material-agent", "装载冻结快照与指标索引");
-        markParticipants(s1, List.of("editor-in-chief", "material-agent"), reportType);
+        // 1) 查数：快照装载 + 指标索引（通用域另由 deep-search agent 联网深搜增强资料集）
+        List<String> p1 = new ArrayList<>();
+        p1.add("editor-in-chief");
+        p1.add("material-agent");
+        ObjectNode s1 = stageNode("material", "查数", "material-agent",
+                dsData == null ? "装载冻结快照与指标索引" : "联网深搜增强 + 快照装载与指标索引");
+        if (dsData != null) {
+            p1.add("deep-search");
+        }
+        markParticipants(s1, p1, reportType);
         ObjectNode d1 = s1.putObject("data");
+        if (dsData != null) {
+            d1.set("deep_search", dsData);
+        }
         d1.put("snapshot_version", snap.snapshotVersion);
         d1.put("sources", snap.sourcesNode.size());
         d1.put("pages", snap.byPageNumber.size());
@@ -1166,6 +1195,18 @@ public final class CheckerHttpServer {
             if (subjectSources.isEmpty()) {
                 det1.add("资料集内暂无与主题相关的信源：请通过「补充资料」导入或经 MCP 工具抓取"
                         + "（snapshot_commit 落盘注册）后编制，正文将如实标注资料范围");
+            }
+        }
+        if (dsData != null) {
+            int cc = dsData.path("committed_count").asInt(0);
+            if (dsData.has("error")) {
+                det1.add("deep-search agent 深搜未执行成功：" + dsData.path("error").asText());
+            } else if (cc > 0) {
+                det1.add("deep-search agent 联网深搜 " + dsData.path("round_count").asInt()
+                        + " 轮 → 落盘注册 " + cc + " 份新信源（live 快照集，sha256 已注册即刻可引用）");
+            } else {
+                det1.add("deep-search agent 完成 " + dsData.path("round_count").asInt()
+                        + " 轮联网深搜，无新增可落盘信源（搜索无结果或抓取均失败）");
             }
         }
         det1.add("指标索引 " + art.metrics().size() + " 项，口径与单位以指标字典为准");
@@ -1634,6 +1675,150 @@ public final class CheckerHttpServer {
     }
 
     /**
+     * 深度联网调研（deep-search agent 主导，material 工位调用）：
+     * LLM 规划查询 → web_search → 选链 → web_fetch → snapshot_commit 落盘注册 →
+     * LLM 评估资料充分性 → 不充分则改写查询再搜（最多 3 轮）。
+     * 框架纪律：抓取产物必须 snapshot_commit 落盘 + sha256 注册进信源注册表，
+     * 方可被引用核验（C1/C2）与数值核验（N3）接受——「抓得到」与「可引用」之间有纪律门。
+     */
+    private static ObjectNode deepSearch(String subject, Path snapshotDir,
+                                         SnapshotHttpResolver resolver, List<SourceEntry> sources) {
+        ObjectNode out = MAPPER.createObjectNode();
+        out.put("agent", "deep-search");
+        ArrayNode rounds = out.putArray("rounds");
+        ArrayNode committed = out.putArray("committed");
+        String sessionId = "deep-search-" + Long.toHexString(System.currentTimeMillis());
+        StringBuilder gathered = new StringBuilder(); // 已收集资料要点（供下轮查询规划与充分性评估）
+        Set<String> seenUrls = new HashSet<>();       // 已命中 URL（跨轮去重，防重复抓取与重复落盘）
+        int totalCommitted = 0;
+        final int maxRounds = 3;
+        for (int r = 1; r <= maxRounds; r++) {
+            ObjectNode rd = rounds.addObject();
+            rd.put("round", r);
+            // a) deep-search agent 规划本轮查询（LLM；解析失败或不可达 → 降级默认查询）
+            List<String> queries = new ArrayList<>();
+            String planResp = AgentChatClient.chat("你是深度调研 agent（deep-search）。研究主题：" + subject
+                    + "。已有资料要点：" + (gathered.length() == 0 ? "（无，首轮）"
+                            : gathered.substring(0, Math.min(gathered.length(), 1500)))
+                    + "。请规划本轮 2 个互补的联网搜索查询，覆盖主题的关键事实"
+                    + "（公司概况/主营业务/经营与财务数据/客户与市场/风险），避免与已有资料重复。"
+                    + "只输出 JSON：{\"queries\": [\"查询1\", \"查询2\"]}", sessionId);
+            if (planResp != null) {
+                queries = jsonStringArray(planResp, "queries");
+                rd.put("plan_source", "deep-search agent LLM 规划");
+            } else {
+                rd.put("plan_source", "LLM 不可达，降级默认查询");
+            }
+            if (queries.isEmpty()) {
+                queries = List.of(subject + " 最新经营数据", subject + " 公司分析");
+            }
+            ArrayNode qn = rd.putArray("queries");
+            for (String q : queries) {
+                qn.add(q);
+            }
+            // b) 逐查询 web_search，聚合结果 [title, link]
+            List<String[]> hits = new ArrayList<>();
+            for (String q : queries) {
+                ObjectNode args = MAPPER.createObjectNode();
+                args.put("query", q);
+                args.put("max_results", 4);
+                ObjectNode sr = ToolGateway.call(toolReq("web_search", args), snapshotDir, resolver, sources);
+                for (JsonNode res : sr.path("results")) {
+                    String link = res.path("link").asText(res.path("url").asText(""));
+                    if (link.isEmpty() || !seenUrls.add(link)) {
+                        continue; // 重复命中不重抓（跨轮去重）
+                    }
+                    hits.add(new String[]{res.path("title").asText(""), link});
+                }
+            }
+            rd.put("search_hits", hits.size());
+            // c) 抓取 top ≤3 条 → snapshot_commit 落盘注册（单条失败跳过，fail-open）
+            int c = 0;
+            for (int i = 0; i < hits.size() && c < 3; i++) {
+                String[] hit = hits.get(i);
+                try {
+                    ObjectNode fArgs = MAPPER.createObjectNode();
+                    fArgs.put("url", hit[1]);
+                    ObjectNode fr = ToolGateway.call(toolReq("web_fetch", fArgs), snapshotDir, resolver, sources);
+                    String text = fr.path("text").asText("");
+                    if (!fr.path("ok").asBoolean() || text.isBlank()) {
+                        continue;
+                    }
+                    String title = fr.path("title").asText(hit[0].isEmpty() ? hit[1] : hit[0]);
+                    ArrayNode pages = MAPPER.createArrayNode();
+                    ObjectNode pg = pages.addObject();
+                    pg.put("text", text);
+                    pg.put("origin_page", 1);
+                    ObjectNode sArgs = MAPPER.createObjectNode();
+                    sArgs.put("url", hit[1]);
+                    sArgs.put("title", title);
+                    sArgs.set("pages", pages);
+                    ObjectNode cr = ToolGateway.call(toolReq("snapshot_commit", sArgs), snapshotDir, resolver, sources);
+                    if (cr.path("ok").asBoolean()) {
+                        c++;
+                        totalCommitted++;
+                        committed.add(title + " — " + hit[1]);
+                        gathered.append("· ").append(title).append("：")
+                                .append(text, 0, Math.min(text.length(), 300)).append('\n');
+                    }
+                } catch (Exception e) {
+                    // 单条抓取/落盘失败不阻断调研（fail-open）
+                }
+            }
+            rd.put("committed", c);
+            // d) deep-search agent 评估资料充分性（最后一轮不再评估）
+            if (r < maxRounds) {
+                String evalResp = AgentChatClient.chat("深度调研充分性评估。研究主题：" + subject
+                        + "。已收集资料要点：" + (gathered.length() == 0 ? "（尚无有效资料）" : gathered)
+                        + "。作为一份深度调研/投研报告的资料基础是否已充分？只输出 JSON："
+                        + "{\"sufficient\": true 或 false, \"reason\": \"一句话理由\"}", sessionId);
+                boolean sufficient = evalResp != null && evalResp.contains("\"sufficient\"")
+                        && evalResp.toLowerCase().contains("true");
+                rd.put("sufficient", sufficient);
+                if (sufficient) {
+                    out.put("stopped_reason", "deep-search agent 评估资料已充分，提前收束");
+                    break;
+                }
+            }
+        }
+        out.put("round_count", rounds.size());
+        out.put("committed_count", totalCommitted);
+        return out;
+    }
+
+    /** 构造统一工具调用请求 {tool_name, arguments}（MCP 风格）。 */
+    private static ObjectNode toolReq(String toolName, ObjectNode arguments) {
+        ObjectNode n = MAPPER.createObjectNode();
+        n.put("tool_name", toolName);
+        n.set("arguments", arguments);
+        return n;
+    }
+
+    /** 从 LLM 输出宽容提取 JSON 对象中 key 对应的字符串数组（容忍 markdown 包裹与尾注）。 */
+    private static List<String> jsonStringArray(String text, String key) {
+        List<String> out = new ArrayList<>();
+        if (text == null) {
+            return out;
+        }
+        int b = text.indexOf('{');
+        int e = text.lastIndexOf('}');
+        if (b < 0 || e <= b) {
+            return out;
+        }
+        try {
+            for (JsonNode x : MAPPER.readTree(text.substring(b, e + 1)).path(key)) {
+                String v = x.asText("").trim();
+                if (!v.isEmpty()) {
+                    out.add(v);
+                }
+            }
+        } catch (Exception ignore) {
+            // 非 JSON 输出 → 空列表，调用方降级默认查询
+        }
+        return out;
+    }
+
+    /**
      * 预置 4 条历史任务（报告库初始记录，覆盖三银行）：
      *  TASK-2025-AR-001 招行正例 —— 启动时真实重跑两项核验（均 PASSED），绑定批准 APR-0001（Alice）；
      *  TASK-2025-AR-002 招行受控错误样例 —— 真实重跑数值核验（N7 拦截 FAILED），状态 REFUSED 未交付；
@@ -1848,6 +2033,11 @@ public final class CheckerHttpServer {
                 "信源快照装载与页读取（read_page / list_metrics_index），编制资料导入的唯一入口",
                 new String[]{"快照装载", "页读取", "指标索引"},
                 new String[]{"annual-report", "source-library"}, boot);
+        putAgent(AGENT_RUNTIME, "deep-search", "深度调研 Agent", "RESEARCHER", "1.0.0",
+                "LLM 驱动的多轮联网深度调研：规划查询 → 搜索 → 抓取落盘 → 评估充分性 → 不充分改写再搜；"
+                        + "抓取产物经 snapshot_commit 落盘注册进信源注册表后方可引用（纪律门）",
+                new String[]{"查询规划", "多轮深搜", "充分性评估"},
+                new String[]{"general-report", "deep-search"}, boot);
         putAgent(AGENT_RUNTIME, "finance-analyst", "财务分析 Agent", "ANALYST", "1.0.0",
                 "经营业绩与盈利结构分析：营收、净利润、净息差、成本收入比",
                 new String[]{"经营业绩分析", "盈利结构分析"},
@@ -1889,8 +2079,9 @@ public final class CheckerHttpServer {
         // 主编团队：内置 9 个专业执行 agent 默认注册给主编编排 Agent。
         // approver 治理独立：批准权不经主编分派（分派链不得覆盖治理链）。
         ArrayNode team = AGENT_RUNTIME.get("editor-in-chief").putArray("team");
-        for (String member : new String[]{"material-agent", "finance-analyst", "risk-analyst", "capital-analyst",
-                "disclosure-officer", "writer-agent", "chart-agent", "numeric-checker", "citation-checker"}) {
+        for (String member : new String[]{"material-agent", "deep-search", "finance-analyst", "risk-analyst",
+                "capital-analyst", "disclosure-officer", "writer-agent", "chart-agent",
+                "numeric-checker", "citation-checker"}) {
             team.add(member);
         }
 
@@ -1941,6 +2132,10 @@ public final class CheckerHttpServer {
         putSkill("general-long-form-writing", "通用报告长文写作", "skills/general-report/references/long-form-writing.md",
                 "通用报告长文写作方法：主题聚焦与分解、分节成稿法、引用标注法、口径句式规范、跨节一致性要求、核验违规修订流程（与年报域共用输出协议）。",
                 new String[]{"长文写作", "任务分解", "修订流程", "通用"});
+        putSkill("deep-search", "深度联网调研", "skills/general-report/references/deep-search.md",
+                "深度调研方法：查询规划与改写、信源权威性纪律（一手优先、聚合源降级标注）、"
+                        + "snapshot_commit 落盘注册流程、资料充分性评估与轮次控制。",
+                new String[]{"深搜", "信源纪律", "通用"});
     }
 
     private static void putSkill(String id, String name, String path, String desc, String[] tags) {
