@@ -2219,8 +2219,10 @@ public final class CheckerHttpServer {
 
     /** S7.5：执行形态注册表（实测代码审计结论）——
      *  react：writer-agent（任务书→续写→反思多轮会话）、deep-search（规划→搜索→评估多轮循环）、
-     *         editor-in-chief 的对话流（ReAct 编排）、w06-orchestrator root（openjiuwen ReAct 16 轮）；
-     *  deepagent：外部 skill-app-agent（harness DeepAgent）；
+     *         editor-in-chief 的对话流（ReAct 编排）；
+     *  deepagent：w06-orchestrator-root（本系统编排器，openjiuwen DeepAgent）+
+     *         writer-deepagent（=skillhub 的 skill-app-agent 容器，网络别名 writer-deepagent，
+     *         我们借它承载 writer-agent 长文的实际执行：装 annual-report/general-report 技能）；
      *  workflow：其余确定性工位（查数/分析/图表/核验/批准——编排器调度，无自主循环）。 */
     private static final java.util.Map<String, String> EXEC_FORM = java.util.Map.of(
             "editor-in-chief", "react",

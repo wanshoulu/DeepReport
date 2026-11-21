@@ -2219,9 +2219,10 @@ function renderInfoCard() {
     const col = GP_CATS[gpCat(n)].color;
     const rel = (d.edges || []).filter(e => e.from === n.id || e.to === n.id);
     const typeName = n.type === "main" ? "主 agent" : n.type === "agent" ? "专业 agent"
-      : n.type === "skill" ? "skill" : "MCP 工具";
+      : n.type === "skill" ? "skill" : "MCP 工具"
+    const execLabel = n.exec_form ? ({react: "ReAct 循环", deepagent: "DeepAgent", workflow: "Workflow 工位"}[n.exec_form] || n.exec_form) + (n.id === "agent:writer-agent" ? " · 执行载体 writer-deepagent" : n.id === "agent:w06-orchestrator-root" ? " · 即 skill-app-agent 容器" : "") : null;;
     html = '<div class="gi-head"><i style="background:' + col + '"></i><b>' + esc(n.label) + "</b>"
-      + '<span class="gi-tag">' + typeName + (n.state === "market" ? " · 市场目录" : " · 运行时") + "</span>"
+      + '<span class="gi-tag">' + typeName + (execLabel ? " · " + execLabel : "") + (n.state === "market" ? " · 市场目录" : " · 运行时") + "</span>"
       + '<button class="gi-close" data-close="1">×</button></div>'
       + (n.desc ? '<div class="gi-desc">' + esc(n.desc) + "</div>" : "")
       + '<div class="gi-rel"><b>关联 ' + rel.length + " 条</b>" + rel.map(e => {
