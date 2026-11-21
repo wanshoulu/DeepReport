@@ -1096,6 +1096,12 @@ public final class CheckerHttpServer {
             return;
         }
         BankSnap snap = resolver.scope(bank);
+        if (bank != null && !bank.isBlank() && !resolver.banks.containsKey(bank) && !"live".equals(bank)) {
+            // S11：未知银行 fail-closed（此前静默回退默认快照，编出的报告会挂错银行名）
+            respond(ex, 400, errorNode("unknown_bank",
+                    "未知银行: " + bank + "（可用: " + resolver.banks.keySet() + "，或 bank=live 走联网深搜）"));
+            return;
+        }
         // 主题圈定提前：基座合成的页清单（{primary_pages} 占位）与引用池共用同一圈定结果，
         // 防 live 库无关页混入 G-7/G-2 静态节的页清单摘要
         List<String> subjToks = subjectTokens(subjectHint);
@@ -1908,19 +1914,37 @@ public final class CheckerHttpServer {
         return n;
     }
 
-    /** 从 LLM 输出宽容提取 JSON 对象中 key 对应的字符串数组（容忍 markdown 包裹与尾注）。 */
+    /** 从 LLM 输出宽容提取查询数组：兼容 ① {"key":[...]} 对象包装 ② 顶层数组 [...] ③ 行式文本。
+     *  S11：此前仅支持对象包装，LLM 直接返回数组/带思考前缀时全部解析失败 → 三轮同款降级查询。 */
     private static List<String> jsonStringArray(String text, String key) {
         List<String> out = new ArrayList<>();
         if (text == null) {
             return out;
         }
-        int b = text.indexOf('{');
-        int e = text.lastIndexOf('}');
+        String cleaned = text.replaceAll("(?s)```(json)?", "").trim();
+        // ② 顶层数组
+        int ab = cleaned.indexOf('[');
+        int ae = cleaned.lastIndexOf(']');
+        if (ab >= 0 && ae > ab) {
+            try {
+                JsonNode arr = MAPPER.readTree(cleaned.substring(ab, ae + 1));
+                if (arr.isArray()) {
+                    for (JsonNode x : arr) {
+                        String v = x.asText("").trim();
+                        if (!v.isEmpty()) out.add(v);
+                    }
+                    if (!out.isEmpty()) return out;
+                }
+            } catch (Exception ignore) { /* 落到对象解析 */ }
+        }
+        // ① 对象包装
+        int b = cleaned.indexOf('{');
+        int e = cleaned.lastIndexOf('}');
         if (b < 0 || e <= b) {
             return out;
         }
         try {
-            for (JsonNode x : MAPPER.readTree(text.substring(b, e + 1)).path(key)) {
+            for (JsonNode x : MAPPER.readTree(cleaned.substring(b, e + 1)).path(key)) {
                 String v = x.asText("").trim();
                 if (!v.isEmpty()) {
                     out.add(v);
