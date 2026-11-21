@@ -54,11 +54,20 @@ public final class OrchestratorServer {
         } catch (IOException e) {
             throw new IllegalStateException("workspace 不可创建: " + workspace, e);
         }
-        AGENT = OrchestratorAgentFactory.build(props, (digest, page) -> {
-            // 门禁 rail 的快照解析：编排器容器暂无快照目录，返回 null 走 MATERIAL_MISSING 语义
-            // （真实快照经 S7 后续接入 checker HTTP resolver）
-            return null;
-        }, workspace);
+        // S7.2：门禁 resolver 接真实快照——编排器容器挂载同一 /snapshot 卷（与 checker 同源），
+        // GatekeepRail 核验时按 digest+page 读原文，与 checker 门禁同数据源。
+        NumericChecker.SnapshotTextResolver snapshotResolver;
+        try {
+            snapshotResolver = new com.agenthub.w06.checker.server.CheckerHttpServer.SnapshotHttpResolver(
+                    Path.of(env("SNAPSHOT_DIR", "/snapshot")));
+        } catch (Exception e) {
+            System.err.println("[orchestrator] snapshot resolver fallback to null: " + e.getMessage());
+            snapshotResolver = (digest, page) -> null;
+        }
+        AGENT = OrchestratorAgentFactory.build(props, snapshotResolver, workspace);
+        // S7.2：注册 checker 触发工具——root 可经 HTTP 调六工位流水线（编排闭环第一步：
+        // root 任务分解 → run_pipeline 工具 → checker 确定性六工位 → 产物回给 root 汇总）
+        registerPipelineTool();
         AGENT.ensureInitialized();
     }
 
@@ -114,6 +123,55 @@ public final class OrchestratorServer {
         }
     }
 
+
+    /** S7.2：向 root DeepAgent 注册 run_pipeline 工具（LocalFunction，HTTP 调 checker 六工位）。 */
+    private static void registerPipelineTool() {
+        try {
+            String checkerBase = env("CHECKER_BASE", "http://w06-checker:18095");
+            java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(10)).build();
+            com.openjiuwen.core.foundation.tool.ToolCard toolCard =
+                    com.openjiuwen.core.foundation.tool.ToolCard.builder()
+                            .name("run_pipeline")
+                            .description("触发 DeepReport 六工位受控流水线（查数→分析→图表→写作→核验→主编），返回结构化报告工件 JSON。参数：bank=银行代码(cmb/icbc/ccb) 或 report_type=general+subject_hint=主题")
+                            .inputParams(java.util.Map.of(
+                                    "type", "object",
+                                    "properties", java.util.Map.of(
+                                            "bank", java.util.Map.of("type", "string", "description", "银行代码：cmb/icbc/ccb"),
+                                            "report_type", java.util.Map.of("type", "string", "description", "annual_report 或 general"),
+                                            "subject_hint", java.util.Map.of("type", "string", "description", "通用域主题")),
+                                    "required", java.util.List.of()))
+                            .build();
+            com.openjiuwen.core.foundation.tool.function.LocalFunction fn =
+                    new com.openjiuwen.core.foundation.tool.function.LocalFunction(toolCard, args -> {
+                                try {
+                                    ObjectNode body = MAPPER.createObjectNode();
+                                    Object bank = args.get("bank");
+                                    Object rt = args.get("report_type");
+                                    Object sh = args.get("subject_hint");
+                                    if (bank != null) body.put("bank", String.valueOf(bank));
+                                    if (rt != null) body.put("report_type", String.valueOf(rt));
+                                    if (sh != null) body.put("subject_hint", String.valueOf(sh));
+                                    java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                                            .uri(java.net.URI.create(checkerBase + "/v1/pipeline/run"))
+                                            .header("Content-Type", "application/json")
+                                            .timeout(java.time.Duration.ofSeconds(280))
+                                            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                                                    MAPPER.writeValueAsString(body)))
+                                            .build();
+                                    java.net.http.HttpResponse<String> resp =
+                                            http.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                                    return java.util.Map.of("pipeline_result", resp.body());
+                                } catch (Exception e) {
+                                    return java.util.Map.of("error", String.valueOf(e.getMessage()));
+                                }
+                            });
+            AGENT.registerHarnessTool(fn);
+            System.out.println("[orchestrator] run_pipeline tool registered (checker=" + checkerBase + ")");
+        } catch (Exception e) {
+            System.err.println("[orchestrator] registerPipelineTool failed: " + e);
+        }
+    }
     private static String env(String k, String d) {
         String v = System.getenv(k);
         return v == null || v.isBlank() ? d : v;

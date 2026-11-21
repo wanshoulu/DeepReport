@@ -164,12 +164,13 @@ public final class CheckerHttpServer {
      *  · digest 给定却未命中任何处 → 返回 null，绝不按页码凭空回退（更严防编造）；
      *  · digest 为空 —— 只在工件所属银行内按页码取文（防 N6 逐页扫描跨银行串行）。
      */
-    static final class SnapshotHttpResolver implements NumericChecker.SnapshotTextResolver {
+    /** S7.2：public 化——编排器容器挂同一 /snapshot 卷，直接复用快照装载（同源 resolver）。 */
+    public static final class SnapshotHttpResolver implements NumericChecker.SnapshotTextResolver {
         final LinkedHashMap<String, BankSnap> banks = new LinkedHashMap<>();
         final String defaultBank;
         final Map<String, String> sourceBank = new HashMap<>(); // content_sha256 → 所属银行
 
-        SnapshotHttpResolver(Path snapshotDir) throws IOException {
+    public SnapshotHttpResolver(Path snapshotDir) throws IOException {
             try (var stream = Files.list(snapshotDir)) {
                 for (Path d : stream.filter(Files::isDirectory).sorted().toList()) {
                     if (Files.isRegularFile(d.resolve("manifest.json"))) {
