@@ -2196,6 +2196,25 @@ public final class CheckerHttpServer {
         SKILL_REGISTRY.put(id, s);
     }
 
+    /** Swarm 专家包卡片字段合并：agents/packages/<id>/manifest.json 存在时，
+     *  把 display_name/display_description/category/tags/quick_inputs/default_init_input
+     *  合并进注册表（与 local/ 注册进 swarm marketplace 的专家包同源）。缺包则跳过（仅本地视图）。 */
+    private static void mergeSwarmCard(ObjectNode a, String id) {
+        try {
+            Path mf = STATIC_DIR_BASE.resolve("agents/packages").resolve(id).resolve("manifest.json");
+            Path repoPkg = Path.of("agents/packages").resolve(id).resolve("manifest.json");
+            Path use = Files.isRegularFile(mf) ? mf : (Files.isRegularFile(repoPkg) ? repoPkg : null);
+            if (use == null) return;
+            ObjectNode m = (ObjectNode) MAPPER.readTree(use.toFile());
+            for (String k : new String[]{"display_name", "display_description", "category",
+                    "tags", "quick_inputs", "default_init_input"}) {
+                if (m.has(k)) a.set(k, m.get(k));
+            }
+        } catch (Exception e) {
+            // 卡片缺失不阻塞注册
+        }
+    }
+
     /** 注册 agent：name=中文显示名（display_name 语义）；kind 改名 role（S3：语义角色，
      *  避免与 openJiuwen Hub 的资产类型 plugin_type 字段冲突）。 */
     private static void putAgent(Map<String, ObjectNode> pool, String id, String name, String kind,
@@ -2204,6 +2223,7 @@ public final class CheckerHttpServer {
         a.put("agent_id", id);
         a.put("name", name);
         a.put("role", kind);
+        mergeSwarmCard(a, id); // Swarm 规范卡片字段：agents/packages/<id>/manifest.json（双语 display/category/tags/quick_inputs）
         a.put("version", version);
         a.put("description", desc);
         a.put("source", registeredAt == null ? "MARKET" : "BUILT_IN");

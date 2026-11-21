@@ -22,6 +22,7 @@ COPY deploy/workbench.html /app/workbench.html
 COPY deploy/report-structure.json /app/report-structure.json
 COPY deploy/tools.json /app/tools.json
 COPY deploy/mcp-servers.json /app/mcp-servers.json
+COPY agents/packages /app/agents/packages
 COPY deploy/g6.min.js /app/g6.min.js
 # 技能库（skill_tool 经 /v1/skills 注册表按路径读取；此前缺失导致技能层 404）
 COPY skills /app/skills
