@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "risk-analyst",
+  "description": "贷款质量与风险抵补分析：不良余额/不良率、拨备覆盖率的洞察，负责比率类变动口径澄清。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Risk Analyst",
+    "zh": "风险与拨备 Agent"
+  },
+  "display_description": {
+    "en": "Risk Analyst for the DeepReport controlled report pipeline.",
+    "zh": "贷款质量与风险抵补分析：不良余额/不良率、拨备覆盖率的洞察，负责比率类变动口径澄清。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "分析招商银行贷款质量与拨备覆盖",
+    "en": "Analyze CMB loan quality and provision coverage"
+  },
+  "tags": [
+    {
+      "en": "Asset Quality",
+      "zh": "资产质量"
+    },
+    {
+      "en": "Provision Coverage",
+      "zh": "拨备覆盖"
+    },
+    {
+      "en": "Clarification",
+      "zh": "口径澄清"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Analyze CMB loan quality and provision coverage",
+      "zh": "分析招商银行贷款质量与拨备覆盖"
+    },
+    {
+      "en": "Clarify ratio change denomination",
+      "zh": "澄清比率类指标变动口径"
+    },
+    {
+      "en": "Interpret NPL ratio trend",
+      "zh": "解读不良率变动趋势"
+    }
+  ]
+}

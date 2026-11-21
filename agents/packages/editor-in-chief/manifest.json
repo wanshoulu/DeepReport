@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "editor-in-chief",
+  "description": "理解报告任务并分派查数、分析、图表、写作、核验六工位，汇总双核验结果并受控交付，批准与工件指纹绑定。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Editor-in-Chief",
+    "zh": "主编编排 Agent"
+  },
+  "display_description": {
+    "en": "Editor-in-Chief for the DeepReport controlled report pipeline.",
+    "zh": "理解报告任务并分派查数、分析、图表、写作、核验六工位，汇总双核验结果并受控交付，批准与工件指纹绑定。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "帮我编制招商银行 2025 年度经营简报",
+    "en": "Generate the 2025 annual operating brief for China Merchants Bank"
+  },
+  "tags": [
+    {
+      "en": "Annual Report",
+      "zh": "年报编制"
+    },
+    {
+      "en": "Orchestration",
+      "zh": "多工位编排"
+    },
+    {
+      "en": "Controlled Delivery",
+      "zh": "受控交付"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Generate the 2025 annual operating brief for China Merchants Bank",
+      "zh": "帮我编制招商银行 2025 年度经营简报"
+    },
+    {
+      "en": "Draft a research report on a custom subject",
+      "zh": "为自定义主题编制一份调研报告"
+    },
+    {
+      "en": "Explain the numeric and citation verification gate rules",
+      "zh": "解释数值与引用双核验的门禁规则"
+    }
+  ]
+}

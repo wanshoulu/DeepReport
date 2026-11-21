@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "chart-agent",
+  "description": "受控图表绘制：按图表数据文件与骨架配置挂载节位渲染内联 SVG，只渲染不改数、不发明图表。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Chart Agent",
+    "zh": "图表绘制 Agent"
+  },
+  "display_description": {
+    "en": "Chart Agent for the DeepReport controlled report pipeline.",
+    "zh": "受控图表绘制：按图表数据文件与骨架配置挂载节位渲染内联 SVG，只渲染不改数、不发明图表。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "为报告渲染内联 SVG 图表",
+    "en": "Render inline SVG charts for the report"
+  },
+  "tags": [
+    {
+      "en": "SVG Charts",
+      "zh": "内联图表"
+    },
+    {
+      "en": "Data Fidelity",
+      "zh": "数据保真"
+    },
+    {
+      "en": "Mount Validation",
+      "zh": "挂载校验"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Render inline SVG charts for the report",
+      "zh": "为报告渲染内联 SVG 图表"
+    },
+    {
+      "en": "Validate chart mount sections",
+      "zh": "校验图表挂载节位"
+    },
+    {
+      "en": "Check chart data consistency with metrics",
+      "zh": "检查图表数据与指标一致性"
+    }
+  ]
+}

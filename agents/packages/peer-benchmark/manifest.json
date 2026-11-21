@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "peer-benchmark",
+  "description": "四大行关键指标横向对标，为报告补充同业排名论断与相对水平解读。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Peer Benchmark Agent",
+    "zh": "同业对标 Agent"
+  },
+  "display_description": {
+    "en": "Peer Benchmark Agent for the DeepReport controlled report pipeline.",
+    "zh": "四大行关键指标横向对标，为报告补充同业排名论断与相对水平解读。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "对招商银行做四大行同业对标",
+    "en": "Benchmark CMB against the big four banks"
+  },
+  "tags": [
+    {
+      "en": "Peer Comparison",
+      "zh": "同业对标"
+    },
+    {
+      "en": "Ranking Analysis",
+      "zh": "排名分析"
+    },
+    {
+      "en": "Relative Position",
+      "zh": "相对水平"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Benchmark CMB against the big four banks",
+      "zh": "对招商银行做四大行同业对标"
+    },
+    {
+      "en": "Interpret peer ranking claims",
+      "zh": "解读同业排名论断"
+    },
+    {
+      "en": "Compare key metrics across the big four",
+      "zh": "对比四大行关键指标"
+    }
+  ]
+}

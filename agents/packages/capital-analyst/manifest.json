@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "capital-analyst",
+  "description": "资本充足分析：高级法与权重法下的 CET1 等资本口径解读与监管达标评估。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Capital Analyst",
+    "zh": "资本管理 Agent"
+  },
+  "display_description": {
+    "en": "Capital Analyst for the DeepReport controlled report pipeline.",
+    "zh": "资本充足分析：高级法与权重法下的 CET1 等资本口径解读与监管达标评估。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "分析招商银行资本充足状况",
+    "en": "Analyze CMB capital adequacy status"
+  },
+  "tags": [
+    {
+      "en": "Capital Adequacy",
+      "zh": "资本充足"
+    },
+    {
+      "en": "Basel Framework",
+      "zh": "巴塞尔口径"
+    },
+    {
+      "en": "Regulatory Compliance",
+      "zh": "监管达标"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Analyze CMB capital adequacy status",
+      "zh": "分析招商银行资本充足状况"
+    },
+    {
+      "en": "Explain the difference between IRB and standardized approaches",
+      "zh": "解读高级法与权重法差异"
+    },
+    {
+      "en": "Assess CET1 regulatory compliance",
+      "zh": "评估 CET1 监管达标情况"
+    }
+  ]
+}

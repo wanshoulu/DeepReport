@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "writer-agent",
+  "description": "受理长文写作任务书，自主分解章节写作计划并逐节成稿，核验违规在同一会话内反思修订。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Writer Agent",
+    "zh": "长文写作 Agent"
+  },
+  "display_description": {
+    "en": "Writer Agent for the DeepReport controlled report pipeline.",
+    "zh": "受理长文写作任务书，自主分解章节写作计划并逐节成稿，核验违规在同一会话内反思修订。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "为年报任务书逐节成稿",
+    "en": "Draft report sections from the long-form task book"
+  },
+  "tags": [
+    {
+      "en": "Long-form Writing",
+      "zh": "长文成稿"
+    },
+    {
+      "en": "Section Planning",
+      "zh": "章节分解"
+    },
+    {
+      "en": "Reflective Revision",
+      "zh": "反思修订"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Draft report sections from the long-form task book",
+      "zh": "为年报任务书逐节成稿"
+    },
+    {
+      "en": "Break down a writing plan per skill methodology",
+      "zh": "按技能方法分解写作计划"
+    },
+    {
+      "en": "Revise affected sections per verification feedback",
+      "zh": "按核验反馈修订受影响节"
+    }
+  ]
+}

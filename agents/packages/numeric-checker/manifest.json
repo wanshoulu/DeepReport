@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "numeric-checker",
+  "description": "N1–N7 数值纪律核验：指标完整性、单位白名单、数字页内字面存在、派生复算、同比复算与变动口径。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Numeric Checker",
+    "zh": "数值核验器"
+  },
+  "display_description": {
+    "en": "Numeric Checker for the DeepReport controlled report pipeline.",
+    "zh": "N1–N7 数值纪律核验：指标完整性、单位白名单、数字页内字面存在、派生复算、同比复算与变动口径。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "对报告工件执行数值核验",
+    "en": "Run numeric verification on a report artifact"
+  },
+  "tags": [
+    {
+      "en": "Numeric Verification",
+      "zh": "数值核验"
+    },
+    {
+      "en": "Rule Engine",
+      "zh": "规则引擎"
+    },
+    {
+      "en": "Blocking Gate",
+      "zh": "阻断门禁"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Run numeric verification on a report artifact",
+      "zh": "对报告工件执行数值核验"
+    },
+    {
+      "en": "Explain the N1-N7 rule list",
+      "zh": "解释 N1–N7 规则清单"
+    },
+    {
+      "en": "Recompute derived ratio metrics",
+      "zh": "复算派生比率指标"
+    }
+  ]
+}

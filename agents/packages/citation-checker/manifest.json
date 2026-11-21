@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "citation-checker",
+  "description": "引用溯源核验：摘录指纹比对、页内字面存在校验、信源注册表校验，防摘录伪造与信源未注册。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Citation Checker",
+    "zh": "引用核验器"
+  },
+  "display_description": {
+    "en": "Citation Checker for the DeepReport controlled report pipeline.",
+    "zh": "引用溯源核验：摘录指纹比对、页内字面存在校验、信源注册表校验，防摘录伪造与信源未注册。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "对报告工件执行引用核验",
+    "en": "Run citation verification on a report artifact"
+  },
+  "tags": [
+    {
+      "en": "Citation Verification",
+      "zh": "引用核验"
+    },
+    {
+      "en": "Fingerprint Matching",
+      "zh": "指纹比对"
+    },
+    {
+      "en": "Source Registry",
+      "zh": "信源注册表"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Run citation verification on a report artifact",
+      "zh": "对报告工件执行引用核验"
+    },
+    {
+      "en": "Explain the C1-C2 rules",
+      "zh": "解释 C1–C2 规则"
+    },
+    {
+      "en": "Check source registration status",
+      "zh": "检查信源注册状态"
+    }
+  ]
+}

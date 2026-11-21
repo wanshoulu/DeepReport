@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "approver",
+  "description": "具名批准交付：服务端重跑双核验全 PASSED 才签发批准，批准与工件 digest 绑定，内容一改即失效。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Approver",
+    "zh": "交付批准官"
+  },
+  "display_description": {
+    "en": "Approver for the DeepReport controlled report pipeline.",
+    "zh": "具名批准交付：服务端重跑双核验全 PASSED 才签发批准，批准与工件 digest 绑定，内容一改即失效。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "批准当前报告工件交付",
+    "en": "Approve the current report artifact for delivery"
+  },
+  "tags": [
+    {
+      "en": "Named Approval",
+      "zh": "具名批准"
+    },
+    {
+      "en": "Digest Binding",
+      "zh": "指纹绑定"
+    },
+    {
+      "en": "Re-verification",
+      "zh": "重跑核验"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Approve the current report artifact for delivery",
+      "zh": "批准当前报告工件交付"
+    },
+    {
+      "en": "Show how approval binds to artifact digest",
+      "zh": "查看批准与指纹绑定机制"
+    },
+    {
+      "en": "Explain the 409 refusal semantics",
+      "zh": "解释 409 拒绝语义"
+    }
+  ]
+}

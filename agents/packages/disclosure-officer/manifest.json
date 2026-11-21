@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "disclosure-officer",
+  "description": "披露规范审查：口径铁律、释义与脚注体例，对齐证监会 2 号准则的披露要求。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Disclosure Officer",
+    "zh": "披露合规 Agent"
+  },
+  "display_description": {
+    "en": "Disclosure Officer for the DeepReport controlled report pipeline.",
+    "zh": "披露规范审查：口径铁律、释义与脚注体例，对齐证监会 2 号准则的披露要求。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "审查报告的披露规范符合性",
+    "en": "Review the report for disclosure compliance"
+  },
+  "tags": [
+    {
+      "en": "Disclosure Review",
+      "zh": "披露审查"
+    },
+    {
+      "en": "Wording Rules",
+      "zh": "口径铁律"
+    },
+    {
+      "en": "Footnote Style",
+      "zh": "脚注体例"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Review the report for disclosure compliance",
+      "zh": "审查报告的披露规范符合性"
+    },
+    {
+      "en": "Check interpretation and footnote style",
+      "zh": "检查释义与脚注体例"
+    },
+    {
+      "en": "Explain the wording rules checklist",
+      "zh": "解释口径铁律清单"
+    }
+  ]
+}

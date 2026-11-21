@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "deep-search",
+  "description": "通用域主题任务的多轮联网深度调研：LLM 规划查询、搜索抓取落盘、评估充分性，不充分则改写再搜。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Deep Search Agent",
+    "zh": "深度调研 Agent"
+  },
+  "display_description": {
+    "en": "Deep Search Agent for the DeepReport controlled report pipeline.",
+    "zh": "通用域主题任务的多轮联网深度调研：LLM 规划查询、搜索抓取落盘、评估充分性，不充分则改写再搜。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "深度调研宁德时代最新经营状况",
+    "en": "Deep research on the latest business status of CATL"
+  },
+  "tags": [
+    {
+      "en": "Web Research",
+      "zh": "联网调研"
+    },
+    {
+      "en": "Source Authority",
+      "zh": "信源权威分级"
+    },
+    {
+      "en": "Sufficiency Evaluation",
+      "zh": "充分性评估"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Deep research on the latest business status of CATL",
+      "zh": "深度调研宁德时代最新经营状况"
+    },
+    {
+      "en": "Plan research queries and evaluate sufficiency",
+      "zh": "规划调研查询并评估资料充分性"
+    },
+    {
+      "en": "Explain the source authority grading rules",
+      "zh": "解释信源权威分级规则"
+    }
+  ]
+}

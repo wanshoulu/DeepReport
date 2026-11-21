@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "finance-analyst",
+  "description": "经营业绩与盈利结构分析：营收、净利润、净息差、成本收入比的逐指标洞察与同比口径解读。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Finance Analyst",
+    "zh": "财务分析 Agent"
+  },
+  "display_description": {
+    "en": "Finance Analyst for the DeepReport controlled report pipeline.",
+    "zh": "经营业绩与盈利结构分析：营收、净利润、净息差、成本收入比的逐指标洞察与同比口径解读。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "分析招商银行经营业绩与盈利结构",
+    "en": "Analyze CMB operating performance and profitability structure"
+  },
+  "tags": [
+    {
+      "en": "Earnings Analysis",
+      "zh": "经营分析"
+    },
+    {
+      "en": "Profitability",
+      "zh": "盈利结构"
+    },
+    {
+      "en": "YoY Interpretation",
+      "zh": "同比口径"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Analyze CMB operating performance and profitability structure",
+      "zh": "分析招商银行经营业绩与盈利结构"
+    },
+    {
+      "en": "Interpret the YoY change of net interest margin",
+      "zh": "解读净息差同比变动口径"
+    },
+    {
+      "en": "Compare cost-income ratio against industry level",
+      "zh": "对比成本收入比行业水平"
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "material-agent",
+  "description": "装载信源快照并建立指标索引，受理资料导入与页文本读取，为各工位提供可核验的一手资料基础。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "Material Agent",
+    "zh": "资料管理 Agent"
+  },
+  "display_description": {
+    "en": "Material Agent for the DeepReport controlled report pipeline.",
+    "zh": "装载信源快照并建立指标索引，受理资料导入与页文本读取，为各工位提供可核验的一手资料基础。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "装载招商银行年报快照并建立指标索引",
+    "en": "Load the CMB annual report snapshot and build the metrics index"
+  },
+  "tags": [
+    {
+      "en": "Snapshot Loading",
+      "zh": "快照装载"
+    },
+    {
+      "en": "Metrics Indexing",
+      "zh": "指标索引"
+    },
+    {
+      "en": "Source Registry",
+      "zh": "信源注册"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Load the CMB annual report snapshot and build the metrics index",
+      "zh": "装载招商银行年报快照并建立指标索引"
+    },
+    {
+      "en": "Import local PDF documents as supplementary sources",
+      "zh": "导入本地 PDF 补充资料"
+    },
+    {
+      "en": "Show the source registry status",
+      "zh": "查看信源注册表状态"
+    }
+  ]
+}
