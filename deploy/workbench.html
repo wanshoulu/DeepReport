@@ -1501,7 +1501,8 @@ async function renderAssets() {
   const agentTiles = (agents.runtime || []).map(a =>
     '<div class="asset-tile clickable" onclick="openAssetDetail(\'agent\',\'' + esc(a.agent_id) + '\')">'
     + '<div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.role) + statusBadge(a.status) + "</div>"
-    + '<div class="t-ver">v' + esc(a.version) + " · " + esc(a.agent_id) + "</div>"
+    + '<div class="t-ver">' + (a.version ? "v" + esc(a.version) + " · " : "") + esc(a.agent_id)
+    + (a.exec_form ? " · " + ({react: "ReAct", deepagent: "DeepAgent", workflow: "Workflow"}[a.exec_form] || a.exec_form) : "") + "</div>"
     + '<div class="t-desc">' + esc(a.description) + "</div>"
     + '<div class="t-foot">' + (a.capabilities || []).slice(0, 3).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
     + '<div class="t-summary">已绑技能 ' + (a.enabled_skills || []).length
@@ -1511,7 +1512,7 @@ async function renderAssets() {
   const skillTiles = (skills.length ? skills : []).map(s =>
     '<div class="asset-tile clickable" onclick="openAssetDetail(\'skill\',\'' + esc(s.skill_id) + '\')">'
     + '<div class="t-head"><span class="t-name">' + esc((s.display_name||{}).zh || s.name) + '</span><span class="badge neutral">已注册 ' + (s.registered_count || 0) + " agent</span></div>"
-    + '<div class="t-ver">' + esc(s.path) + "</div>"
+    + '<div class="t-ver">' + (s.registered_agents || []).length + " 个 agent 已绑定 · " + (s.tags || []).slice(0, 2).join(" / ") + "</div>"
     + '<div class="t-desc">' + esc(s.description) + "</div>"
     + '<div class="t-foot">' + (s.tags || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
     + '<div class="t-summary">点击查看详情 · 已绑定 agent 一览</div></div>').join("");
@@ -1519,10 +1520,10 @@ async function renderAssets() {
   await ensureMcpData();
   const mcpTiles = MCP_SERVERS.map(s =>
     '<div class="asset-tile clickable" onclick="openAssetDetail(\'mcp\',\'' + esc(s.server_id) + '\')">'
-    + '<div class="t-head"><span class="t-name">' + esc((s.display_name||{}).zh || s.name) + '</span><span class="t-ver">' + esc(s.ep) + "</span></div>"
+    + '<div class="t-head"><span class="t-name">' + esc((s.display_name||{}).zh || s.name) + '</span><span class="badge neutral">' + esc((s.protocol || "").split("(")[0] || "MCP") + '</span></div>'
     + '<div class="t-desc">' + esc(s.desc) + "</div>"
     + '<div class="t-foot">' + (s.apis || s.endpoints || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
-    + '<div class="t-summary">点击查看接口详情</div></div>').join("");
+    + '<div class="t-summary">点击查看接口详情 · 工具 ' + (s.tools || []).length + ' 个</div></div>').join("");
 
   const pageChips = Object.keys(m.page_digests).map(no =>
     '<button class="chip" data-snap-page="' + Number(no) + '">P' + Number(no) + "</button>").join("");
@@ -1563,7 +1564,7 @@ async function renderAssets() {
     + '<div class="asset-grid">' + agentTiles + "</div></div>"
     + '<div class="card"><h3>Skill · 技能库 <span class="hint">skills/annual-report/（1 主技能 + 6 参考知识 · 共 ' + skills.length + ' 个技能，包内含 scripts/assets/evals 五件套）· 可绑定给任意运行时 agent</span></h3>'
     + '<div class="asset-grid">' + skillTiles + "</div></div>"
-    + '<div class="card"><h3>MCP · 工具接口 <span class="hint">3 个服务</span></h3>'
+    + '<div class="card"><h3>MCP · 工具接口 <span class="hint">' + MCP_SERVERS.length + ' 个服务 · 工具总数 ' + MCP_SERVERS.reduce((n, s) => n + (s.tools || []).length, 0) + '</span></h3>'
     + '<div class="asset-grid">' + mcpTiles + "</div></div>"
     + '<div class="card"><h3>证据库 · 文件存储 <span class="hint">快照 manifest + pages 落盘文件（sha256 可回溯）· 任务/指标为内存态 —— 零数据库依赖</span></h3>'
     + '<div class="group-h">快照库 <span class="g-tag">落盘页文本 + sha256</span></div>'
