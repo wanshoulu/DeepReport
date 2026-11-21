@@ -98,7 +98,15 @@ public final class CheckerHttpServer {
     static final Map<String, ObjectNode> TASKS = new LinkedHashMap<>();               // task_id -> 任务记录
     static final Map<String, AnnualReportArtifacts> TASK_ARTIFACTS = new HashMap<>();  // task_id -> 交付工件
     static Path STATIC_DIR_BASE = Path.of(System.getenv().getOrDefault("STATIC_DIR", "/app")); // S1：技能文件/MCP 清单读取根
-    static final AtomicInteger TASK_SEQ = new AtomicInteger(2);                       // 启动预置 001–004，preload 后新任务从 005 递增
+    static final AtomicInteger TASK_SEQ = new AtomicInteger(2);                       // 兼容保留：年报域（AR）序列
+    /** S11.5 P1：任务号按前缀独立计数——此前 AR/GENERAL 共用 TASK_SEQ，通用域任务会顶掉年报号段
+     *  （实测 AR-009 之后直接跳 AR-015）。loadTaskState 恢复时按前缀分别推进。 */
+    static final java.util.concurrent.ConcurrentHashMap<String, AtomicInteger> TASK_SEQ_BY_PREFIX =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
+    static int nextTaskSeq(String prefix) {
+        return TASK_SEQ_BY_PREFIX.computeIfAbsent(prefix, k -> new AtomicInteger(0)).incrementAndGet();
+    }
 
     // Agent Hub：运行时（已注册，可动态加载）+ 市场目录（可安装注册）
     static final Map<String, ObjectNode> AGENT_RUNTIME = new LinkedHashMap<>();
@@ -1138,9 +1146,9 @@ public final class CheckerHttpServer {
         // 编号规则先取号，保证 runLongForm 会话 ID 与任务可互查（消除 w06-lf-null-*）。
         // 注意 registerTask 尾部 upsert 会以最终工件重算 digest，此处只取号不落库。
         if (art.taskId() == null || art.taskId().isBlank()) {
+            String prefix = "TASK-" + reportType.toUpperCase().replace('_', '-') + "-";
             String preId = taskId != null && !taskId.isBlank() ? taskId
-                    : "TASK-" + reportType.toUpperCase().replace('_', '-') + "-"
-                        + TASK_SEQ.incrementAndGet();
+                    : prefix + nextTaskSeq(prefix);
             art = new AnnualReportArtifacts(preId, art.company(), art.reportPeriod(),
                     art.generatedAt(), art.metrics(), art.citations(), art.sections(), art.charts());
             if (taskId == null || taskId.isBlank()) {
@@ -2185,8 +2193,9 @@ public final class CheckerHttpServer {
         if (id == null || id.isBlank()) {
             // 编号前缀按域区分：年报域工件带标准指标 → TASK-2025-AR；通用域（无标准指标）→ TASK-GEN
             boolean general = artifact == null || artifact.metrics() == null || artifact.metrics().isEmpty();
-            id = String.format(general ? "TASK-GEN-%03d" : "TASK-2025-AR-%03d",
-                    TASK_SEQ.incrementAndGet());
+            // S11.5：编号前缀与 pipeline 统一（TASK-GENERAL-n / TASK-2025-AR-n），按前缀独立计数
+            String pfx = general ? "TASK-GENERAL-" : "TASK-2025-AR-";
+            id = pfx + nextTaskSeq(pfx);
         }
         ObjectNode artNode = (ObjectNode) MAPPER.valueToTree(artifact);
         artNode.put("task_id", id);
@@ -2635,7 +2644,9 @@ public final class CheckerHttpServer {
                              if (dash > 0 && dash < id.length() - 1) {
                                  try {
                                      int seq = Integer.parseInt(id.substring(dash + 1));
-                                     TASK_SEQ.updateAndGet(cur -> Math.max(cur, seq));
+                                     String pfx = id.substring(0, dash + 1);
+                                     TASK_SEQ_BY_PREFIX.computeIfAbsent(pfx, k -> new AtomicInteger(0))
+                                             .updateAndGet(cur -> Math.max(cur, seq));
                                  } catch (NumberFormatException ignore) { }
                              }
                              System.out.println("task state restored: " + id);
