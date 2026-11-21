@@ -1426,9 +1426,10 @@ public final class CheckerHttpServer {
             return new LongFormOutcome(art, rounds);
         }
 
-        // 会话仅限单次生成流程内复用（任务书→续写→反思共享上下文）；跨 run 必须隔离，
-        // 否则框架记忆残留上次产出，agent 会复述旧稿而不按新任务书重新成稿。
-        String sessionId = "w06-lf-" + art.taskId() + "-" + System.currentTimeMillis();
+        // 会话仅限单次生成流程内复用（任务书→续写→反思共享上下文）；跨 run 必须隔离。
+        // Swarm 确定性纪律对齐：sessionId 不嵌 wall-clock（loader 禁 time/random/datetime/uuid），
+        // 用任务号派生——同任务号+同 prompt 在 journal 层可复用，隔离由 taskId 唯一性保证。
+        String sessionId = "w06-lf-" + art.taskId();
 
         // 1) 任务书分派：agent 自主分解章节写作任务并成稿（框架 task planning + 会话记忆）
         String draft = AgentChatClient.chat(
@@ -1720,7 +1721,7 @@ public final class CheckerHttpServer {
         out.put("agent", "deep-search");
         ArrayNode rounds = out.putArray("rounds");
         ArrayNode committed = out.putArray("committed");
-        String sessionId = "deep-search-" + Long.toHexString(System.currentTimeMillis());
+        String sessionId = "deep-search-" + Integer.toHexString(subject.hashCode()); // 确定性派生（禁 wall-clock）
         StringBuilder gathered = new StringBuilder(); // 已收集资料要点（供下轮查询规划与充分性评估）
         Set<String> seenUrls = new HashSet<>();       // 已命中 URL（跨轮去重，防重复抓取与重复落盘）
         int totalCommitted = 0;

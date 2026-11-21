@@ -25,6 +25,70 @@ import java.time.Duration;
 
 final class AgentChatClient {
 
+    /**
+     * Swarm journal 对齐（内容寻址缓存）：LLM 调用按 SHA256(prompt) 记录到
+     * STATIC_DIR/state/chat-journal/<hash>.json。重跑同一 prompt（同任务书/同查询规划）
+     * 命中即复用，不调外部 agent——中断重跑不重复烧 token。
+     * 语义与 agent-core journal.py 一致：key=内容寻址，sig=输入全文；
+     * CHAT_JOURNAL_ENABLED=false 关闭；TTL 过期（默认 24h）视为 miss。
+     */
+    private static final java.nio.file.Path JOURNAL_DIR =
+            java.nio.file.Path.of(System.getenv().getOrDefault("STATIC_DIR", "/app"))
+                    .resolve("state/chat-journal");
+    private static final boolean JOURNAL_ENABLED = !"false".equalsIgnoreCase(
+            System.getenv().getOrDefault("CHAT_JOURNAL_ENABLED", "true"));
+    private static final long JOURNAL_TTL_MS =
+            Long.parseLong(System.getenv().getOrDefault("CHAT_JOURNAL_TTL_HOURS", "24")) * 3600_000L;
+
+    private static String journalLookup(String prompt) {
+        if (!JOURNAL_ENABLED) return null;
+        try {
+            java.nio.file.Path f = JOURNAL_DIR.resolve(sha256Hex(prompt) + ".json");
+            if (!java.nio.file.Files.isRegularFile(f)) return null;
+            com.fasterxml.jackson.databind.JsonNode rec = MAPPER.readTree(f.toFile());
+            long at = rec.path("at").asLong(0);
+            if (System.currentTimeMillis() - at > JOURNAL_TTL_MS) return null; // TTL 过期 miss
+            String answer = rec.path("answer").asText("");
+            System.err.println("AgentChatClient: journal CACHE_HIT " + sha256Hex(prompt).substring(0, 12)
+                    + " (prompt " + prompt.length() + " chars)");
+            return answer.isEmpty() ? null : answer;
+        } catch (Exception e) {
+            return null; // journal 故障不影响主链路
+        }
+    }
+
+    private static void journalPut(String prompt, String answer, String sessionId) {
+        if (!JOURNAL_ENABLED || answer == null || answer.isEmpty()) return;
+        try {
+            java.nio.file.Files.createDirectories(JOURNAL_DIR);
+            ObjectNode rec = MAPPER.createObjectNode();
+            rec.put("at", System.currentTimeMillis());
+            rec.put("prompt_chars", prompt.length());
+            rec.put("session_id", sessionId);
+            rec.put("answer", answer);
+            java.nio.file.Path tmp = JOURNAL_DIR.resolve(sha256Hex(prompt) + ".tmp");
+            java.nio.file.Files.writeString(tmp, MAPPER.writeValueAsString(rec),
+                    java.nio.charset.StandardCharsets.UTF_8);
+            java.nio.file.Files.move(tmp, JOURNAL_DIR.resolve(sha256Hex(prompt) + ".json"),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception e) {
+            System.err.println("AgentChatClient: journal put failed: " + e.getMessage());
+        }
+    }
+
+    private static String sha256Hex(String s) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] h = md.digest(s.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : h) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     /** M11：一次 chat 的执行留痕——agent 实际加载的技能、调用过的工具（SSE 事件捕获）。 */
     record ChatTrace(java.util.List<String> skillsLoaded, java.util.List<String> toolsCalled) {
         static ChatTrace empty() { return new ChatTrace(java.util.List.of(), java.util.List.of()); }
@@ -68,6 +132,8 @@ final class AgentChatClient {
      */
     static String chat(String message, String sessionId) {
         LAST_TRACE = ChatTrace.empty(); // M11：每次会话重置留痕
+        String cached = journalLookup(message); // Swarm journal 对齐：内容寻址缓存优先
+        if (cached != null) return cached;
         LAST_TRACE = ChatTrace.empty(); // M11：每次会话重置留痕
         try {
             ObjectNode body = MAPPER.createObjectNode();
@@ -134,6 +200,7 @@ final class AgentChatClient {
                 }
             }
             String result = answer.toString().trim();
+            journalPut(message, result, sessionId); // Swarm journal 对齐：成功响应落盘
             return result.isEmpty() ? null : result;
         } catch (Exception e) {
             System.err.println("AgentChatClient: " + e.getClass().getName() + ": " + e.getMessage());
