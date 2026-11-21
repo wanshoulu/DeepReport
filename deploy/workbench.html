@@ -570,9 +570,11 @@ const statusBadge = s => {
   return '<span class="badge ' + cls + '">' + esc(label) + "</span>";
 };
 
-const KIND_LABEL = {
+const KIND_LABEL = { // S3：agent.role 徽标（RESEARCHER/WRITER/RENDERER 原缺失，补齐）
   ORCHESTRATOR: ["info", "编排"], ANALYST: ["neutral", "分析"],
-  CHECKER: ["warning", "核验"], APPROVER: ["success", "批准"]
+  RESEARCHER: ["info", "调研"], WRITER: ["neutral", "写作"],
+  RENDERER: ["neutral", "渲染"], CHECKER: ["warning", "核验"],
+  APPROVER: ["success", "批准"], USER: ["neutral", "用户"]
 };
 const kindBadge = k => {
   const [cls, label] = KIND_LABEL[k] || ["neutral", k || "—"];
@@ -1498,7 +1500,7 @@ async function renderAssets() {
 
   const agentTiles = (agents.runtime || []).map(a =>
     '<div class="asset-tile clickable" onclick="openAssetDetail(\'agent\',\'' + esc(a.agent_id) + '\')">'
-    + '<div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.kind) + statusBadge(a.status) + "</div>"
+    + '<div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.role) + statusBadge(a.status) + "</div>"
     + '<div class="t-ver">v' + esc(a.version) + " · " + esc(a.agent_id) + "</div>"
     + '<div class="t-desc">' + esc(a.description) + "</div>"
     + '<div class="t-foot">' + (a.capabilities || []).slice(0, 3).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"
@@ -1637,7 +1639,7 @@ async function openAgentDetail(id) {
   let html = "<h3>Agent 详情 · " + esc(a.name)
     + '<button class="d-close" onclick="closeDrawer()">×</button></h3>'
     + '<div class="d-block"><div class="d-label">身份</div><div class="d-val"><span class="mono">' + esc(a.agent_id)
-    + "</span> · v" + esc(a.version) + " " + kindBadge(a.kind) + " " + statusBadge(a.status) + "</div></div>"
+    + "</span> · v" + esc(a.version) + " " + kindBadge(a.role) + " " + statusBadge(a.status) + "</div></div>"
     + '<div class="d-block"><div class="d-label">描述</div><div class="d-val">' + esc(a.description) + "</div></div>"
     + '<div class="d-block"><div class="d-label">能力</div><div class="d-val">' + (capChips || "—") + "</div></div>"
     + '<div class="d-block"><div class="d-label">来源</div><div class="d-val">' + esc(srcLabel) + "</div></div>"
@@ -2473,7 +2475,7 @@ function agentTile(a) {
   const chief = (d.runtime || []).find(x => x.agent_id === "editor-in-chief");
   const team = (chief && chief.team) || [];
   return '<div class="asset-tile">'
-    + '<div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.kind) + statusBadge(a.status) + "</div>"
+    + '<div class="t-head"><span class="t-name">' + esc(a.name) + "</span>" + kindBadge(a.role) + statusBadge(a.status) + "</div>"
     + '<div class="t-ver">v' + esc(a.version) + " · " + esc(a.agent_id) + "</div>"
     + '<div class="t-desc">' + esc(a.description) + "</div>"
     + '<div class="t-foot">' + (a.capabilities || []).map(c => '<span class="chip">' + esc(c) + "</span>").join("") + "</div>"

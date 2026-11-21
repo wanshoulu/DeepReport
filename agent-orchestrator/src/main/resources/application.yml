@@ -16,7 +16,7 @@ openjiuwen:
       default-input-modes: ["text", "text/plain"]
       default-output-modes: ["text", "text/plain"]
       skills:
-        - id: "annual_report"
+        - id: "annual-report"
           name: "Annual Report Generation"
           description: "从固定年报快照生成经营与资产质量简报：八指标+引用+双分支分析，经确定性核验与语义门禁"
           tags: ["w06", "annual-report", "finance"]
@@ -37,9 +37,7 @@ openjiuwen:
         - name: writer-agent
           url: ${WRITER_AGENT_URL:}
           streaming: false
-        - name: critic
-          url: ${CRITIC_AGENT_URL:}
-          streaming: false
+        # critic: 暂未实现，声明移除（S7 架构补全时若实现再加回）
   demo:
     w06-orchestrator:
       provider: ${LLM_PROVIDER:OpenAI}

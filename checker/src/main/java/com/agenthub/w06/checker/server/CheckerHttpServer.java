@@ -289,7 +289,8 @@ public final class CheckerHttpServer {
         List<SourceEntry> sources = new java.util.concurrent.CopyOnWriteArrayList<>(loadSourceEntries(resolver));
         preloadTasks(staticDir, snapshotDir, resolver, sources);   // 报告库预置 4 条历史任务（三银行）
         seedAgents();                                 // Agent Hub：11 运行时 + 3 市场目录
-        seedSkills();                                 // 技能注册表：8 个技能（可绑定给 agent）
+        seedSkills();                                 // 技能注册表：2 个真 Skill（S3 合规）
+        loadRegistryState();                          // S3.5：合并上次运行的注册表变更（install/bind/unregister/team）
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
@@ -1691,8 +1692,7 @@ public final class CheckerHttpServer {
             }
             for (JsonNode s : a.path("enabled_skills")) {
                 String sid = s.asText();
-                if (general && ("annual-report".equals(sid) || "long-form-writing".equals(sid)
-                        || "banking-domain".equals(sid))) {
+                if (general && "annual-report".equals(sid)) { // S3：通用域不点亮年报域技能
                     continue;
                 }
                 skills.add(sid);
@@ -2079,7 +2079,8 @@ public final class CheckerHttpServer {
         return node;
     }
 
-    /** Agent Hub 种子：11 个内置运行时 agent（含默认 skill 绑定与主编团队）+ 3 个市场目录可安装 agent。 */
+    /** Agent Hub 种子（S3 修正计数）：12 个内置运行时 agent（含默认 skill 绑定与主编团队 10 人）
+     *  + 3 个市场目录可安装 agent。数字以 AGENT_RUNTIME/AGENT_CATALOG 实际 size 为准。 */
     private static void seedAgents() {
         String boot = Instant.now().toString();
         putAgent(AGENT_RUNTIME, "editor-in-chief", "主编编排 Agent", "ORCHESTRATOR", "1.0.0",
@@ -2089,7 +2090,7 @@ public final class CheckerHttpServer {
         putAgent(AGENT_RUNTIME, "material-agent", "资料管理 Agent", "ANALYST", "1.0.0",
                 "信源快照装载与页读取（read_page / list_metrics_index），编制资料导入的唯一入口",
                 new String[]{"快照装载", "页读取", "指标索引"},
-                new String[]{"annual-report", "source-library"}, boot);
+                new String[]{"annual-report"}, boot);
         putAgent(AGENT_RUNTIME, "deep-search", "深度调研 Agent", "RESEARCHER", "1.0.0",
                 "LLM 驱动的多轮联网深度调研：规划查询 → 搜索 → 抓取落盘 → 评估充分性 → 不充分改写再搜；"
                         + "抓取产物经 snapshot_commit 落盘注册进信源注册表后方可引用（纪律门）",
@@ -2098,11 +2099,11 @@ public final class CheckerHttpServer {
         putAgent(AGENT_RUNTIME, "finance-analyst", "财务分析 Agent", "ANALYST", "1.0.0",
                 "经营业绩与盈利结构分析：营收、净利润、净息差、成本收入比",
                 new String[]{"经营业绩分析", "盈利结构分析"},
-                new String[]{"annual-report", "banking-domain", "metric-dictionary"}, boot);
+                new String[]{"annual-report"}, boot);
         putAgent(AGENT_RUNTIME, "risk-analyst", "风险与拨备 Agent", "ANALYST", "1.0.0",
                 "贷款质量与风险抵补分析：不良余额/不良率、拨备覆盖率，负责变动口径澄清",
                 new String[]{"贷款质量分析", "口径澄清"},
-                new String[]{"annual-report", "banking-domain"}, boot);
+                new String[]{"annual-report"}, boot);
         putAgent(AGENT_RUNTIME, "capital-analyst", "资本管理 Agent", "ANALYST", "1.0.0",
                 "资本充足分析：高级法/权重法 CET1 等资本口径",
                 new String[]{"资本充足分析"},
@@ -2110,30 +2111,30 @@ public final class CheckerHttpServer {
         putAgent(AGENT_RUNTIME, "disclosure-officer", "披露合规 Agent", "ANALYST", "1.0.0",
                 "披露规范审查：口径铁律、释义与脚注体例（证监会 2 号准则对齐）",
                 new String[]{"披露口径审查", "释义脚注"},
-                new String[]{"annual-report", "citation-style"}, boot);
+                new String[]{"annual-report"}, boot);
         putAgent(AGENT_RUNTIME, "writer-agent", "长文写作 Agent", "WRITER", "1.0.0",
                 "受理长文写作任务书，经 openjiuwen deep agent 自主分解章节写作任务并逐节成稿；"
                         + "写作方法与流程来自报告编制技能（年报域/通用域），核验违规在同一会话内反思修订",
                 new String[]{"任务分解", "章节成稿", "反思修订"},
-                new String[]{"annual-report", "long-form-writing", "general-report", "general-long-form-writing"}, boot);
+                new String[]{"annual-report", "general-report"}, boot);
         putAgent(AGENT_RUNTIME, "chart-agent", "图表绘制 Agent", "RENDERER", "1.0.0",
                 "受控图表绘制：按图表数据文件与骨架配置挂载节位渲染内联 SVG，只渲染不改数、不发明图表",
                 new String[]{"图表绘制", "挂载校验"},
-                new String[]{"annual-report", "report-skeleton", "agent-division"}, boot);
+                new String[]{"annual-report"}, boot);
         putAgent(AGENT_RUNTIME, "numeric-checker", "数值核验器", "CHECKER", NumericChecker.CHECKER_VERSION,
                 "N1–N7 数值纪律：指标完整性、单位白名单、数字页内字面存在、派生复算、同比复算、变动口径",
                 new String[]{"数值复算", "口径拦截"},
-                new String[]{"annual-report", "metric-dictionary"}, boot);
+                new String[]{"annual-report"}, boot);
         putAgent(AGENT_RUNTIME, "citation-checker", "引用核验器", "CHECKER", CitationChecker.CHECKER_VERSION,
                 "引用溯源：摘录指纹比对、页内字面存在、信源注册表校验",
                 new String[]{"引用溯源", "防篡改"},
-                new String[]{"annual-report", "citation-style"}, boot);
+                new String[]{"annual-report"}, boot);
         putAgent(AGENT_RUNTIME, "approver", "交付批准官", "APPROVER", "1.0.0",
                 "具名批准交付：批准记录与工件 digest 绑定，内容一改批准即失效",
                 new String[]{"具名批准", "digest 绑定"},
                 new String[]{"annual-report"}, boot);
 
-        // 主编团队：内置 9 个专业执行 agent 默认注册给主编编排 Agent。
+        // 主编团队：内置 10 个专业执行 agent 默认注册给主编编排 Agent（approver 治理独立）。
         // approver 治理独立：批准权不经主编分派（分派链不得覆盖治理链）。
         ArrayNode team = AGENT_RUNTIME.get("editor-in-chief").putArray("team");
         for (String member : new String[]{"material-agent", "deep-search", "finance-analyst", "risk-analyst",
@@ -2156,45 +2157,25 @@ public final class CheckerHttpServer {
                 new String[]{}, null);
     }
 
-    /** 技能注册表种子：10 个技能（annual-report 8 个 + general-report 2 个），可绑定给任意运行时 agent。 */
+    /**
+     * 技能注册表种子（S3 合规修正）：只注册 2 个真 Skill——annual-report / general-report
+     * （目录含 SKILL.md 入口）。9 份 reference 方法文档不再注册为独立技能：它们是 SKILL.md
+     * 的 references/ 内部资源，按需经 skill_tool / /v1/skills/{id}/files 读取，符合
+     * openJiuwen「Skill 入口=根目录 SKILL.md、目录名=name、progressive disclosure」规范。
+     */
     private static void seedSkills() {
-        putSkill("annual-report", "annual-report 主技能", "skills/annual-report/SKILL.md",
-                "年报编制主技能：受控流程编排——资料装载 → 口径澄清 → 分节成稿 → 双重核验 → 具名批准，内含五份 reference（领域/引用/口径/信源/长文写作方法）。",
+        putSkill("annual-report", "年报编制技能", "skills/annual-report/SKILL.md",
+                "年报编制主技能：受控流程编排——资料装载 → 口径澄清 → 分节成稿 → 双重核验 → 具名批准，"
+                        + "内含 7 份 reference（领域/引用/口径/信源/骨架/分工/长文写作方法）。",
                 new String[]{"编排", "成稿", "核验", "批准"});
-        putSkill("long-form-writing", "长文写作方法", "skills/annual-report/references/long-form-writing.md",
-                "长文流水线写作方法与流程：任务书解读与分解、分节成稿法、引用标注法、口径句式规范、跨节一致性要求、核验违规修订流程。",
-                new String[]{"长文写作", "任务分解", "修订流程"});
-        putSkill("report-skeleton", "年报骨架方法", "skills/annual-report/references/report-skeleton.md",
-                "真实年报骨架方法（名称保留/深度收缩）：report-structure.json 是节序/标题/静态正文/责任 agent 的唯一事实源，新增银行零代码。",
-                new String[]{"骨架配置"});
-        putSkill("agent-division", "六工位分工", "skills/annual-report/references/agent-division.md",
-                "多 Agent 六工位分工：查数/分析/图表/写作/核验/主编的输入-输出-产物与分派纪律，分派来自骨架配置。",
-                new String[]{"多agent协同"});
-        putSkill("banking-domain", "银行业领域知识", "skills/annual-report/references/banking-domain.md",
-                "银行业术语与监管口径基线：巴塞尔资本口径、不良/拨备/资本概念辨析、监管指标体系。",
-                new String[]{"领域知识"});
-        putSkill("citation-style", "引用体例规范", "skills/annual-report/references/citation-style.md",
-                "引用三元组（digest/page/excerpt）与脚注体例、信源注册表使用规则、摘录指纹计算约定。",
-                new String[]{"引用规范"});
-        putSkill("metric-dictionary", "指标口径词典", "skills/annual-report/references/metric-dictionary.md",
-                "八指标口径词典：单位白名单、变动口径铁律（个百分点 vs %）、派生复算与同比复算规则。",
-                new String[]{"指标口径"});
-        putSkill("source-library", "信源库管理", "skills/annual-report/references/source-library.md",
-                "一手信源铁律与快照装载流程：页文本读取、digest 校验、二手信源禁入。",
-                new String[]{"信源管理"});
-        // —— 通用报告域（非年报）技能：与 annual-report 同布局，骨架差异全部由 report-structure.json 承载 ——
-        putSkill("general-report", "general-report 主技能", "skills/general-report/SKILL.md",
-                "通用报告编制主技能（调研/客户分析/通用深度报告等非年报域）：受控流程编排——资料装载 → 主题澄清 → 分节成稿 → 双重核验 → 具名批准，复用年报域的核验纪律与引用体例。",
+        putSkill("general-report", "通用报告技能", "skills/general-report/SKILL.md",
+                "通用报告编制主技能（调研/客户分析/通用深度报告等非年报域）：受控流程编排——"
+                        + "资料装载 → 主题澄清 → 分节成稿 → 双重核验 → 具名批准，"
+                        + "内含 3 份 reference（长文写作/骨架/深度联网调研 deep-search）。",
                 new String[]{"编排", "成稿", "核验", "批准", "通用"});
-        putSkill("general-long-form-writing", "通用报告长文写作", "skills/general-report/references/long-form-writing.md",
-                "通用报告长文写作方法：主题聚焦与分解、分节成稿法、引用标注法、口径句式规范、跨节一致性要求、核验违规修订流程（与年报域共用输出协议）。",
-                new String[]{"长文写作", "任务分解", "修订流程", "通用"});
-        putSkill("deep-search", "深度联网调研", "skills/general-report/references/deep-search.md",
-                "深度调研方法：查询规划与改写、信源权威性纪律（一手优先、聚合源降级标注）、"
-                        + "snapshot_commit 落盘注册流程、资料充分性评估与轮次控制。",
-                new String[]{"深搜", "信源纪律", "通用"});
     }
 
+    /** 注册真 Skill：skill_id=slug（=目录名），name=中文显示名（S3：display_name 语义）。 */
     private static void putSkill(String id, String name, String path, String desc, String[] tags) {
         ObjectNode s = MAPPER.createObjectNode();
         s.put("skill_id", id);
@@ -2208,12 +2189,14 @@ public final class CheckerHttpServer {
         SKILL_REGISTRY.put(id, s);
     }
 
+    /** 注册 agent：name=中文显示名（display_name 语义）；kind 改名 role（S3：语义角色，
+     *  避免与 openJiuwen Hub 的资产类型 plugin_type 字段冲突）。 */
     private static void putAgent(Map<String, ObjectNode> pool, String id, String name, String kind,
                                  String version, String desc, String[] caps, String[] skills, String registeredAt) {
         ObjectNode a = MAPPER.createObjectNode();
         a.put("agent_id", id);
         a.put("name", name);
-        a.put("kind", kind);
+        a.put("role", kind);
         a.put("version", version);
         a.put("description", desc);
         a.put("source", registeredAt == null ? "MARKET" : "BUILT_IN");
@@ -2257,6 +2240,7 @@ public final class CheckerHttpServer {
         a.put("status", "RUNNING");
         a.put("registered_at", Instant.now().toString());
         AGENT_RUNTIME.put(id, a);
+        saveRegistryState(); // S3.5：注册表变更落盘
         respond(ex, 200, a.deepCopy());
     }
 
@@ -2385,6 +2369,55 @@ public final class CheckerHttpServer {
         respond(ex, 200, body);
     }
 
+    /** S3.5：注册表持久化——把运行时状态（AGENT_RUNTIME/AGENT_CATALOG/SKILL 绑定）原子写
+     *  deploy/state/registry.json；容器重启后 loadRegistryState 合并 seed 之上，用户操作不丢。 */
+    private static Path registryStatePath() {
+        return STATIC_DIR_BASE.resolve("state/registry.json");
+    }
+
+    private static synchronized void saveRegistryState() {
+        try {
+            ObjectNode out = MAPPER.createObjectNode();
+            ArrayNode rt = out.putArray("runtime");
+            for (ObjectNode a : AGENT_RUNTIME.values()) rt.add(a.deepCopy());
+            ArrayNode cat = out.putArray("catalog");
+            for (ObjectNode a : AGENT_CATALOG.values()) cat.add(a.deepCopy());
+            Path f = registryStatePath();
+            Files.createDirectories(f.getParent());
+            Path tmp = f.resolveSibling("registry.json.tmp");
+            Files.writeString(tmp, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(out),
+                    StandardCharsets.UTF_8);
+            Files.move(tmp, f, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception e) {
+            System.err.println("saveRegistryState: " + e.getMessage());
+        }
+    }
+
+    private static void loadRegistryState() {
+        Path f = registryStatePath();
+        if (!Files.isRegularFile(f)) return;
+        try {
+            JsonNode st = MAPPER.readTree(f.toFile());
+            for (JsonNode a : st.path("runtime")) {
+                String id = a.path("agent_id").asText();
+                if (!id.isBlank() && !AGENT_RUNTIME.containsKey(id) && !"editor-in-chief".equals(id)) {
+                    AGENT_RUNTIME.put(id, (ObjectNode) a);
+                }
+            }
+            for (JsonNode a : st.path("catalog")) {
+                String id = a.path("agent_id").asText();
+                if (!id.isBlank() && !AGENT_RUNTIME.containsKey(id) && !AGENT_CATALOG.containsKey(id)) {
+                    AGENT_CATALOG.put(id, (ObjectNode) a);
+                }
+            }
+            System.out.println("registry state restored: runtime=" + AGENT_RUNTIME.size()
+                    + " catalog=" + AGENT_CATALOG.size());
+        } catch (Exception e) {
+            System.err.println("loadRegistryState: " + e.getMessage());
+        }
+    }
+
     private static void handleSkillsList(HttpExchange ex) throws IOException {
         ArrayNode arr = MAPPER.createArrayNode();
         for (ObjectNode s : SKILL_REGISTRY.values()) {
@@ -2429,7 +2462,7 @@ public final class CheckerHttpServer {
         ObjectNode chief = AGENT_RUNTIME.get("editor-in-chief");
         if (chief != null) {
             nodes.add(graphNode("agent:editor-in-chief", "main", chief.path("name").asText("主编编排 Agent"),
-                    chief.path("kind").asText("ORCHESTRATOR"), chief.path("description").asText(), "runtime"));
+                    chief.path("role").asText("ORCHESTRATOR"), chief.path("description").asText(), "runtime"));
         }
         for (ObjectNode a : AGENT_RUNTIME.values()) {
             String id = a.path("agent_id").asText();
@@ -2437,7 +2470,7 @@ public final class CheckerHttpServer {
                 continue;
             }
             nodes.add(graphNode("agent:" + id, "agent", a.path("name").asText(id),
-                    a.path("kind").asText(), a.path("description").asText(), "runtime"));
+                    a.path("role").asText(), a.path("description").asText(), "runtime"));
             if (chief != null && jsonArrayHas(chief.path("team"), id)) {
                 addEdge(edges, "agent:editor-in-chief", "agent:" + id, "register", "团队注册");
             }
@@ -2450,7 +2483,7 @@ public final class CheckerHttpServer {
         // 市场目录 agent：未安装注册，虚线呈现（state=market），无关联边
         for (ObjectNode a : AGENT_CATALOG.values()) {
             nodes.add(graphNode("agent:" + a.path("agent_id").asText(), "agent",
-                    a.path("name").asText(), a.path("kind").asText(),
+                    a.path("name").asText(), a.path("role").asText(),
                     a.path("description").asText() + "（市场目录未安装）", "market"));
         }
         for (ObjectNode s : SKILL_REGISTRY.values()) {
@@ -2543,7 +2576,8 @@ public final class CheckerHttpServer {
                 return;
             }
         }
-        respond(ex, 200, a.deepCopy());
+                saveRegistryState(); // S3.5
+respond(ex, 200, a.deepCopy());
     }
 
     /** agent→主编团队注册/退出：POST /v1/agents/editor-in-chief/team {agent_id, action: register|unregister}。 */
@@ -2599,6 +2633,7 @@ public final class CheckerHttpServer {
             }
         }
         respond(ex, 200, chief.deepCopy());
+        saveRegistryState(); // S3.5：团队变更落盘
     }
 
     /**
@@ -2635,6 +2670,7 @@ public final class CheckerHttpServer {
             a.putNull("last_loaded_at");
             AGENT_CATALOG.put(id, a);
         }
+        saveRegistryState(); // S3.5：注销变更落盘
         ObjectNode out = MAPPER.createObjectNode();
         out.put("status", "UNREGISTERED");
         out.put("agent_id", id);
@@ -2656,7 +2692,7 @@ public final class CheckerHttpServer {
             respond(ex, 400, errorNode("bad_request", "name 不能为空"));
             return;
         }
-        String kind = body.path("kind").asText("ANALYST");
+        String kind = body.path("role").asText(body.path("kind").asText("ANALYST")); // S3：role 优先，兼容旧 kind 字段
         if (!List.of("ORCHESTRATOR", "ANALYST", "WRITER", "RENDERER", "CHECKER", "APPROVER").contains(kind)) {
             respond(ex, 400, errorNode("bad_request",
                     "kind 须为 ORCHESTRATOR|ANALYST|WRITER|RENDERER|CHECKER|APPROVER"));
@@ -2681,7 +2717,7 @@ public final class CheckerHttpServer {
         ObjectNode a = MAPPER.createObjectNode();
         a.put("agent_id", id);
         a.put("name", name);
-        a.put("kind", kind);
+        a.put("role", kind);
         a.put("version", "0.1.0");
         a.put("description", desc);
         a.put("source", "CUSTOM");

@@ -110,7 +110,7 @@ public final class A2aWrapperServer {
         ArrayNode out = card.putArray("defaultOutputModes");
         out.add("application/json");
         ObjectNode skill = card.putArray("skills").addObject();
-        skill.put("id", "generate_annual_report");
+        skill.put("id", "generate-annual-report");
         skill.put("name", "受控报告生成");
         skill.put("description", "输入报告主题（年报域为企业与报告期），产出经数值与引用双重核验的"
                 + "结构化报告工件，附带核验结果、内容指纹与工作台报告链接。");
