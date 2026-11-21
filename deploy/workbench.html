@@ -1836,7 +1836,10 @@ function toast(msg) {
 }
 
 /* ———— 协作图谱（报告编制页右侧）：AntV G6 专业图引擎 + 任务执行动态点亮 ———— */
-const GRAPH = { data: null, chart: null, running: false, lit: new Set(), focus: null, flowTimer: null, flowOffset: 0, flowSpeed: 0.35, breathTimer: null, breath: 0 };
+const GRAPH = { data: null, chart: null, running: false, lit: new Set(), focus: null, flowTimer: null, flowOffset: 0, flowSpeed: 0.35, breathTimer: null, breath: 0,
+  trail: new Set(),        // S6：本次任务累计参与（graphFinish 展示全量）
+  tokenLayer: null, tctx: null, tokens: [], rafId: null,  // S6：token 飞行粒子层
+  reduced: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches }; // G17
 const GP_ECOLOR = { register: "#8a5fd0", bind: "#3b7bf5", serve: "#17937c", call: "#d98b21" };
 const GP_CATS = [
   { name: "主 agent", color: "#8a5fd0" }, { name: "专业 agent", color: "#3b7bf5" },
@@ -2046,6 +2049,77 @@ function buildEdges() {
   }));
 }
 
+/** S6/G15：token 飞行粒子层 —— overlay canvas 叠在 G6 之上，requestAnimationFrame 驱动。
+ *  点亮边发射沿边飞行的圆点（调用发出语义）；reduced-motion 时不发射（G17）。
+ *  独立于 g6.min.js（该构建无 element.animate），零侵入。 */
+function gpEnsureTokenLayer() {
+  if (GRAPH.tokenLayer) return;
+  const body = document.querySelector(".gp-body");
+  const chart = document.getElementById("gp-chart");
+  if (!body || !chart) return;
+  const cv = document.createElement("canvas");
+  cv.style.cssText = "position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:3";
+  body.insertBefore(cv, body.firstChild);
+  const ro = () => { cv.width = chart.clientWidth * 2; cv.height = chart.clientHeight * 2; };
+  ro(); new ResizeObserver(ro).observe(chart);
+  GRAPH.tokenLayer = cv; GRAPH.tctx = cv.getContext("2d");
+}
+function gpEdgeTokens() {
+  // 点亮边：两端节点屏幕坐标 + 关系色
+  const out = [];
+  if (!GRAPH.chart || !GRAPH.data) return out;
+  const m = GRAPH.chart.getEdges().map(e => e.getModel());
+  const src = {};
+  GRAPH.chart.getNodes().forEach(n => { const mm = n.getModel(); src[mm.id] = n; });
+  m.forEach(e => {
+    if (!GRAPH.running || !GRAPH.lit.has(e.source) || !GRAPH.lit.has(e.target)) return;
+    const a = src[e.source], b = src[e.target];
+    if (!a || !b) return;
+    out.push({ a, b, color: (e.style || {}).stroke || "#3b7bf5" });
+  });
+  return out;
+}
+function gpSpawnTokens() {
+  gpEnsureTokenLayer();
+  if (GRAPH.reduced || !GRAPH.tokenLayer) return; // G17
+  gpEdgeTokens().forEach((e, i) => {
+    for (let k = 0; k < 2; k++)
+      GRAPH.tokens.push({ edge: e, p: (i * 0.13 + k * 0.5) % 1, speed: 0.006 });
+  });
+  if (!GRAPH.rafId) gpTick();
+}
+function gpClearTokens() { GRAPH.tokens = []; }
+function gpTick() {
+  GRAPH.rafId = requestAnimationFrame(gpTick);
+  const ctx = GRAPH.tctx, cv = GRAPH.tokenLayer;
+  if (!ctx || !cv) return;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  if (!GRAPH.tokens.length) return;
+  const pt = (item, canvasPt) => {
+    // G6 item 屏幕坐标 → canvas 像素（2x）
+    const m = item.get("group").getCanvasBBox ? item.get("group").getCanvasBBox() : { x: 0, y: 0 };
+    const box = GRAPH.chart.get("canvas").getPointByClient ? null : null;
+    return { x: (m.x + (m.width || 0) / 2) * 2, y: (m.y + (m.height || 0) / 2) * 2 };
+  };
+  const alive = [];
+  for (const tk of GRAPH.tokens) {
+    if (!GRAPH.running) continue; // 运行结束停发
+    tk.p += tk.speed;
+    if (tk.p > 1) { tk.p = 0; }
+    try {
+      const A = pt(tk.edge.a), B = pt(tk.edge.b);
+      const x = A.x + (B.x - A.x) * tk.p, y = A.y + (B.y - A.y) * tk.p;
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = tk.edge.color; ctx.globalAlpha = 0.85;
+      ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); // 尾迹光晕
+      ctx.globalAlpha = 0.18; ctx.fill(); ctx.globalAlpha = 1;
+      alive.push(tk);
+    } catch (e) { /* 单 token 失败不阻断 */ }
+  }
+  GRAPH.tokens = alive.slice(-40); // 上限防膨胀
+}
+
 /** 状态渲染：运行态点亮/淡显、点击聚焦邻域、点亮边蚂蚁线流动（增量 updateItem）。 */
 function renderGraph() {
   const g = GRAPH.chart;
@@ -2186,35 +2260,47 @@ function gpLight(id) { // G10：点亮前校验节点存在，标注悬空 id �
 }
 async function graphStage(st) {
   if (!GRAPH.data || !st) return;
-  // S1：工具参与时同步点亮网关节点，让 serve/call 关系边能亮（不再孤立）
+  // S6/G5：每工位重建当前子图（lit 只含本工位参与对象），历史累计进 trail ——
+  // 「点亮=当前工位」，不再全任务并集糊成一片；graphFinish 用 trail 复亮全量。
   const ids = (st.tools || []).length ? ["agent:editor-in-chief", "mcp:gateway"]
     : ["agent:editor-in-chief"];
   (st.nodes || []).forEach(a => { if (!ids.includes("agent:" + a)) ids.push("agent:" + a); });
   (st.skills || []).forEach(s => { const id = "skill:" + s; if (!ids.includes(id)) ids.push(id); });
   (st.tools || []).forEach(t => { const id = "mcp:" + t; if (!ids.includes(id)) ids.push(id); });
+  GRAPH.lit.clear();
+  ids.forEach(id => { GRAPH.trail.add(id); try { gpLight(id); } catch (e) { /* 单点失败不阻断 */ } });
   const parts = [];
   if ((st.nodes || []).length) parts.push("agent×" + st.nodes.length);
   if ((st.skills || []).length) parts.push("skill×" + st.skills.length);
   if ((st.tools || []).length) parts.push("MCP 工具×" + st.tools.length);
   setGpStatus("run", "【" + (st.name || st.stage_id || "") + "工位】" + (st.headline || "") + "　参与：" + (parts.join(" · ") || "—"));
-  for (const id of ids) { try { gpLight(id); } catch (e) { /* 单点失败不阻断流水线 */ } await sleep(120); }
+  gpSpawnTokens(); // S6：为点亮边发射飞行 token（调用语义）
+  await sleep(420); // 工位间停顿给子图观察时间（原 120/id 太碎）
 }
 function graphBeginRun(plan) {
   GRAPH.running = true;
   GRAPH.flowSpeed = 0.8;
   GRAPH.lit.clear();            // S1：新任务清空上一任务点亮，防跨任务污染
+  GRAPH.trail.clear();          // S6：新任务历史轨迹清零
   GRAPH.focus = null;
   if (plan && plan.summary) $("#gp-plan").innerHTML = "<b>主 agent 规划</b> — " + esc(plan.summary);
   setGpStatus("run", "主 agent 任务理解与规划中…");
   renderGraph();
 }
 function graphFinish() {
-  setGpStatus("done", "任务执行完成 —— 本次任务参与对象保持点亮并继续流动，未参与的保持淡显");
+  // S6/G5：结束时用 trail 复亮本次任务全部参与对象（真实历史，非六工位糊亮）
+  GRAPH.lit = new Set(GRAPH.trail);
+  renderGraph();
+  gpSpawnTokens();
+  setGpStatus("done", "任务执行完成（按流水线结果回放）—— 本次累计参与 " + GRAPH.trail.size
+    + " 个对象已复亮；工位时序为响应后回放，非实时执行");
 }
 function graphReset() {
   GRAPH.running = false;
   GRAPH.flowSpeed = 0.35;
   GRAPH.lit.clear();
+  GRAPH.trail.clear();
+  gpClearTokens();
   setGpStatus("", "空闲 —— 点击节点查看详情；任务开始后按主 agent 规划依次点亮参与对象");
   renderGraph();
 }
