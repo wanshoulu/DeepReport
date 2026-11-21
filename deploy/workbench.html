@@ -1841,11 +1841,11 @@ const GRAPH = { data: null, chart: null, running: false, lit: new Set(), focus: 
   tokenLayer: null, tctx: null, tokens: [], rafId: null,  // S6：token 飞行粒子层
   reduced: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches }; // G17
 const GP_ECOLOR = { register: "#8a5fd0", bind: "#3b7bf5", serve: "#17937c", call: "#d98b21" };
-const GP_CATS = [
-  { name: "主编（对话流 ReAct）", color: "#8a5fd0" }, { name: "Workflow 工位", color: "#3b7bf5" },
+const GP_CATS = [ // S8.3：高对比配色（主智能体金红=最高级；与蓝/绿/黄拉开）
+  { name: "对话助手（工位协调）", color: "#8a5fd0" }, { name: "Workflow 工位", color: "#3b7bf5" },
   { name: "skill", color: "#17937c" }, { name: "MCP 工具", color: "#d98b21" },
   { name: "市场目录", color: "#98a0ab" },
-  { name: "ReAct 循环 agent", color: "#0f8a5f" }, { name: "DeepAgent 编排", color: "#d64545" }
+  { name: "ReAct 循环 agent", color: "#0f8a5f" }, { name: "主智能体·主编编排器", color: "#c2185b" }
 ];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -1863,8 +1863,8 @@ async function initGraphPanel() {
     + "</div>"
     + '<div class="gp-legend">'
     + '<span style="color:var(--muted)">节点：</span>'
-    + '<span><i style="background:' + GP_CATS[0].color + ';width:10px;height:10px;border-radius:50%"></i>主编（对话流）</span>'
-    + '<span><i style="background:' + GP_CATS[6].color + ';width:12px;height:12px;border-radius:50%"></i>DeepAgent 编排</span>'
+    + '<span><i style="background:' + GP_CATS[6].color + ';width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 2px #ffd54f"></i>主智能体（主编编排器）</span>'
+    + '<span><i style="background:' + GP_CATS[0].color + ';width:10px;height:10px;border-radius:50%"></i>对话助手（工位协调）</span>'
     + '<span><i style="background:' + GP_CATS[5].color + ';width:9px;height:9px;border-radius:50%"></i>ReAct 循环</span>'
     + '<span><i style="background:' + GP_CATS[1].color + ';width:7px;height:7px;border-radius:50%"></i>Workflow 工位</span>'
     + '<span><i style="background:' + GP_CATS[2].color + ';width:9px;height:4px;border-radius:2px"></i>skill</span>'
@@ -2046,9 +2046,9 @@ function buildNodes() {
     return {
       id: n.id, label: shortLabel(n.label), _raw: n,
       type: "circle",
-      size: isMain ? 56 : cat === 6 ? 44 : cat === 5 ? 38 : cat === 1 ? 30 : cat === 3 ? 28 : cat === 4 ? 22 : 24,
+      size: isMain ? 46 : cat === 6 ? 54 : cat === 5 ? 38 : cat === 1 ? 30 : cat === 3 ? 28 : cat === 4 ? 22 : 24,
       x: n.x, y: n.y,
-      style: { fill: col, stroke: "#fff", lineWidth: isMain ? 3 : 1.5,
+      style: { fill: col, stroke: cat === 6 ? "#ffd54f" : "#fff", lineWidth: cat === 6 ? 4 : isMain ? 3 : 1.5,
         opacity: n.state === "market" ? 0.6 : 1,                       // S1：市场目录（未安装）降透明
         lineDash: n.state === "market" ? [4, 3] : null,                 // S1：后端注释承诺的「虚线呈现」落地
         cursor: "pointer" },

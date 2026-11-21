@@ -292,6 +292,7 @@ public final class CheckerHttpServer {
         seedAgents();                                 // Agent Hub：11 运行时 + 3 市场目录
         seedSkills();                                 // 技能注册表：2 个真 Skill（S3 合规）
         loadRegistryState();                          // S3.5：合并上次运行的注册表变更（install/bind/unregister/team）
+        loadTaskState();                              // S9：恢复上次运行的任务库（报告库重启不丢）
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
@@ -2066,6 +2067,7 @@ public final class CheckerHttpServer {
         }
         TASKS.put(id, task);
         TASK_ARTIFACTS.put(id, synced);
+        saveTaskState(id); // S9：任务/报告库持久化（registry.json 同款方案，重启不丢）
         return task;
     }
 
@@ -2424,6 +2426,63 @@ public final class CheckerHttpServer {
         respond(ex, 200, body);
     }
 
+    /** S9：任务库持久化——deploy/state/tasks/{task_id}.json（task 记录+工件摘要），原子写。
+     *  报告库此前只存内存，容器重启即丢（用户实测发现：编过的报告重启后全部消失）。
+     *  与 registry.json 同款方案。 */
+    private static Path taskStateDir() {
+        return STATIC_DIR_BASE.resolve("state/tasks");
+    }
+
+    private static void saveTaskState(String id) {
+        try {
+            ObjectNode rec = MAPPER.createObjectNode();
+            rec.set("task", TASKS.get(id).deepCopy());
+            ObjectNode art = rec.putObject("artifact");
+            AnnualReportArtifacts a = TASK_ARTIFACTS.get(id);
+            if (a != null) {
+                art.put("company", a.company());
+                art.put("report_period", a.reportPeriod());
+                art.put("metrics_count", a.metrics().size());
+                art.put("sections_count", a.sections().size());
+                art.put("citations_count", a.citations().size());
+            }
+            Path dir = taskStateDir();
+            Files.createDirectories(dir);
+            Path tmp = dir.resolve(id + ".json.tmp");
+            Files.writeString(tmp, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(rec),
+                    StandardCharsets.UTF_8);
+            Files.move(tmp, dir.resolve(id + ".json"),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (Exception e) {
+            System.err.println("saveTaskState(" + id + "): " + e.getMessage());
+        }
+    }
+
+    private static void loadTaskState() {
+        Path dir = taskStateDir();
+        if (!Files.isDirectory(dir)) return;
+        try (java.util.stream.Stream<Path> files = Files.list(dir)) {
+            files.filter(f -> f.getFileName().toString().endsWith(".json"))
+                 .sorted()
+                 .forEach(f -> {
+                     try {
+                         JsonNode rec = MAPPER.readTree(f.toFile());
+                         String id = rec.path("task").path("task_id").asText("");
+                         if (!id.isBlank() && !TASKS.containsKey(id)) {
+                             TASKS.put(id, (ObjectNode) rec.path("task"));
+                             // 工件全文不回灌（摘要足够报告库列表展示）；详情按需从文件重建
+                             System.out.println("task state restored: " + id);
+                         }
+                     } catch (Exception e) {
+                         System.err.println("loadTaskState " + f.getFileName() + ": " + e.getMessage());
+                     }
+                 });
+        } catch (Exception e) {
+            System.err.println("loadTaskState: " + e.getMessage());
+        }
+    }
+
     /** S3.5：注册表持久化——把运行时状态（AGENT_RUNTIME/AGENT_CATALOG/SKILL 绑定）原子写
      *  deploy/state/registry.json；容器重启后 loadRegistryState 合并 seed 之上，用户操作不丢。 */
     private static Path registryStatePath() {
@@ -2523,8 +2582,10 @@ public final class CheckerHttpServer {
 
         ObjectNode chief = AGENT_RUNTIME.get("editor-in-chief");
         if (chief != null) {
-            ObjectNode gn = graphNode("agent:editor-in-chief", "main", chief.path("name").asText("主编编排 Agent"),
-                    chief.path("role").asText("ORCHESTRATOR"), chief.path("description").asText(), "runtime");
+            ObjectNode gn = graphNode("agent:editor-in-chief", "main", "对话助手（工位协调）",
+                    chief.path("role").asText("ORCHESTRATOR"), 
+                    "workbench 对话流的工位协调入口：口径澄清、状态查询、六工位结果播报。主控权在主智能体·主编编排器（DeepAgent）。",
+                    "runtime");
             gn.put("exec_form", chief.path("exec_form").asText("react")); // S7.5
             nodes.add(gn);
         }
@@ -2567,9 +2628,9 @@ public final class CheckerHttpServer {
         // S7.6：root DeepAgent 编排器（独立实体——对话流 editor-in-chief 是 ReAct 编排，
         // 装车后的编排器是 openjiuwen DeepAgent（todo/技能/双层循环），两者不要混同）
         if ("true".equalsIgnoreCase(System.getenv().getOrDefault("SHOW_ROOT_AGENT", "true"))) {
-            ObjectNode gn = graphNode("agent:w06-orchestrator-root", "agent", "主编编排器（DeepAgent）",
+            ObjectNode gn = graphNode("agent:w06-orchestrator-root", "agent", "主智能体·主编编排器",
                     "ORCHESTRATOR",
-                    "openjiuwen DeepAgent：plan_experts 选人 → run_pipeline 触发六工位 → 门禁汇总；todo 管理任务清单（与对话流主编是两个实体）",
+                    "【主智能体】openjiuwen DeepAgent：受理报告任务 → plan_experts 选人 → run_pipeline 触发六工位 → 门禁汇总交付。全系统唯一主控（todo/技能/双层循环）。",
                     "runtime");
             gn.put("exec_form", "deepagent"); // S7.6：与对话流主编（react）明确区分
             nodes.add(gn);
