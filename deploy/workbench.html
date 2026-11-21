@@ -78,7 +78,7 @@ body {
 .tab.active { color: var(--fg); font-weight: 600; border-bottom-color: var(--fg); }
 
 /* ———— 布局 ———— */
-main { max-width: 1160px; margin: 0 auto; padding: 26px 28px 80px; }
+main { max-width: 1780px; margin: 0 auto; padding: 26px 32px 80px; }
 .view { display: none; animation: fadein .2s ease; }
 .view.active { display: block; }
 @keyframes fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
@@ -138,7 +138,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .chat-card { display: flex; flex-direction: column; height: calc(100vh - 236px); min-height: 520px; padding: 0; overflow: hidden; }
 
 /* ———— 协作图谱面板（报告编制页右侧：静态注册拓扑 + 任务执行动态点亮）———— */
-.chat-split { display: grid; grid-template-columns: 1fr 430px; gap: 14px; align-items: stretch; }
+.chat-split { display: grid; grid-template-columns: 1fr 560px; gap: 14px; align-items: stretch; }
 .graph-panel { display: flex; flex-direction: column; background: var(--bg); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; min-height: 520px; height: calc(100vh - 236px); }
 .gp-head { padding: 12px 14px 9px; border-bottom: 1px solid var(--border); }
 .gp-head h3 { font-size: 13px; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: center; }
@@ -1832,7 +1832,7 @@ function toast(msg) {
 }
 
 /* ———— 协作图谱（报告编制页右侧）：AntV G6 专业图引擎 + 任务执行动态点亮 ———— */
-const GRAPH = { data: null, chart: null, running: false, lit: new Set(), focus: null, flowTimer: null, flowOffset: 0 };
+const GRAPH = { data: null, chart: null, running: false, lit: new Set(), focus: null, flowTimer: null, flowOffset: 0, flowSpeed: 0.35, breathTimer: null, breath: 0 };
 const GP_ECOLOR = { register: "#8a5fd0", bind: "#3b7bf5", serve: "#17937c", call: "#d98b21" };
 const GP_CATS = [
   { name: "主 agent", color: "#8a5fd0" }, { name: "专业 agent", color: "#3b7bf5" },
@@ -1901,6 +1901,44 @@ async function initGraphPanel() {
     });
     // 力导向布局收敛后应用状态样式（点亮/淡显/流动基线）
     GRAPH.chart.on("afterlayout", () => renderGraph());
+    // 拖拽节点 → 暂停布局模拟，松手后重启力导向：其余节点被力动态推开让位
+    GRAPH.chart.on("node:dragstart", e => {
+      if (GRAPH.chart.layoutController) try { GRAPH.chart.layoutController.stopLayout(); } catch (err) { /* ignore */ }
+    });
+    GRAPH.chart.on("node:dragend", () => {
+      try { GRAPH.chart.layout(); } catch (err) { /* ignore */ }
+    });
+    // 悬停节点 → 一跳邻域聚焦（运行态不干扰点亮叙事）
+    GRAPH.chart.on("node:mouseenter", e => {
+      const g = GRAPH.chart;
+      if (GRAPH.running || !g) return;
+      const id = e.item.getModel().id;
+      g.getEdges().forEach(edge => {
+        const m = edge.getModel(), s = m.style || {};
+        const rel = m.source === id || m.target === id;
+        g.updateItem(edge, { style: { stroke: s.stroke, lineWidth: rel ? 2.4 : 1.2,
+          opacity: rel ? 0.95 : 0.15, lineDash: s.lineDash, lineDashOffset: s.lineDashOffset || 0 } });
+      });
+    });
+    GRAPH.chart.on("node:mouseleave", () => { if (!GRAPH.running) renderGraph(); });
+    // 主编节点呼吸光晕：全图始终有生命感（全量样式重设走正规渲染通道）
+    if (GRAPH.breathTimer) clearInterval(GRAPH.breathTimer);
+    GRAPH.breathTimer = setInterval(() => {
+      const g = GRAPH.chart;
+      if (!g || !GRAPH.data) return;
+      GRAPH.breath += 1;
+      let main = null;
+      g.getNodes().forEach(n => {
+        const r = n.getModel()._raw;
+        if (r && r.type === "main") main = n;
+      });
+      if (!main) return;
+      const t = (GRAPH.breath % 72) / 72 * Math.PI * 2;
+      const s = main.getModel().style || {};
+      g.updateItem(main, { style: { fill: s.fill, stroke: s.stroke, lineWidth: s.lineWidth,
+        opacity: s.opacity, shadowBlur: 13 + Math.round(7 * Math.sin(t)),
+        shadowColor: s.shadowColor || s.fill } });
+    }, 100);
     window.addEventListener("resize", () => {
       if (!GRAPH.chart) return;
       const b = p.querySelector(".gp-body");
@@ -2016,7 +2054,8 @@ function renderGraph() {
     }
     g.updateItem(edge, { style: { opacity: op, lineWidth: w,
       lineDash: lit ? [7, 6] : (m.kind === "register" ? [4, 3] : null) } });
-    if (lit) gpEdgeFlow(edge); else gpEdgeStop(edge);
+    // 流动：运行态点亮边快流；空闲态全部边慢流（全图始终有动态生命感）
+    if (lit || !GRAPH.running) gpEdgeFlow(edge); else gpEdgeStop(edge);
     } catch (e) { /* 单边失败不阻断流水线驱动 */ }
   });
 }
@@ -2030,7 +2069,7 @@ function gpEdgeFlow(edge) {
     GRAPH.flowTimer = setInterval(() => {
       const g = GRAPH.chart;
       if (!g) return;
-      GRAPH.flowOffset = (GRAPH.flowOffset - 0.8) % 26;
+      GRAPH.flowOffset = (GRAPH.flowOffset - GRAPH.flowSpeed) % 26;
       g.getEdges().forEach(edge => {
         if (!edge.__flow) return;
         try {
@@ -2120,16 +2159,17 @@ async function graphStage(st) {
 }
 function graphBeginRun(plan) {
   GRAPH.running = true;
+  GRAPH.flowSpeed = 0.8;
   if (plan && plan.summary) $("#gp-plan").innerHTML = "<b>主 agent 规划</b> — " + esc(plan.summary);
   setGpStatus("run", "主 agent 任务理解与规划中…");
   renderGraph();
 }
 function graphFinish() {
-  if (GRAPH.chart) GRAPH.chart.getEdges().forEach(gpEdgeStop);
-  setGpStatus("done", "任务执行完成 —— 本次任务参与对象保持点亮，未参与的保持淡显");
+  setGpStatus("done", "任务执行完成 —— 本次任务参与对象保持点亮并继续流动，未参与的保持淡显");
 }
 function graphReset() {
   GRAPH.running = false;
+  GRAPH.flowSpeed = 0.35;
   GRAPH.lit.clear();
   setGpStatus("", "空闲 —— 点击节点查看详情；任务开始后按主 agent 规划依次点亮参与对象");
   renderGraph();
