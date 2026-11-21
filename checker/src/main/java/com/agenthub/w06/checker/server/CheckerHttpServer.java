@@ -1013,9 +1013,25 @@ public final class CheckerHttpServer {
                     primaryPages.equals("—") ? "—" : "—");
             sections.add(new ReportSection(id, title, body, List.of()));
         }
-        String reportPeriod = "annual_report".equals(reportType)
-                ? (snap.reportPeriod == null || snap.reportPeriod.isBlank() ? "报告期" : snap.reportPeriod)
-                : "以导入资料为准";
+        // S11.2：通用域 report_period 不再硬编码"以导入资料为准"——深搜产物（live 快照集）
+        // 有真实信源时间与范围，如实标注；无深搜产物时才用中性占位。
+        String reportPeriod;
+        if ("annual_report".equals(reportType)) {
+            reportPeriod = (snap.reportPeriod == null || snap.reportPeriod.isBlank())
+                    ? "报告期" : snap.reportPeriod;
+        } else {
+            // S11.2：subjectSources 是本轮任务圈定的 live 信源（深搜产物），如实标注范围与最近抓取时间
+            int liveCount = subjectSources.size();
+            String latest = "—";
+            for (JsonNode s : subjectSources) {
+                String at = s.path("fetched_at").asText("");
+                if (!at.isEmpty() && at.compareTo(latest) > 0) latest = at;
+            }
+            if (!"—".equals(latest)) latest = latest.substring(0, Math.min(10, latest.length()));
+            reportPeriod = liveCount > 0
+                    ? "基于联网检索信源 " + liveCount + " 份（最近抓取 " + latest + "）"
+                    : "以导入资料为准";
+        }
         return new AnnualReportArtifacts(null, company, reportPeriod, null,
                 List.of(), List.of(), List.copyOf(sections), List.of());
     }
