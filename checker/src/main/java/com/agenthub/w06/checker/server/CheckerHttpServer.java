@@ -2562,6 +2562,18 @@ public final class CheckerHttpServer {
             nodes.add(graphNode("skill:" + s.path("skill_id").asText(), "skill",
                     s.path("name").asText(), "SKILL", s.path("path").asText(), "runtime"));
         }
+        // S7.6：root DeepAgent 编排器（独立实体——对话流 editor-in-chief 是 ReAct 编排，
+        // 装车后的编排器是 openjiuwen DeepAgent（todo/技能/双层循环），两者不要混同）
+        if ("true".equalsIgnoreCase(System.getenv().getOrDefault("SHOW_ROOT_AGENT", "true"))) {
+            ObjectNode gn = graphNode("agent:w06-orchestrator-root", "agent", "主编编排器（DeepAgent）",
+                    "ORCHESTRATOR",
+                    "openjiuwen DeepAgent：plan_experts 选人 → run_pipeline 触发六工位 → 门禁汇总；todo 管理任务清单（与对话流主编是两个实体）",
+                    "runtime");
+            gn.put("exec_form", "deepagent"); // S7.6：与对话流主编（react）明确区分
+            nodes.add(gn);
+            nodes.iterator(); // noop keep structure
+            addEdge(edges, "agent:w06-orchestrator-root", "agent:editor-in-chief", "register", "编排接管");
+        }
         nodes.add(graphNode("mcp:gateway", "mcp", "MCP 工具网关", "GATEWAY",
                 "统一工具入口 POST /v1/tools/call（deploy/tools.json 配置驱动）；"
                         + "联网抓取产物须经 snapshot_commit 落盘注册后方可引用", "runtime"));
