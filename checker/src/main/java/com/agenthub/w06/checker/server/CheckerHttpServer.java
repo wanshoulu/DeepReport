@@ -1739,14 +1739,36 @@ public final class CheckerHttpServer {
             String planResp = llmCalls++ < maxLlmCalls ? AgentChatClient.chat("你是深度调研 agent（deep-search）。研究主题：" + subject
                     + "。已有资料要点：" + (gathered.length() == 0 ? "（无，首轮）"
                             : gathered.substring(0, Math.min(gathered.length(), 1500)))
-                    + "。请规划本轮 2 个互补的联网搜索查询，覆盖主题的关键事实"
+                    + "。请规划本轮 2 个互补的联网搜索查询。查询要求：每个查询≥10个字、必须包含主题关键词、使用具体技术名词或领域术语（禁止泛化词），覆盖主题的关键事实"
                     + "（公司概况/主营业务/经营与财务数据/客户与市场/风险），避免与已有资料重复。"
                     + "只输出 JSON：{\"queries\": [\"查询1\", \"查询2\"]}", sessionId) : null; // P2-17：预算耗尽降级默认查询
             if (planResp != null) {
                 queries = jsonStringArray(planResp, "queries");
             }
+            // S10.1：query 质量防线——单字/超短/无主题词查询（如"多""主流"）会命中词典页，
+            // 直接污染引用池。过滤标准：长度 ≥ 8 字符 且 必须包含主题关键词之一。
+            if (!queries.isEmpty()) {
+                List<String> kept = new ArrayList<>();
+                for (String q : queries) {
+                    String qq = q == null ? "" : q.trim();
+                    boolean hasSubjectWord = subject.equals(qq) || qq.contains(subject)
+                            || java.util.Arrays.stream(subject.split("[\\s，,的与和]+"))
+                                    .anyMatch(w -> w.length() >= 2 && qq.contains(w));
+                    if (qq.length() >= 8 && hasSubjectWord) kept.add(qq);
+                }
+                if (kept.size() != queries.size()) {
+                    rd.putArray("query_filtered").addAll(
+                            queries.stream().map(qn2 -> MAPPER.createObjectNode().put("q", String.valueOf(qn2)))
+                                    .collect(java.util.stream.Collectors.toList()) == null
+                                    ? new ArrayList<>() : new ArrayList<>());
+                    // 留痕：被过滤的查询
+                    ArrayNode qf = rd.putArray("queries_filtered");
+                    for (String q : queries) if (!kept.contains(q)) qf.add(q);
+                }
+                queries = kept;
+            }
             if (queries.isEmpty()) {
-                queries = List.of(subject + " 最新经营数据", subject + " 公司分析");
+                queries = List.of(subject + " 技术架构 原理", subject + " 评测 对比 实践", subject + " 官方文档");
                 rd.put("plan_source", planResp == null
                         ? "LLM 不可达，降级默认查询" : "LLM 返回不可解析，降级默认查询"); // S5-3 诚实留痕
             } else {
@@ -1757,6 +1779,7 @@ public final class CheckerHttpServer {
                 qn.add(q);
             }
             // b) 逐查询 web_search，聚合结果 [title, link]
+            // S10.2：权威域优先——技术/研究类主题白名单域结果排前（非白名单只作补位）
             List<String[]> hits = new ArrayList<>();
             for (String q : queries) {
                 ObjectNode args = MAPPER.createObjectNode();
@@ -1772,6 +1795,15 @@ public final class CheckerHttpServer {
                 }
             }
             rd.put("search_hits", hits.size());
+            // S10.2：白名单域优先排序（域名命中白名单的排前，其余按原序补位）
+            final java.util.List<String> AUTH_DOMAINS = List.of(
+                    "arxiv.org", "ieee.org", "acm.org", "github.com", "docs.", "developer.",
+                    "springer.com", "openreview.net", "usenix.org", "zh.wikipedia.org");
+            hits.sort((a1, b1) -> {
+                boolean da = AUTH_DOMAINS.stream().anyMatch(d -> a1[1] != null && a1[1].contains(d));
+                boolean db = AUTH_DOMAINS.stream().anyMatch(d -> b1[1] != null && b1[1].contains(d));
+                return Boolean.compare(db, da);
+            });
             // c) 抓取 top ≤3 条 → snapshot_commit 落盘注册（单条失败跳过，fail-open）
             int c = 0;
             for (int i = 0; i < hits.size() && c < 3; i++) {
@@ -2457,6 +2489,22 @@ public final class CheckerHttpServer {
                 art.put("metrics_count", a.metrics().size());
                 art.put("sections_count", a.sections().size());
                 art.put("citations_count", a.citations().size());
+                // S10.3：全文落盘——正文节（含 [S-n]/[G-n] 与 body）与指标全量，报告库详情页可离线重建
+                ArrayNode secs = art.putArray("sections_full");
+                for (ReportSection s : a.sections()) {
+                    ObjectNode sn = secs.addObject();
+                    sn.put("section_id", s.sectionId());
+                    sn.put("title", s.title());
+                    sn.put("body", s.body());
+                }
+                ArrayNode mts = art.putArray("metrics_full");
+                for (MetricValue mv : a.metrics()) {
+                    ObjectNode mn = mts.addObject();
+                    mn.put("name", mv.key().name());
+                    mn.put("value", mv.value());
+                    mn.put("unit", mv.unit());
+                    mn.put("page", mv.page());
+                }
             }
             Path dir = taskStateDir();
             Files.createDirectories(dir);
