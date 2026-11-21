@@ -1842,9 +1842,10 @@ const GRAPH = { data: null, chart: null, running: false, lit: new Set(), focus: 
   reduced: window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches }; // G17
 const GP_ECOLOR = { register: "#8a5fd0", bind: "#3b7bf5", serve: "#17937c", call: "#d98b21" };
 const GP_CATS = [
-  { name: "主 agent", color: "#8a5fd0" }, { name: "专业 agent", color: "#3b7bf5" },
+  { name: "主编（对话流 ReAct）", color: "#8a5fd0" }, { name: "Workflow 工位", color: "#3b7bf5" },
   { name: "skill", color: "#17937c" }, { name: "MCP 工具", color: "#d98b21" },
-  { name: "市场目录", color: "#98a0ab" }
+  { name: "市场目录", color: "#98a0ab" },
+  { name: "ReAct 循环 agent", color: "#0f8a5f" }, { name: "DeepAgent 编排", color: "#d64545" }
 ];
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -1854,17 +1855,21 @@ async function initGraphPanel() {
   p.innerHTML = '<div class="gp-head"><h3>协作图谱 <button class="gp-btn" id="gp-fit">重置视图</button>'
     + '<span style="font-weight:400;font-size:11px;color:var(--muted)">拖拽 · 缩放 · 点节点看详情</span></h3>'
     + '<div class="gp-plan" id="gp-plan">注册拓扑加载中…</div></div>'
-    + '<div class="gp-legend gp-legend-exec">'
-    + '<span style="color:var(--muted);font-size:11px">执行形态：</span>'
-    + '<span><b style="color:var(--fg)">ReAct</b>=推理循环 agent</span>'
-    + '<span><b style="color:var(--fg)">DeepAgent</b>=双层循环+技能</span>'
-    + '<span><b style="color:var(--fg)">Workflow</b>=确定性流水线工位</span>'
-    + "</div>"
     + '<div class="gp-legend">'
     + '<span><i style="background:' + GP_ECOLOR.register + '"></i>团队注册</span>'
     + '<span><i style="background:' + GP_ECOLOR.bind + '"></i>技能绑定</span>'
     + '<span><i style="background:' + GP_ECOLOR.serve + '"></i>工具注册</span>'
     + '<span><i style="background:' + GP_ECOLOR.call + '"></i>资料获取</span>'
+    + "</div>"
+    + '<div class="gp-legend">'
+    + '<span style="color:var(--muted)">节点：</span>'
+    + '<span><i style="background:' + GP_CATS[0].color + ';width:10px;height:10px;border-radius:50%"></i>主编（对话流）</span>'
+    + '<span><i style="background:' + GP_CATS[6].color + ';width:12px;height:12px;border-radius:50%"></i>DeepAgent 编排</span>'
+    + '<span><i style="background:' + GP_CATS[5].color + ';width:9px;height:9px;border-radius:50%"></i>ReAct 循环</span>'
+    + '<span><i style="background:' + GP_CATS[1].color + ';width:7px;height:7px;border-radius:50%"></i>Workflow 工位</span>'
+    + '<span><i style="background:' + GP_CATS[2].color + ';width:9px;height:4px;border-radius:2px"></i>skill</span>'
+    + '<span><i style="background:' + GP_CATS[3].color + ';width:9px;height:4px;border-radius:2px"></i>MCP 工具</span>'
+    + '<span><i style="background:' + GP_CATS[4].color + ';width:7px;height:7px;border-radius:50%;opacity:.6"></i>市场候选</span>'
     + "</div>"
     + '<div class="gp-body"><div id="gp-chart"></div></div>'
     + '<div class="gp-info" id="gp-info"></div>'
@@ -2005,8 +2010,15 @@ async function initGraphPanel() {
 
 /** 节点类别索引：0 主 agent / 1 专业 agent / 2 skill / 3 MCP / 4 市场目录。 */
 function gpCat(n) {
-  return n.state === "market" ? 4 : n.type === "main" ? 0
-    : n.type === "agent" ? 1 : n.type === "skill" ? 2 : 3;
+  // S8：agent 节点按执行形态细分——workflow/ReAct/DeepAgent 三色区分
+  if (n.state === "market") return 4;
+  if (n.type === "main") return n.exec_form === "deepagent" ? 6 : 0;
+  if (n.type === "agent") {
+    if (n.exec_form === "react") return 5;
+    if (n.exec_form === "deepagent") return 6;
+    return 1;
+  }
+  return n.type === "skill" ? 2 : 3;
 }
 
 /** 初始坐标：分层同心环（主编居中 / agents 内环 / skills 中环 / MCP 外环），force 以此为起点有机收敛，防重叠防出界。 */
@@ -2034,7 +2046,7 @@ function buildNodes() {
     return {
       id: n.id, label: shortLabel(n.label), _raw: n,
       type: "circle",
-      size: isMain ? 56 : cat === 1 ? 34 : cat === 3 ? 28 : cat === 4 ? 22 : 24,
+      size: isMain ? 56 : cat === 6 ? 44 : cat === 5 ? 38 : cat === 1 ? 30 : cat === 3 ? 28 : cat === 4 ? 22 : 24,
       x: n.x, y: n.y,
       style: { fill: col, stroke: "#fff", lineWidth: isMain ? 3 : 1.5,
         opacity: n.state === "market" ? 0.6 : 1,                       // S1：市场目录（未安装）降透明
