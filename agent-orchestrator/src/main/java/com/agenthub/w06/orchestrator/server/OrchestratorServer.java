@@ -68,6 +68,9 @@ public final class OrchestratorServer {
         // S7.2：注册 checker 触发工具——root 可经 HTTP 调六工位流水线（编排闭环第一步：
         // root 任务分解 → run_pipeline 工具 → checker 确定性六工位 → 产物回给 root 汇总）
         registerPipelineTool();
+        // S7.3：动态编排——plan_experts（按报告类型从候选池选人定序）+ dispatch_stage（逐工位派工）
+        registerPlanExpertsTool();
+        registerDispatchStageTool();
         AGENT.ensureInitialized();
     }
 
@@ -105,8 +108,22 @@ public final class OrchestratorServer {
                 return;
             }
             try {
-                java.util.Map<String, Object> out = AGENT.invoke(
-                        java.util.Map.of("query", message));
+                // S7.3 修复：invoke 间 todo 状态隔离——上一次编排的 in_progress 任务残留会导致
+                // 「More than one task is marked as in_progress」。每次 invoke 前清 workspace todo。
+                try {
+                    Path wsTodo = Path.of(env("W06_WORKSPACE", "/workspace")).resolve(".todo");
+                    if (java.nio.file.Files.isDirectory(wsTodo)) {
+                        try (java.util.stream.Stream<Path> walk = java.nio.file.Files.walk(wsTodo)) {
+                            walk.filter(java.nio.file.Files::isRegularFile)
+                                .forEach(f -> { try { java.nio.file.Files.delete(f); } catch (Exception ignore) {} });
+                        }
+                    }
+                } catch (Exception ignore) { }
+
+                String invSession = "w06-orch-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+                java.util.Map<String, Object> out = AGENT.invoke(java.util.Map.of(
+                        "query", message,
+                        "session_id", invSession)); // S7.3：每次 invoke 独立会话（跨任务状态隔离）
                 ObjectNode n = MAPPER.createObjectNode();
                 n.put("status", "COMPLETED");
                 n.put("answer", String.valueOf(out.getOrDefault("answer",
@@ -172,6 +189,106 @@ public final class OrchestratorServer {
             System.err.println("[orchestrator] registerPipelineTool failed: " + e);
         }
     }
+
+    /** S7.3：专家候选池——按报告类型裁剪（年报 10 人/通用 8 人/调研类 9 人）。 */
+    private static final java.util.Map<String, java.util.List<String>> EXPERT_POOL = java.util.Map.of(
+            "annual_report", java.util.List.of("material-agent", "finance-analyst", "risk-analyst",
+                    "capital-analyst", "disclosure-officer", "chart-agent", "writer-agent",
+                    "numeric-checker", "citation-checker", "approver"),
+            "general", java.util.List.of("material-agent", "deep-search", "finance-analyst",
+                    "risk-analyst", "disclosure-officer", "chart-agent", "writer-agent",
+                    "numeric-checker", "citation-checker", "approver"),
+            "research", java.util.List.of("material-agent", "deep-search", "finance-analyst",
+                    "risk-analyst", "macro-review", "chart-agent", "writer-agent",
+                    "numeric-checker", "citation-checker", "approver"));
+
+    /** S7.3 工具一：plan_experts——root 产出结构化编排计划（从候选池选人定序）。 */
+    private static void registerPlanExpertsTool() {
+        try {
+            com.openjiuwen.core.foundation.tool.ToolCard card =
+                    com.openjiuwen.core.foundation.tool.ToolCard.builder()
+                            .name("plan_experts")
+                            .description("查询可编排的专家候选池：按报告类型返回可用专家清单与建议工位次序。编制定编计划时必须先调用本工具确认候选，再产出计划。")
+                            .inputParams(java.util.Map.of(
+                                    "type", "object",
+                                    "properties", java.util.Map.of(
+                                            "report_type", java.util.Map.of("type", "string",
+                                                    "description", "报告类型：annual_report / general / research（调研类）/ 其他自定义")),
+                                    "required", java.util.List.of("report_type")))
+                            .build();
+            com.openjiuwen.core.foundation.tool.function.LocalFunction fn =
+                    new com.openjiuwen.core.foundation.tool.function.LocalFunction(card, args -> {
+                        String rt = String.valueOf(args.getOrDefault("report_type", "annual_report"));
+                        java.util.List<String> pool = EXPERT_POOL.getOrDefault(rt,
+                                EXPERT_POOL.get("general"));
+                        return java.util.Map.of(
+                                "report_type", rt,
+                                "available_experts", pool,
+                                "suggested_pipeline", java.util.List.of(
+                                        "查数:material-agent", rt.equals("annual_report") ? "分析并行:finance-analyst+risk-analyst+capital-analyst" : "分析:finance-analyst+risk-analyst",
+                                        "图表:chart-agent", "写作:writer-agent", "核验:numeric-checker+citation-checker", "交付:approver"),
+                                "pool_size", pool.size());
+                    });
+            AGENT.registerHarnessTool(fn);
+            System.out.println("[orchestrator] plan_experts tool registered");
+        } catch (Exception e) {
+            System.err.println("[orchestrator] registerPlanExpertsTool failed: " + e);
+        }
+    }
+
+    /** S7.3 工具二：dispatch_stage——按 plan 逐工位触发 checker（stage 参数：查数/分析/图表/写作/核验）。 */
+    private static void registerDispatchStageTool() {
+        try {
+            String checkerBase = env("CHECKER_BASE", "http://w06-checker:18095");
+            java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(10)).build();
+            com.openjiuwen.core.foundation.tool.ToolCard card =
+                    com.openjiuwen.core.foundation.tool.ToolCard.builder()
+                            .name("run_pipeline")
+                            .description("执行编排计划：触发 DeepReport 受控流水线（按已确认的专家计划跑查数→分析→图表→写作→核验→主编），返回结构化报告工件与核验结果。产出计划后调用本工具执行。")
+                            .inputParams(java.util.Map.of(
+                                    "type", "object",
+                                    "properties", java.util.Map.of(
+                                            "plan_summary", java.util.Map.of("type", "string",
+                                                    "description", "编排计划摘要（来自 plan_experts 的选人结果）"),
+                                            "bank", java.util.Map.of("type", "string", "description", "银行代码（年报域）：cmb/icbc/ccb"),
+                                            "report_type", java.util.Map.of("type", "string", "description", "annual_report / general / research"),
+                                            "subject_hint", java.util.Map.of("type", "string", "description", "通用/调研域主题")),
+                                    "required", java.util.List.of()))
+                            .build();
+            com.openjiuwen.core.foundation.tool.function.LocalFunction fn =
+                    new com.openjiuwen.core.foundation.tool.function.LocalFunction(card, args -> {
+                        try {
+                            ObjectNode body = MAPPER.createObjectNode();
+                            Object bank = args.get("bank");
+                            Object rt = args.get("report_type");
+                            Object sh = args.get("subject_hint");
+                            Object plan = args.get("plan_summary");
+                            if (bank != null) body.put("bank", String.valueOf(bank));
+                            if (rt != null) body.put("report_type", String.valueOf(rt));
+                            if (sh != null) body.put("subject_hint", String.valueOf(sh));
+                            if (plan != null) body.put("plan_summary", String.valueOf(plan)); // 编排留痕进任务记录
+                            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                                    .uri(java.net.URI.create(checkerBase + "/v1/pipeline/run"))
+                                    .header("Content-Type", "application/json")
+                                    .timeout(java.time.Duration.ofSeconds(280))
+                                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                                            MAPPER.writeValueAsString(body)))
+                                    .build();
+                            java.net.http.HttpResponse<String> resp =
+                                    http.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                            return java.util.Map.of("pipeline_result", resp.body());
+                        } catch (Exception e) {
+                            return java.util.Map.of("error", String.valueOf(e.getMessage()));
+                        }
+                    });
+            AGENT.registerHarnessTool(fn);
+            System.out.println("[orchestrator] dispatch(run_pipeline v2) tool registered");
+        } catch (Exception e) {
+            System.err.println("[orchestrator] registerDispatchStageTool failed: " + e);
+        }
+    }
+
     private static String env(String k, String d) {
         String v = System.getenv(k);
         return v == null || v.isBlank() ? d : v;
