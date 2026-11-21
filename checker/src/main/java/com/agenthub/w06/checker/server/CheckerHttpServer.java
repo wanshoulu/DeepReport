@@ -1193,8 +1193,49 @@ public final class CheckerHttpServer {
                         ? dsEx.getClass().getSimpleName() : dsEx.getMessage()));
             }
             if (dsData.path("committed_count").asInt(0) > 0) {
-                BankSnap liveFresh = resolver.banks.get(ToolGateway.LIVE_BANK);
-                subjectSources = liveFresh == null ? List.of() : sourcesForSubject(liveFresh, subjToks);
+                // S11.3：BankSnap 是启动时缓存——深搜 commit 写的是磁盘 manifest，内存对象不更新。
+                // 从磁盘重读 live manifest 的 sources，按主题词圈定（含正文页匹配）
+                try {
+                    Path liveManifest = snap.dir.getParent() == null ? null
+                            : snap.dir.getParent().resolve(ToolGateway.LIVE_BANK).resolve("manifest.json");
+                    Path direct = Path.of("/snapshot/live/manifest.json");
+                    Path mf = Files.isRegularFile(direct) ? direct
+                            : (liveManifest != null && Files.isRegularFile(liveManifest) ? liveManifest : null);
+                    if (mf != null) {
+                        JsonNode lm = MAPPER.readTree(Files.readString(mf, StandardCharsets.UTF_8));
+                        List<JsonNode> all = new ArrayList<>();
+                        lm.path("sources").forEach(all::add);
+                        List<JsonNode> matched = new ArrayList<>();
+                        for (JsonNode src : all) {
+                            String title = src.path("title").asText("");
+                            boolean hit = false;
+                            for (String tk : subjToks) if (title.contains(tk)) { hit = true; break; }
+                            if (!hit) {
+                                // 正文兜底：查该信源页文本（从 pages/ 目录读）
+                                for (JsonNode pno : src.path("pages")) {
+                                    Path pf = mf.getParent().resolve("pages/page-" + pno.asInt() + ".txt");
+                                    if (Files.isRegularFile(pf)) {
+                                        String txt = Files.readString(pf, StandardCharsets.UTF_8);
+                                        for (String tk : subjToks) if (txt.contains(tk)) { hit = true; break; }
+                                        if (hit) break;
+                                    }
+                                }
+                            }
+                            if (hit) matched.add(src);
+                        }
+                        // 圈定失败（主题词过窄）→ 至少纳入本轮深搜新注册的信源（fetched_at 为今天的）
+                        if (matched.isEmpty()) {
+                            String today = java.time.LocalDate.now().toString();
+                            for (JsonNode src : all) {
+                                if (src.path("fetched_at").asText("").startsWith(today)) matched.add(src);
+                            }
+                        }
+                        subjectSources = matched;
+                        System.out.println("S11.3: subject sources refreshed from disk: " + matched.size() + "/" + all.size());
+                    }
+                } catch (Exception e) {
+                    System.err.println("S11.3 manifest reread failed: " + e.getMessage());
+                }
             }
         }
         art = attachImportedClaims(art, resolver, analysisIds, subjectSources);
