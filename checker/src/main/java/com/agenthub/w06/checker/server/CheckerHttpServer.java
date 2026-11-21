@@ -1728,6 +1728,7 @@ public final class CheckerHttpServer {
         Set<String> seenUrls = new HashSet<>();       // 已命中 URL（跨轮去重，防重复抓取与重复落盘）
         int totalCommitted = 0;
         int llmCalls = 0;                            // P2-17：LLM 调用计数
+        int skippedLow = 0;                          // S10：低质信源过滤计数
         final int maxRounds = Integer.parseInt(System.getenv().getOrDefault("DEEP_SEARCH_MAX_ROUNDS", "3")); // P2-17：轮次上限可配
         final int maxLlmCalls = Integer.parseInt(System.getenv().getOrDefault("DEEP_SEARCH_MAX_LLM_CALLS", "8")); // P2-17：LLM 预算
         for (int r = 1; r <= maxRounds; r++) {
@@ -1793,6 +1794,17 @@ public final class CheckerHttpServer {
                     sArgs.put("title", title);
                     sArgs.put("authority", authorityForUrl(hit[1])); // S5-4 信源权威分级
                     sArgs.set("pages", pages);
+                    // S10：低质信源准入过滤——词典页/登录拦截页/验证页不进引用池（污染引用与派生复算）
+                    String tl = title == null ? "" : title;
+                    boolean lowQuality = tl.contains("的意思与解释") || tl.contains("拼音") || tl.contains("笔画")
+                            || tl.toLowerCase().contains("has been blocked") || tl.contains("立即登录")
+                            || tl.contains("登录/注册") || tl.trim().length() < 8
+                            || tl.toLowerCase().contains("sign in") || tl.contains("请登录");
+                    if (lowQuality) {
+                        skippedLow++;
+                        rd.putArray("skipped_sources").add(title + " | " + hit[1]);
+                        continue;
+                    }
                     ObjectNode cr = ToolGateway.call(toolReq("snapshot_commit", sArgs), snapshotDir, resolver, sources);
                     if (cr.path("ok").asBoolean()) {
                         c++;
