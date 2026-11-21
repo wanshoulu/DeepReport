@@ -1,3 +1,5 @@
 target/
-*.class
+out/
 .idea/
+*.iml
+deploy/libs-orch/
