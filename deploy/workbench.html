@@ -147,7 +147,37 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 .gp-legend { display: flex; gap: 12px; padding: 7px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; font-size: 10.5px; color: var(--muted); }
 .gp-legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; margin-right: 4px; vertical-align: 1px; }
 .gp-body { flex: 1; position: relative; }
-#gp-chart { width: 100%; height: 100%; }
+#gp-chart { width: 100%; height: 100%;
+  /* 图谱网格背景（Figma/Draw.io 风格，G6 Grid 插件在该版本未渲染，改 CSS 实现） */
+  background-image: linear-gradient(rgba(160,170,185,.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(160,170,185,.16) 1px, transparent 1px);
+  background-size: 24px 24px; }
+.gp-btn {
+  appearance: none; border: 1px solid var(--border); background: var(--bg);
+  font: inherit; font-size: 11px; color: var(--muted); padding: 2px 9px; border-radius: 6px; cursor: pointer;
+}
+.gp-btn:hover { color: var(--fg); background: var(--surface); }
+.gp-info {
+  display: none; margin: 0 12px 8px; padding: 8px 11px; border: 1px solid var(--card-border);
+  border-radius: 8px; background: var(--surface); font-size: 12px; line-height: 1.5;
+  max-height: 138px; overflow: auto;
+}
+.gi-head { display: flex; align-items: center; gap: 6px; }
+.gi-head i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.gi-head b { font-size: 12.5px; }
+.gi-tag { font-size: 10.5px; color: var(--muted); background: var(--surface-2); border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.gi-close { margin-left: auto; appearance: none; border: none; background: none; cursor: pointer; color: var(--muted); font-size: 14px; padding: 0 2px; }
+.gi-close:hover { color: var(--fg); }
+.gi-desc { color: var(--muted); margin-top: 3px; }
+.gi-rel { margin-top: 5px; }
+.gi-rel b { display: block; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.gi-rel > div { padding: 1px 0; border-top: 1px dashed var(--border); font-size: 11.5px; }
+.gp-minimap { position: absolute !important; right: 10px !important; left: auto !important; bottom: 10px !important;
+  background: rgba(255,255,255,.94); border: 1px solid var(--card-border); border-radius: 8px;
+  box-shadow: var(--shadow); overflow: hidden; z-index: 5; }
+.gp-tip { font-size: 11.5px; line-height: 1.5; max-width: 250px; }
+.gp-tip b { font-weight: 600; }
+.gp-tip i { display: block; font-style: normal; color: var(--muted); margin-top: 2px; }
 .gp-status { padding: 8px 14px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; min-height: 36px; line-height: 1.5; }
 .gp-status .dot { width: 8px; height: 8px; border-radius: 50%; background: #b8bec8; flex: none; }
 .gp-status.run { color: #3b7bf5; }
@@ -502,7 +532,7 @@ a.chip:hover, button.chip:hover { background: var(--hover); color: var(--info); 
 </main>
 <div class="drawer-mask" id="drawer-mask"></div>
 <aside class="drawer" id="drawer"></aside>
-<script src="echarts.min.js"></script>
+<script src="g6.min.js"></script>
 <script>
 "use strict";
 /* ———————————————————— 基础工具 ———————————————————— */
@@ -1801,8 +1831,8 @@ function toast(msg) {
   toast._h = setTimeout(() => { t.style.opacity = "0"; }, 3000);
 }
 
-/* ———— 协作图谱（报告编制页右侧）：ECharts 力导向拓扑 + 任务执行动态点亮 ———— */
-const GRAPH = { data: null, chart: null, running: false, lit: new Set() };
+/* ———— 协作图谱（报告编制页右侧）：AntV G6 专业图引擎 + 任务执行动态点亮 ———— */
+const GRAPH = { data: null, chart: null, running: false, lit: new Set(), focus: null, flowTimer: null, flowOffset: 0 };
 const GP_ECOLOR = { register: "#8a5fd0", bind: "#3b7bf5", serve: "#17937c", call: "#d98b21" };
 const GP_CATS = [
   { name: "主 agent", color: "#8a5fd0" }, { name: "专业 agent", color: "#3b7bf5" },
@@ -1814,7 +1844,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function initGraphPanel() {
   const p = document.getElementById("graph-panel");
   if (!p) return;
-  p.innerHTML = '<div class="gp-head"><h3>协作图谱 <span style="font-weight:400;font-size:11px;color:var(--muted)">拖拽节点 · 滚轮缩放 · 悬停看详情</span></h3>'
+  p.innerHTML = '<div class="gp-head"><h3>协作图谱 <button class="gp-btn" id="gp-fit">重置视图</button>'
+    + '<span style="font-weight:400;font-size:11px;color:var(--muted)">拖拽 · 缩放 · 点节点看详情</span></h3>'
     + '<div class="gp-plan" id="gp-plan">注册拓扑加载中…</div></div>'
     + '<div class="gp-legend">'
     + '<span><i style="background:' + GP_ECOLOR.register + '"></i>团队注册</span>'
@@ -1823,16 +1854,72 @@ async function initGraphPanel() {
     + '<span><i style="background:' + GP_ECOLOR.call + '"></i>资料获取</span>'
     + "</div>"
     + '<div class="gp-body"><div id="gp-chart"></div></div>'
-    + '<div class="gp-status" id="gp-status"><span class="dot"></span><span id="gp-status-text">空闲 —— 任务开始后按主 agent 规划依次点亮参与对象</span></div>';
-  if (window.echarts) {
-    GRAPH.chart = echarts.init(document.getElementById("gp-chart"));
-    window.addEventListener("resize", () => { if (GRAPH.chart) GRAPH.chart.resize(); });
+    + '<div class="gp-info" id="gp-info"></div>'
+    + '<div class="gp-status" id="gp-status"><span class="dot"></span><span id="gp-status-text">空闲 —— 点击节点查看详情；任务开始后按主 agent 规划依次点亮参与对象</span></div>';
+  if (window.G6) {
+    const body = p.querySelector(".gp-body");
+    GRAPH.chart = new G6.Graph({
+      container: document.getElementById("gp-chart"),
+      width: body.clientWidth || 430,
+      height: Math.max(360, body.clientHeight || 480),
+      plugins: [new G6.Grid(),
+        new G6.Minimap({ size: [118, 88], type: "delegate", className: "gp-minimap",
+          delegateStyle: { fill: "#e2e7f0", stroke: "#b6bcc6" } }),
+        new G6.Tooltip({ itemTypes: ["node", "edge"], offsetX: 12, offsetY: 8,
+          getContent: e => {
+            const m = e.item.getModel(), d = document.createElement("div");
+            d.className = "gp-tip";
+            d.innerHTML = e.item.getType() === "edge"
+              ? "<b>" + esc(m.klabel || "") + "</b>"
+              : "<b>" + esc((m._raw && m._raw.label) || m.id) + "</b>"
+                + (m._raw && m._raw.desc ? "<i>" + esc(m._raw.desc) + "</i>" : "");
+            return d;
+          } })],
+      modes: { default: ["drag-canvas", "zoom-canvas", "drag-node"] },
+      animate: true,
+      layout: { type: "force", preventOverlap: true, nodeSpacing: 14, linkDistance: 85,
+        nodeStrength: -280, edgeStrength: 0.1, alphaDecay: 0.028, alphaMin: 0.001 },
+      defaultEdge: { type: "line", style: { lineWidth: 1.3, opacity: 0.5, cursor: "pointer" } },
+      fitView: true, fitViewPadding: [16, 14, 36, 14]
+    });
+    // 点击节点/边 → 邻域聚焦 + 详情卡；点击空白 → 复位
+    GRAPH.chart.on("node:click", e => {
+      GRAPH.focus = { type: "node", id: e.item.getModel().id };
+      renderGraph();
+      renderInfoCard();
+    });
+    GRAPH.chart.on("edge:click", e => {
+      const m = e.item.getModel();
+      GRAPH.focus = { type: "edge", from: m.source, to: m.target };
+      renderGraph();
+      renderInfoCard();
+    });
+    GRAPH.chart.on("canvas:click", () => {
+      GRAPH.focus = null;
+      renderGraph();
+      renderInfoCard();
+    });
+    // 力导向布局收敛后应用状态样式（点亮/淡显/流动基线）
+    GRAPH.chart.on("afterlayout", () => renderGraph());
+    window.addEventListener("resize", () => {
+      if (!GRAPH.chart) return;
+      const b = p.querySelector(".gp-body");
+      if (b) GRAPH.chart.changeSize(b.clientWidth, Math.max(360, b.clientHeight));
+    });
   }
+  const fit = document.getElementById("gp-fit");
+  if (fit) fit.onclick = () => {
+    if (GRAPH.chart) { GRAPH.chart.fitView(); renderGraph(); renderInfoCard(); }
+  };
   try {
     GRAPH.data = await jget("/v1/graph");
-    renderGraph();
+    gpInitPos(GRAPH.data);
+    if (GRAPH.chart) {
+      GRAPH.chart.data({ nodes: buildNodes(), edges: buildEdges() });
+      GRAPH.chart.render();
+    }
     $("#gp-plan").innerHTML = "注册拓扑：<b>" + GRAPH.data.node_count + "</b> 节点 · <b>" + GRAPH.data.edge_count
-      + "</b> 关联边。任务开始后由主 agent 任务理解规划分派，参与对象依次点亮。";
+      + "</b> 关联边。点击节点/边查看详情；任务开始后由主 agent 规划分派，参与对象依次点亮并流动。";
   } catch (e) {
     $("#gp-plan").textContent = "图谱加载失败：" + e.message;
   }
@@ -1844,49 +1931,165 @@ function gpCat(n) {
     : n.type === "agent" ? 1 : n.type === "skill" ? 2 : 3;
 }
 
+/** 初始坐标：分层同心环（主编居中 / agents 内环 / skills 中环 / MCP 外环），force 以此为起点有机收敛，防重叠防出界。 */
+function gpInitPos(d) {
+  const cx = 215, cy = 212;
+  const groups = { agent: [], skill: [], mcp: [] };
+  (d.nodes || []).forEach(n => {
+    if (n.type === "main") { n.x = cx; n.y = cy; return; }
+    groups[n.state === "market" || n.type === "agent" ? "agent"
+      : n.type === "skill" ? "skill" : "mcp"].push(n);
+  });
+  const place = (arr, rad) => arr.forEach((n, i) => {
+    const a = (2 * Math.PI * i) / arr.length - Math.PI / 2;
+    n.x = Math.round(cx + rad * 0.94 * Math.cos(a));
+    n.y = Math.round(cy + rad * 0.85 * Math.sin(a));
+  });
+  place(groups.agent, 100);
+  place(groups.skill, 172);
+  place(groups.mcp, 236);
+}
+
+function buildNodes() {
+  return (GRAPH.data.nodes || []).map(n => {
+    const cat = gpCat(n), col = GP_CATS[cat].color, isMain = n.type === "main";
+    return {
+      id: n.id, label: shortLabel(n.label), _raw: n,
+      type: "circle",
+      size: isMain ? 56 : cat === 1 ? 34 : cat === 3 ? 28 : cat === 4 ? 22 : 24,
+      x: n.x, y: n.y,
+      style: { fill: col, stroke: "#fff", lineWidth: isMain ? 3 : 1.5, opacity: 1, cursor: "pointer" },
+      labelCfg: { position: "bottom", offset: 4,
+        style: { fill: "#39404d", fontSize: cat === 4 ? 9 : isMain ? 12 : 10.5,
+          fontWeight: isMain ? 700 : 500 } }
+    };
+  });
+}
+
+function buildEdges() {
+  return (GRAPH.data.edges || []).map(e => ({
+    source: e.from, target: e.to, kind: e.kind, klabel: e.label,
+    style: { stroke: GP_ECOLOR[e.kind] || "#b6bcc6", lineWidth: 1.3, opacity: 0.5,
+      cursor: "pointer", lineDash: e.kind === "register" ? [4, 3] : null }
+  }));
+}
+
+/** 状态渲染：运行态点亮/淡显、点击聚焦邻域、点亮边蚂蚁线流动（增量 updateItem）。 */
 function renderGraph() {
-  const chart = GRAPH.chart, d = GRAPH.data;
-  if (!chart || !d) return;
-  const nodes = (d.nodes || []).map(n => {
-    const cat = gpCat(n), col = GP_CATS[cat].color, lit = GRAPH.lit.has(n.id);
-    const dim = GRAPH.running && !lit && n.type !== "main";
-    return {
-      id: n.id, name: shortLabel(n.label), category: cat,
-      symbol: n.type === "main" ? "roundRect" : "circle",
-      symbolSize: n.type === "main" ? [92, 34] : cat === 1 ? 36 : cat === 3 ? 30 : cat === 4 ? 24 : 26,
-      itemStyle: { color: col, borderColor: "#fff", borderWidth: lit ? 2 : 1,
-        opacity: dim ? 0.14 : 1, shadowBlur: lit ? 14 : 0, shadowColor: col },
-      label: { show: true, position: "bottom", distance: 3, fontSize: cat === 4 ? 9 : 10.5,
-        color: dim ? "#c9cdd5" : "#3a4150", fontWeight: n.type === "main" ? 700 : 500 },
-      tip: n.label + " · " + n.kind + (n.state === "market" ? "（市场目录未安装）" : "（运行时）")
-        + (n.desc ? "\n" + n.desc : "")
-    };
+  const g = GRAPH.chart;
+  if (!g || !GRAPH.data) return;
+  const nb = new Set();
+  if (GRAPH.focus && GRAPH.focus.type === "node") {
+    nb.add(GRAPH.focus.id);
+    (GRAPH.data.edges || []).forEach(e => {
+      if (e.from === GRAPH.focus.id) nb.add(e.to);
+      if (e.to === GRAPH.focus.id) nb.add(e.from);
+    });
+  }
+  g.getNodes().forEach(node => {
+    try {
+    const m = node.getModel(), raw = m._raw;
+    if (!raw) return;
+    const isMain = raw.type === "main", lit = GRAPH.lit.has(m.id);
+    let op = 1, sb = 0, bw = isMain ? 3 : 1.5;
+    if (GRAPH.running && !lit && !isMain) op = nb.has(m.id) ? 0.5 : 0.14;
+    else if (!GRAPH.running && GRAPH.focus && !nb.has(m.id) && !isMain) op = 0.12;
+    if (isMain) sb = 16; else if (lit) { sb = 13; bw = 2.5; }
+    g.updateItem(node, { style: { opacity: op, shadowBlur: sb,
+        shadowColor: GP_CATS[gpCat(raw)].color, lineWidth: bw },
+      labelCfg: { style: { fill: op < 0.5 ? "#cdd2da" : "#39404d" } } });
+    } catch (e) { /* 单节点失败不阻断流水线驱动 */ }
   });
-  const links = (d.edges || []).map(e => {
-    const lit = GRAPH.running && GRAPH.lit.has(e.from) && GRAPH.lit.has(e.to);
-    return {
-      source: e.from, target: e.to, klabel: e.label,
-      lineStyle: { color: GP_ECOLOR[e.kind] || "#b6bcc6", width: lit ? 2.4 : 1.1,
-        opacity: GRAPH.running && !lit ? 0.05 : GRAPH.running ? 0.85 : 0.3,
-        curveness: 0.12, type: e.kind === "register" ? "dashed" : "solid" }
-    };
+  g.getEdges().forEach(edge => {
+    try {
+    const m = edge.getModel();
+    const lit = GRAPH.running && GRAPH.lit.has(m.source) && GRAPH.lit.has(m.target);
+    let op = 0.5, w = 1.3;
+    if (GRAPH.focus && GRAPH.focus.type === "node") {
+      const rel = m.source === GRAPH.focus.id || m.target === GRAPH.focus.id;
+      op = rel ? 0.95 : 0.08; w = rel ? 2.4 : 1.2;
+    } else if (GRAPH.focus && GRAPH.focus.type === "edge") {
+      const rel = m.source === GRAPH.focus.from && m.target === GRAPH.focus.to;
+      op = rel ? 1 : 0.1; w = rel ? 3 : 1.2;
+    } else if (GRAPH.running) {
+      op = lit ? 0.85 : 0.06; w = lit ? 2.2 : 1.1;
+    }
+    g.updateItem(edge, { style: { opacity: op, lineWidth: w,
+      lineDash: lit ? [7, 6] : (m.kind === "register" ? [4, 3] : null) } });
+    if (lit) gpEdgeFlow(edge); else gpEdgeStop(edge);
+    } catch (e) { /* 单边失败不阻断流水线驱动 */ }
   });
-  chart.setOption({
-    tooltip: { confine: true, backgroundColor: "rgba(255,255,255,.97)", borderColor: "#e3e6ec",
-      extraCssText: "box-shadow:0 2px 10px rgba(0,0,0,.10);max-width:270px;white-space:pre-wrap;",
-      textStyle: { color: "#2a2f38", fontSize: 11 },
-      formatter: p => p.dataType === "edge" ? esc(p.data.klabel || "") : "<b>" + esc(p.data.tip) + "</b>" },
-    legend: [{ bottom: 4, left: "center", icon: "circle", itemWidth: 9, itemHeight: 9, itemGap: 9,
-      textStyle: { fontSize: 10, color: "#6a7280" }, data: GP_CATS.map(c => c.name) }],
-    series: [{
-      id: "graph", type: "graph", layout: "force", roam: true, draggable: true,
-      categories: GP_CATS.map(c => ({ name: c.name, itemStyle: { color: c.color } })),
-      force: { repulsion: 340, edgeLength: [40, 130], gravity: 0.16, friction: 0.2, layoutAnimation: false },
-      scaleLimit: { min: 0.5, max: 3 },
-      emphasis: { focus: "adjacency", lineStyle: { width: 3 }, label: { fontWeight: 700 } },
-      data: nodes, links: links
-    }]
-  });
+}
+
+/** 点亮边蚂蚁线流动：定时器 + updateItem 全量样式重设（走 G6 正规更新通道强制重绘，
+ *  G6 4.x min 构建 element.animate 缺失、直改 shape.attr 不入渲染队列）。 */
+function gpEdgeFlow(edge) {
+  edge.__flow = true;
+  if (!GRAPH.flowTimer) {
+    GRAPH.flowOffset = 0;
+    GRAPH.flowTimer = setInterval(() => {
+      const g = GRAPH.chart;
+      if (!g) return;
+      GRAPH.flowOffset = (GRAPH.flowOffset - 0.8) % 26;
+      g.getEdges().forEach(edge => {
+        if (!edge.__flow) return;
+        try {
+          const s = edge.getModel().style || {};
+          g.updateItem(edge, { style: { stroke: s.stroke, lineWidth: s.lineWidth,
+            opacity: s.opacity, lineDash: [7, 6], lineDashOffset: GRAPH.flowOffset } });
+        } catch (e) { /* 单边失败不阻断 */ }
+      });
+    }, 70);
+  }
+}
+function gpEdgeStop(edge) {
+  edge.__flow = false;
+  try {
+    if (GRAPH.chart) GRAPH.chart.updateItem(edge, { style: { lineDashOffset: 0 } });
+  } catch (e) { /* ignore */ }
+  if (GRAPH.flowTimer && GRAPH.chart && !GRAPH.chart.getEdges().some(e => e.__flow)) {
+    clearInterval(GRAPH.flowTimer);
+    GRAPH.flowTimer = null;
+  }
+}
+
+/** 点击节点/边的详情卡：节点显示类型/职责/全部关联；边显示两端与关系语义。 */
+function renderInfoCard() {
+  const el = document.getElementById("gp-info");
+  if (!el) return;
+  const f = GRAPH.focus, d = GRAPH.data;
+  if (!f || !d) { el.style.display = "none"; el.innerHTML = ""; return; }
+  let html = "";
+  if (f.type === "node") {
+    const n = (d.nodes || []).find(x => x.id === f.id);
+    if (!n) { GRAPH.focus = null; el.style.display = "none"; return; }
+    const col = GP_CATS[gpCat(n)].color;
+    const rel = (d.edges || []).filter(e => e.from === n.id || e.to === n.id);
+    const typeName = n.type === "main" ? "主 agent" : n.type === "agent" ? "专业 agent"
+      : n.type === "skill" ? "skill" : "MCP 工具";
+    html = '<div class="gi-head"><i style="background:' + col + '"></i><b>' + esc(n.label) + "</b>"
+      + '<span class="gi-tag">' + typeName + (n.state === "market" ? " · 市场目录" : " · 运行时") + "</span>"
+      + '<button class="gi-close" data-close="1">×</button></div>'
+      + (n.desc ? '<div class="gi-desc">' + esc(n.desc) + "</div>" : "")
+      + '<div class="gi-rel"><b>关联 ' + rel.length + " 条</b>" + rel.map(e => {
+        const otherId = e.from === n.id ? e.to : e.from;
+        const on = (d.nodes || []).find(x => x.id === otherId);
+        const dir = e.from === n.id ? "→" : "←";
+        return "<div>" + esc((on ? on.label : otherId) + " " + dir + " " + (e.label || e.kind)) + "</div>";
+      }).join("") + "</div>";
+  } else {
+    const e = (d.edges || []).find(x => x.from === f.from && x.to === f.to);
+    if (!e) { GRAPH.focus = null; el.style.display = "none"; return; }
+    const a = (d.nodes || []).find(x => x.id === e.from);
+    const b = (d.nodes || []).find(x => x.id === e.to);
+    html = '<div class="gi-head"><i style="background:' + (GP_ECOLOR[e.kind] || "#999") + '"></i><b>' + esc(e.label || e.kind) + "</b>"
+      + '<span class="gi-tag">关系</span><button class="gi-close" data-close="1">×</button></div>'
+      + '<div class="gi-desc">' + esc((a ? a.label : e.from) + " → " + (b ? b.label : e.to)) + "</div>";
+  }
+  el.innerHTML = html;
+  el.style.display = "block";
+  const c = el.querySelector("[data-close]");
+  if (c) c.onclick = () => { GRAPH.focus = null; renderGraph(); renderInfoCard(); };
 }
 
 function shortLabel(s) {
@@ -1913,7 +2116,7 @@ async function graphStage(st) {
   if ((st.skills || []).length) parts.push("skill×" + st.skills.length);
   if ((st.tools || []).length) parts.push("MCP 工具×" + st.tools.length);
   setGpStatus("run", "【" + (st.name || st.stage_id || "") + "工位】" + (st.headline || "") + "　参与：" + (parts.join(" · ") || "—"));
-  for (const id of ids) { gpLight(id); await sleep(120); }
+  for (const id of ids) { try { gpLight(id); } catch (e) { /* 单点失败不阻断流水线 */ } await sleep(120); }
 }
 function graphBeginRun(plan) {
   GRAPH.running = true;
@@ -1922,12 +2125,13 @@ function graphBeginRun(plan) {
   renderGraph();
 }
 function graphFinish() {
+  if (GRAPH.chart) GRAPH.chart.getEdges().forEach(gpEdgeStop);
   setGpStatus("done", "任务执行完成 —— 本次任务参与对象保持点亮，未参与的保持淡显");
 }
 function graphReset() {
   GRAPH.running = false;
   GRAPH.lit.clear();
-  setGpStatus("", "空闲 —— 任务开始后按主 agent 规划依次点亮参与对象");
+  setGpStatus("", "空闲 —— 点击节点查看详情；任务开始后按主 agent 规划依次点亮参与对象");
   renderGraph();
 }
 
