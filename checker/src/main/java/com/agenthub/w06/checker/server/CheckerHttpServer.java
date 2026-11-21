@@ -2562,12 +2562,28 @@ public final class CheckerHttpServer {
             full.put("report_period", artNode.path("report_period").asText(""));
             // sections_full → sections
             ArrayNode secs = full.putArray("sections");
+            JsonNode sf = artNode.path("sections_full");
+            if (sf.isArray() && sf.size() > 0) {
             for (JsonNode s : artNode.path("sections_full")) {
                 ObjectNode sn = secs.addObject();
                 sn.put("section_id", s.path("section_id").asText());
                 sn.put("title", s.path("title").asText());
                 sn.put("body", s.path("body").asText());
             }
+            } else {
+
+                // S10.5：S10.3 之前落盘的历史任务无正文快照——诚实占位
+
+                ObjectNode sn = secs.addObject();
+
+                sn.put("section_id", "[legacy]");
+
+                sn.put("title", "历史任务（全文落盘功能上线前生成）");
+
+                sn.put("body", "该任务生成于全文落盘功能上线之前，正文快照未持久化，仅元数据可查。重新生成可获得完整正文。");
+
+            }
+
             // metrics_full → metrics
             ArrayNode mts = full.putArray("metrics");
             for (JsonNode mv : artNode.path("metrics_full")) {
