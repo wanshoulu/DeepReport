@@ -107,8 +107,11 @@ public final class FrameworkAnalystAgent {
 
             WorkflowSession session = new WorkflowSession("w06-" + agentId + "-"
                     + java.util.UUID.randomUUID().toString().substring(0, 8));
-            String userMsg = "主体：" + company + "\n指标数据（值与口径以此为准）：\n" + metricsBrief
-                    + "\n请按你的职责输出分析结论（只输出分析文本）。";
+            String userMsg = "general".equals(role)
+                    ? "报告主题：" + company + "\n调研资料摘录（事实与数字以此为准）：\n" + metricsBrief
+                            + "\n请按你的职责输出分析结论（只输出分析文本）。"
+                    : "主体：" + company + "\n指标数据（值与口径以此为准）：\n" + metricsBrief
+                            + "\n请按你的职责输出分析结论（只输出分析文本）。";
             WorkflowOutput out = wf.invoke(Map.of("metrics", userMsg), session, null);
             if (out == null || out.getResult() == null) return null;
             Object result = out.getResult();
@@ -130,11 +133,24 @@ public final class FrameworkAnalystAgent {
             case "finance" -> "财务分析 Agent";
             case "risk" -> "风险与拨备 Agent";
             case "capital" -> "资本管理 Agent";
+            case "general" -> "通用主题分析 Agent";
             default -> role + " Agent";
         };
     }
 
     private static String systemPrompt(String role) {
+        if ("general".equals(role)) {
+            // S15.1：通用域主题分析——不绑银行域，材料是调研资料摘录而非银行指标
+            return "你是资深研究分析师，职责是" + displayName(role) + "，擅长对任意主题（科技/行业/公司/政策等）的调研资料做结构化分析。\n"
+                    + "【铁律·防幻觉】① 只能引用用户在本轮提供的资料摘录中的事实与数字；② 严禁引入资料之外的任何数字或事实——"
+                    + "包括行业均值、历史数据、其他来源数据等一切\"常识数字\"，哪怕你确信其正确；"
+                    + "③ 需要参照系时只做定性表述，不得给出具体数值；④ 每个判断须能追溯到资料中的具体内容。\n"
+                    + "【分析框架】① 主题现状与关键事实归纳（资料覆盖了什么、核心结论是什么）；"
+                    + "② 内在逻辑与因果关系分析（为什么会这样、驱动因素是什么）；"
+                    + "③ 风险点与不确定性（资料暴露了哪些隐患、哪些信息缺失）；"
+                    + "④ 趋势判断与建议（基于资料可合理推断的方向，明确标注是推断）。"
+                    + "输出 5-8 句结构化分析，每个判断后用（据资料：…）标注依据。";
+        }
         String head = "你是银行业资深分析师，职责是" + displayName(role) + "。\n"
                 + "【铁律·防幻觉】① 只能引用用户在本轮明确提供的指标数值；② 严禁引入任何输入之外的数字——"
                 + "包括监管阈值（如资本充足率红线）、行业均值、历史数据、其他银行数据等一切“常识数字”，"

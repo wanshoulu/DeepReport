@@ -7,22 +7,93 @@
     "primary_pages": "本期信源页清单（取自 manifest.sources[0].pages，如 P18/P30/P37）",
     "comparison_pages": "对比信源页清单（取自 manifest.sources[1].pages，如 P46）"
   },
-  "section_order": ["S-8", "S-11", "S-7", "S-1", "S-2", "S-3", "S-4", "S-5", "S-6", "S-12", "S-9", "S-10", "S-13", "S-14"],
+  "section_order": [
+    "S-8",
+    "S-11",
+    "S-7",
+    "S-1",
+    "S-2",
+    "S-3",
+    "S-4",
+    "S-5",
+    "S-6",
+    "S-12",
+    "S-9",
+    "S-10",
+    "S-13",
+    "S-14"
+  ],
   "sections": {
-    "S-8":  { "role": "static",   "agent": "disclosure-officer", "label": "释义与重要提示" },
-    "S-11": { "role": "static",   "agent": "disclosure-officer", "label": "公司简介" },
-    "S-7":  { "role": "analysis", "agent": "finance-analyst",    "label": "上年同期对比" },
-    "S-1":  { "role": "analysis", "agent": "finance-analyst",    "label": "总体经营情况" },
-    "S-2":  { "role": "analysis", "agent": "risk-analyst",       "label": "贷款质量" },
-    "S-3":  { "role": "analysis", "agent": "finance-analyst",    "label": "利润表与成本" },
-    "S-4":  { "role": "analysis", "agent": "finance-analyst",    "label": "资产负债表" },
-    "S-5":  { "role": "analysis", "agent": "capital-analyst",    "label": "资本充足" },
-    "S-6":  { "role": "analysis", "agent": "finance-analyst",    "label": "收入结构" },
-    "S-12": { "role": "static",   "agent": "disclosure-officer", "label": "ESG" },
-    "S-9":  { "role": "static",   "agent": "disclosure-officer", "label": "公司治理与核验交付" },
-    "S-10": { "role": "static",   "agent": "disclosure-officer", "label": "重要事项与数据来源" },
-    "S-13": { "role": "static",   "agent": "disclosure-officer", "label": "股份变动及股东情况" },
-    "S-14": { "role": "static",   "agent": "disclosure-officer", "label": "财务报告" }
+    "S-8": {
+      "role": "static",
+      "agent": "disclosure-officer",
+      "label": "释义与重要提示"
+    },
+    "S-11": {
+      "role": "static",
+      "agent": "disclosure-officer",
+      "label": "公司简介"
+    },
+    "S-7": {
+      "role": "analysis",
+      "agent": "finance-analyst",
+      "label": "上年同期对比"
+    },
+    "S-1": {
+      "role": "analysis",
+      "agent": "finance-analyst",
+      "label": "总体经营情况"
+    },
+    "S-2": {
+      "role": "analysis",
+      "agent": "risk-analyst",
+      "label": "贷款质量"
+    },
+    "S-3": {
+      "role": "analysis",
+      "agent": "finance-analyst",
+      "label": "利润表与成本"
+    },
+    "S-4": {
+      "role": "analysis",
+      "agent": "finance-analyst",
+      "label": "资产负债表"
+    },
+    "S-5": {
+      "role": "analysis",
+      "agent": "capital-analyst",
+      "label": "资本充足"
+    },
+    "S-6": {
+      "role": "analysis",
+      "agent": "finance-analyst",
+      "label": "收入结构"
+    },
+    "S-12": {
+      "role": "static",
+      "agent": "disclosure-officer",
+      "label": "ESG"
+    },
+    "S-9": {
+      "role": "static",
+      "agent": "disclosure-officer",
+      "label": "公司治理与核验交付"
+    },
+    "S-10": {
+      "role": "static",
+      "agent": "disclosure-officer",
+      "label": "重要事项与数据来源"
+    },
+    "S-13": {
+      "role": "static",
+      "agent": "disclosure-officer",
+      "label": "股份变动及股东情况"
+    },
+    "S-14": {
+      "role": "static",
+      "agent": "disclosure-officer",
+      "label": "财务报告"
+    }
   },
   "static_bodies": {
     "S-8": "本报告全部关键财务与监管指标取自 W01 冻结快照（{snapshot_version}）的指标索引页。\n金额单位为人民币亿元；比率单位为百分比（%）；净息差变动以基点（bp）表述，比率变动以百分点表述。\n正文全部陈述句均来自快照页（{primary_pages}、{comparison_pages}）原文，页外推算或评述性内容不进入正文。",
@@ -37,17 +108,17 @@
     "cmb": {
       "company": "招商银行股份有限公司",
       "titles": {
-        "S-8":  "卷首 · 释义与重要提示",
+        "S-8": "卷首 · 释义与重要提示",
         "S-11": "第一章 公司简介",
-        "S-7":  "第二章 会计数据和财务指标摘要 · 上年同期对比",
-        "S-1":  "第三章 管理层讨论与分析 · 3.1 总体经营情况分析",
-        "S-2":  "第三章 管理层讨论与分析 · 3.4 贷款质量分析",
-        "S-3":  "第三章 管理层讨论与分析 · 3.2 利润表分析",
-        "S-4":  "第三章 管理层讨论与分析 · 3.3 资产负债表分析",
-        "S-5":  "第三章 管理层讨论与分析 · 3.5 资本充足情况分析",
-        "S-6":  "第三章 管理层讨论与分析 · 3.6 分部经营业绩 · 收入结构拆解",
+        "S-7": "第二章 会计数据和财务指标摘要 · 上年同期对比",
+        "S-1": "第三章 管理层讨论与分析 · 3.1 总体经营情况分析",
+        "S-2": "第三章 管理层讨论与分析 · 3.4 贷款质量分析",
+        "S-3": "第三章 管理层讨论与分析 · 3.2 利润表分析",
+        "S-4": "第三章 管理层讨论与分析 · 3.3 资产负债表分析",
+        "S-5": "第三章 管理层讨论与分析 · 3.5 资本充足情况分析",
+        "S-6": "第三章 管理层讨论与分析 · 3.6 分部经营业绩 · 收入结构拆解",
         "S-12": "第四章 环境、社会与治理（ESG）",
-        "S-9":  "第五章 公司治理 · 内部控制与交付治理",
+        "S-9": "第五章 公司治理 · 内部控制与交付治理",
         "S-10": "第六章 重要事项 · 数据来源与使用限制",
         "S-13": "第七章 股份变动及股东情况",
         "S-14": "第八章 财务报告"
@@ -56,17 +127,17 @@
     "icbc": {
       "company": "中国工商银行股份有限公司",
       "titles": {
-        "S-8":  "卷首 · 释义与重要提示",
+        "S-8": "卷首 · 释义与重要提示",
         "S-11": "第一章 公司简介",
-        "S-7":  "第二章 会计数据和财务指标摘要 · 上年同期对比",
-        "S-1":  "第八章 董事会报告 · 8.2 财务报表分析 · 总体经营情况",
-        "S-2":  "第八章 董事会报告 · 8.4 风险管理 · 贷款质量",
-        "S-3":  "第八章 董事会报告 · 8.2 财务报表分析 · 利润表",
-        "S-4":  "第八章 董事会报告 · 8.2 财务报表分析 · 资产负债表",
-        "S-5":  "第八章 董事会报告 · 8.5 资本管理 · 资本充足率",
-        "S-6":  "第八章 董事会报告 · 8.2 财务报表分析 · 收入结构",
+        "S-7": "第二章 会计数据和财务指标摘要 · 上年同期对比",
+        "S-1": "第八章 董事会报告 · 8.2 财务报表分析 · 总体经营情况",
+        "S-2": "第八章 董事会报告 · 8.4 风险管理 · 贷款质量",
+        "S-3": "第八章 董事会报告 · 8.2 财务报表分析 · 利润表",
+        "S-4": "第八章 董事会报告 · 8.2 财务报表分析 · 资产负债表",
+        "S-5": "第八章 董事会报告 · 8.5 资本管理 · 资本充足率",
+        "S-6": "第八章 董事会报告 · 8.2 财务报表分析 · 收入结构",
         "S-12": "第十一章 环境、社会与治理（ESG）",
-        "S-9":  "第十四章 公司治理 · 内部控制与交付治理",
+        "S-9": "第十四章 公司治理 · 内部控制与交付治理",
         "S-10": "第十五章 重要事项 · 数据来源与使用限制",
         "S-13": "第十二章 股份变动及股东情况",
         "S-14": "第十七章 审计报告及财务报告"
@@ -75,17 +146,17 @@
     "ccb": {
       "company": "中国建设银行股份有限公司",
       "titles": {
-        "S-8":  "卷首 · 释义与重要提示",
+        "S-8": "卷首 · 释义与重要提示",
         "S-11": "第一章 公司简介",
-        "S-7":  "第二章 会计数据和财务指标摘要 · 上年同期对比",
-        "S-1":  "第六章 董事会报告 · 6.1 财务回顾 · 总体经营情况",
-        "S-2":  "第六章 董事会报告 · 6.3 风险管理 · 贷款质量",
-        "S-3":  "第六章 董事会报告 · 6.1 财务回顾 · 利润表分析",
-        "S-4":  "第六章 董事会报告 · 6.1 财务回顾 · 资产负债表分析",
-        "S-5":  "第六章 董事会报告 · 6.4 资本管理",
-        "S-6":  "第六章 董事会报告 · 6.1 财务回顾 · 收入结构",
+        "S-7": "第二章 会计数据和财务指标摘要 · 上年同期对比",
+        "S-1": "第六章 董事会报告 · 6.1 财务回顾 · 总体经营情况",
+        "S-2": "第六章 董事会报告 · 6.3 风险管理 · 贷款质量",
+        "S-3": "第六章 董事会报告 · 6.1 财务回顾 · 利润表分析",
+        "S-4": "第六章 董事会报告 · 6.1 财务回顾 · 资产负债表分析",
+        "S-5": "第六章 董事会报告 · 6.4 资本管理",
+        "S-6": "第六章 董事会报告 · 6.1 财务回顾 · 收入结构",
         "S-12": "第七章 环境、社会与治理（ESG）",
-        "S-9":  "第八章 公司治理 · 内部控制与交付治理",
+        "S-9": "第八章 公司治理 · 内部控制与交付治理",
         "S-10": "第九章 重要事项 · 数据来源与使用限制",
         "S-13": "第十章 股份变动及股东情况",
         "S-14": "第十一章 财务报告"
@@ -101,19 +172,55 @@
         "primary_pages": "资料集页清单摘要（取自 manifest.sources[0..n].pages，超长截断）",
         "comparison_pages": "对比资料页清单（无对比信源时以 — 呈现）"
       },
-      "section_order": ["G-1", "G-2", "G-3", "G-4", "G-5", "G-6", "G-7"],
+      "section_order": [
+        "G-1",
+        "G-2",
+        "G-3",
+        "G-4",
+        "G-5",
+        "G-6",
+        "G-7"
+      ],
       "sections": {
-        "G-1": { "role": "analysis", "agent": "editor-in-chief",   "label": "执行摘要",
-                 "brief_body": "简报模式下本节为骨架占位：{company} 的核心结论、关键依据与总体建议由主编（editor-in-chief）在长文模式下基于已注册资料集生成，每条结论须挂接 [C-n] 引用。" },
-        "G-2": { "role": "static",   "agent": "disclosure-officer", "label": "背景与目标" },
-        "G-3": { "role": "static",   "agent": "disclosure-officer", "label": "资料与方法" },
-        "G-4": { "role": "analysis", "agent": "finance-analyst",   "label": "核心发现",
-                 "brief_body": "简报模式下本节为骨架占位：{company} 的核心发现由 finance-analyst 在长文模式下依据资料集（{primary_pages}）逐条生成，每条发现须挂接 [C-n] 引用，禁止页外推算。" },
-        "G-5": { "role": "analysis", "agent": "risk-analyst",      "label": "风险与挑战",
-                 "brief_body": "简报模式下本节为骨架占位：{company} 的风险识别与挑战评估由 risk-analyst 在长文模式下基于证据生成。" },
-        "G-6": { "role": "analysis", "agent": "editor-in-chief",   "label": "结论与建议",
-                 "brief_body": "简报模式下本节为骨架占位：结论与建议由主编在长文模式下汇总各节要点生成，不引入资料集之外的新论断。" },
-        "G-7": { "role": "static",   "agent": "disclosure-officer", "label": "数据来源与使用限制" }
+        "G-1": {
+          "role": "analysis",
+          "agent": "editor-in-chief",
+          "label": "执行摘要",
+          "brief_body": "简报模式下本节为骨架占位：{company} 的核心结论、关键依据与总体建议由主编（editor-in-chief）在长文模式下基于已注册资料集生成，每条结论须挂接 [C-n] 引用。"
+        },
+        "G-2": {
+          "role": "static",
+          "agent": "disclosure-officer",
+          "label": "背景与目标"
+        },
+        "G-3": {
+          "role": "static",
+          "agent": "disclosure-officer",
+          "label": "资料与方法"
+        },
+        "G-4": {
+          "role": "analysis",
+          "agent": "general-analyst",
+          "label": "核心发现",
+          "brief_body": "简报模式下本节为骨架占位：{company} 的核心发现由 finance-analyst 在长文模式下依据资料集（{primary_pages}）逐条生成，每条发现须挂接 [C-n] 引用，禁止页外推算。"
+        },
+        "G-5": {
+          "role": "analysis",
+          "agent": "general-analyst",
+          "label": "风险与挑战",
+          "brief_body": "简报模式下本节为骨架占位：{company} 的风险识别与挑战评估由 risk-analyst 在长文模式下基于证据生成。"
+        },
+        "G-6": {
+          "role": "analysis",
+          "agent": "general-analyst",
+          "label": "结论与建议",
+          "brief_body": "简报模式下本节为骨架占位：结论与建议由主编在长文模式下汇总各节要点生成，不引入资料集之外的新论断。"
+        },
+        "G-7": {
+          "role": "static",
+          "agent": "disclosure-officer",
+          "label": "数据来源与使用限制"
+        }
       },
       "static_bodies": {
         "G-2": "本报告围绕 {company} 编制。调研背景、范围与目标以导入资料为准；资料集（{snapshot_version}）覆盖之外的背景信息不进入正文。",

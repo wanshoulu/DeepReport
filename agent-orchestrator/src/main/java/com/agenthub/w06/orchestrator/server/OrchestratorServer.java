@@ -79,6 +79,8 @@ public final class OrchestratorServer {
         // S7.3：动态编排——plan_experts（按报告类型从候选池选人定序）+ dispatch_stage（逐工位派工）
         registerPlanExpertsTool();
         registerDispatchStageTool();
+        // S15 集成：合规框架 agent（3 analyst Workflow + deep-search Workflow）注册为 root 原生工具
+        registerCompliantAgentTools();
         // S13：初始化框架原生分析 ReActAgent（复用编排器同款 LLM 配置）
         try {
             String prov = env("LLM_PROVIDER", "OpenAI");
@@ -86,7 +88,7 @@ public final class OrchestratorServer {
             String abase = env("LLM_API_BASE", "");
             String amodel = System.getenv("LLM_MODEL");
             int maxTokens = Integer.parseInt(env("ANALYST_MAX_TOKENS", "800"));
-            for (String role : new String[]{"finance", "risk", "capital"}) {
+            for (String role : new String[]{"finance", "risk", "capital", "general"}) {
                 ANALYSTS.put(role, new com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent(
                         role + "-analyst", role, prov, akey, abase, amodel, maxTokens));
             }
@@ -301,6 +303,108 @@ public final class OrchestratorServer {
             "research", java.util.List.of("material-agent", "deep-search", "finance-analyst",
                     "risk-analyst", "macro-review", "chart-agent", "writer-agent",
                     "numeric-checker", "citation-checker", "approver"));
+
+    /** S15 集成：把合规的框架原生 agent 注册为 root DeepAgent 工具——形成真正多 agent 系统：
+     *  root(DeepAgent) 自主编排调用 analyst×3(Workflow) + deep-search(Workflow)；
+     *  MCP 2 工具经 DeepAgentConfig.mcps 已原生注册；六工位流水线经 run_pipeline 可整链触发。 */
+    private static void registerCompliantAgentTools() {
+        // 三个分析 Workflow：进程内直调（零网络开销）
+        for (String role : new String[]{"finance", "risk", "capital", "general"}) {
+            String analystName = role + "-analyst";
+            String toolDesc = "general".equals(role)
+                    ? "通用主题分析（框架 Workflow）：输入报告主题与调研资料摘录，输出结构化研究分析（现状/因果/风险/趋势）。只引用给定资料、不编造数字"
+                    : analystName + "（框架 Workflow）：输入本角色域指标，输出归因分析结论。只引用输入指标、不编造数字";
+            registerLocalTool(role + "_analysis",
+                    toolDesc,
+                    java.util.Map.of("company", java.util.Map.of("type", "string", "description", "主体名称"),
+                            "metrics_brief", java.util.Map.of("type", "string", "description", "指标摘要（名称 值 单位 同比，换行分隔）")),
+                    java.util.List.of("company", "metrics_brief"),
+                    args -> {
+                        com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent an = ANALYSTS.get(role);
+                        if (an == null) return java.util.Map.of("error", "analyst not initialized");
+                        String result = an.analyze(String.valueOf(args.getOrDefault("company", "")),
+                                String.valueOf(args.getOrDefault("metrics_brief", "")));
+                        return result == null
+                                ? java.util.Map.of("status", "DEGRADED")
+                                : java.util.Map.of("status", "OK", "engine", "openjiuwen-Workflow", "analysis", result);
+                    });
+        }
+        // deep-search Workflow：进程内直调
+        registerLocalTool("deep_search",
+                "深度调研（框架 Workflow，LoopComponent 3 轮）：LLM 规划查询→联网搜索→抓取→snapshot_commit 落盘注册，产物进 live 信源池可引用可核验",
+                java.util.Map.of("subject", java.util.Map.of("type", "string", "description", "调研主题")),
+                java.util.List.of("subject"),
+                args -> {
+                    if (DEEP_SEARCH == null) return java.util.Map.of("error", "deep-search not initialized");
+                    com.fasterxml.jackson.databind.node.ObjectNode r =
+                            DEEP_SEARCH.run(String.valueOf(args.getOrDefault("subject", "")));
+                    return r == null ? java.util.Map.of("status", "DEGRADED")
+                            : java.util.Map.of("status", "OK", "engine", "openjiuwen-Workflow", "result", r);
+                });
+        // writer：HTTP SSE 调 skill-app-agent DeepAgent（跨进程，带超时）
+        try {
+            String writerBase = env("WRITER_AGENT_URL", "http://skill-app-agent:8310");
+            com.openjiuwen.core.foundation.tool.ToolCard card =
+                    com.openjiuwen.core.foundation.tool.ToolCard.builder()
+                            .name("write_report_sections")
+                            .description("长文写作（框架 DeepAgent，加载 annual-report/general-report 技能）：按任务书逐节成稿，输出 [S-n]/[G-n] 分节正文")
+                            .inputParams(java.util.Map.of(
+                                    "type", "object",
+                                    "properties", java.util.Map.of(
+                                            "message", java.util.Map.of("type", "string", "description", "完整写作任务书文本"),
+                                            "session_id", java.util.Map.of("type", "string", "description", "会话 id（同任务复用）")),
+                                    "required", java.util.List.of("message")))
+                            .build();
+            com.openjiuwen.core.foundation.tool.function.LocalFunction fn =
+                    new com.openjiuwen.core.foundation.tool.function.LocalFunction(card, args -> {
+                        try {
+                            ObjectNode body = MAPPER.createObjectNode();
+                            body.put("message", String.valueOf(args.getOrDefault("message", "")));
+                            body.put("session_id", String.valueOf(args.getOrDefault("session_id",
+                                    "w06-int-" + java.util.UUID.randomUUID().toString().substring(0, 8))));
+                            java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
+                                    .connectTimeout(java.time.Duration.ofSeconds(10)).build();
+                            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                                    .uri(java.net.URI.create(writerBase + "/v1/chat"))
+                                    .header("Content-Type", "application/json")
+                                    .timeout(java.time.Duration.ofSeconds(300))
+                                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                                            MAPPER.writeValueAsString(body)))
+                                    .build();
+                            java.net.http.HttpResponse<String> resp =
+                                    http.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+                            return java.util.Map.of("status", resp.statusCode() == 200 ? "OK" : "FAILED",
+                                    "body", resp.body());
+                        } catch (Exception e) {
+                            return java.util.Map.of("error", String.valueOf(e.getMessage()));
+                        }
+                    });
+            AGENT.registerHarnessTool(fn);
+            System.out.println("[orchestrator] write_report_sections tool registered (" + writerBase + ")");
+        } catch (Exception e) {
+            System.err.println("[orchestrator] writer tool failed: " + e);
+        }
+    }
+
+    /** S15：注册进程内 LocalFunction 工具的通用助手。 */
+    private static void registerLocalTool(String name, String description,
+            java.util.Map<String, Object> properties, java.util.List<String> required,
+            java.util.function.Function<java.util.Map<String, Object>, java.util.Map<String, Object>> handler) {
+        try {
+            com.openjiuwen.core.foundation.tool.ToolCard card =
+                    com.openjiuwen.core.foundation.tool.ToolCard.builder()
+                            .name(name).description(description)
+                            .inputParams(java.util.Map.of("type", "object",
+                                    "properties", properties, "required", required))
+                            .build();
+            com.openjiuwen.core.foundation.tool.function.LocalFunction fn =
+                    new com.openjiuwen.core.foundation.tool.function.LocalFunction(card, handler::apply);
+            AGENT.registerHarnessTool(fn);
+            System.out.println("[orchestrator] tool registered: " + name);
+        } catch (Exception e) {
+            System.err.println("[orchestrator] registerLocalTool(" + name + ") failed: " + e);
+        }
+    }
 
     /** S7.3 工具一：plan_experts——root 产出结构化编排计划（从候选池选人定序）。 */
     private static void registerPlanExpertsTool() {

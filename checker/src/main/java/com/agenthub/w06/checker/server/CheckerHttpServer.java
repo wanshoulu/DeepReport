@@ -849,24 +849,48 @@ public final class CheckerHttpServer {
 
     /** 信源与主题相关性：title 命中即相关；否则任一页文本命中主题词即相关。 */
     private static boolean srcMatches(JsonNode src, List<String> tokens, BankSnap live) {
+        // S14.1：标题命中任一主题词 = 强信号，直接通过
         String title = src.path("title").asText("");
         for (String t : tokens) {
-            if (title.contains(t)) {
+            if (tokenHit(title, t)) {
                 return true;
             }
         }
+        // S14.1：正文需强证据——杜绝单个宽泛短词（如 "AI"）子串误命中银行年报正文。
+        // 通过条件：命中长度≥4的具体词（如 "编排框架"/"Agent"），或命中≥2个不同主题词（多重佐证）。
+        java.util.Set<String> bodyHits = new java.util.LinkedHashSet<>();
+        boolean hasSpecific = false;
         for (JsonNode pno : src.path("pages")) {
             String text = live.byPageNumber.get(pno.asInt());
             if (text == null) {
                 continue;
             }
             for (String t : tokens) {
-                if (text.contains(t)) {
-                    return true;
+                if (tokenHit(text, t)) {
+                    bodyHits.add(t);
+                    if (t.length() >= 4) {
+                        hasSpecific = true;
+                    }
                 }
             }
         }
-        return false;
+        return hasSpecific || bodyHits.size() >= 2;
+    }
+
+    /** S14.1：主题词命中判定。纯 ASCII 词按单词边界匹配（防 "AI" 命中 "MAIN"/"CHAIN"
+     *  等子串），含中日韩字符按子串匹配（中文无词边界，且长词本身足够具体）。 */
+    private static boolean tokenHit(String text, String token) {
+        if (text == null || token == null || token.isEmpty()) {
+            return false;
+        }
+        boolean ascii = token.chars().allMatch(c -> c < 128);
+        if (!ascii) {
+            return text.contains(token);
+        }
+        return java.util.regex.Pattern
+                .compile("\\b" + java.util.regex.Pattern.quote(token) + "\\b",
+                        java.util.regex.Pattern.CASE_INSENSITIVE)
+                .matcher(text).find();
     }
 
     /**
@@ -1259,8 +1283,19 @@ public final class CheckerHttpServer {
                                 if (src.path("fetched_at").asText("").startsWith(today)) matched.add(src);
                             }
                         }
-                        subjectSources = matched;
-                        System.out.println("S11.3: subject sources refreshed from disk: " + matched.size() + "/" + all.size());
+                        // S14.1：通用域深搜成功——引用池只用本轮新 commit 的信源（fetched_at=今天）。
+                        // 历史 live 遗留（早期测试抓的 112 份银行年报，正文金融科技章节弱命中 AI/Agent
+                        // 双词而漏过主题圈定）一律排除，从根杜绝跨主题串台（GENERAL-22/23 实测教训）。
+                        String todayS14 = java.time.LocalDate.now().toString();
+                        List<JsonNode> freshS14 = new ArrayList<>();
+                        for (JsonNode src : matched) {
+                            if (src.path("fetched_at").asText("").startsWith(todayS14)) {
+                                freshS14.add(src);
+                            }
+                        }
+                        subjectSources = freshS14.isEmpty() ? matched : freshS14;
+                        System.out.println("S11.3+S14.1: subject sources 本轮" + freshS14.size()
+                                + "/圈定" + matched.size() + "/全量" + all.size());
                     }
                 } catch (Exception e) {
                     System.err.println("S11.3 manifest reread failed: " + e.getMessage());
@@ -1292,7 +1327,31 @@ public final class CheckerHttpServer {
         // 角色聚焦靠确定性手段保证：每个分析师只接收本域指标（物理过滤），从根上杜绝雷同复述。
         boolean analysisEnabled = !"false".equalsIgnoreCase(System.getenv().getOrDefault("FRAMEWORK_ANALYSIS", "true"));
         Map<String, String> analysisInsights = new LinkedHashMap<>();
-        if (analysisEnabled) {
+        boolean generalDomain = !"annual_report".equals(reportType);
+        if (analysisEnabled && generalDomain) {
+            // S15.1：通用域——general-analyst 主题自适应分析。
+            // 材料 = 本轮深搜圈定信源（subjectSources，S14.1 已过滤为当轮新抓取）的页文本摘录。
+            BankSnap liveSnapForAnalysis = resolver.banks.get(ToolGateway.LIVE_BANK);
+            StringBuilder material = new StringBuilder();
+            if (liveSnapForAnalysis != null) {
+                for (JsonNode src : subjectSources) {
+                    String title = src.path("title").asText("");
+                    for (JsonNode pno : src.path("pages")) {
+                        String text = liveSnapForAnalysis.byPageNumber.get(pno.asInt());
+                        if (text == null || text.isBlank()) continue;
+                        material.append("《").append(title).append("》摘录：")
+                                .append(text, 0, Math.min(text.length(), 600)).append("\n\n");
+                        break; // 每信源取首页摘录，防上下文膨胀
+                    }
+                    if (material.length() > 6000) break; // 总量上限
+                }
+            }
+            if (material.length() > 0) {
+                String insight = analyzeWithFrameworkAgent("general", art.company(), material.toString());
+                if (insight != null) analysisInsights.put("general-analyst", insight);
+            }
+        } else if (analysisEnabled) {
+            // 年报域：三个银行域 analyst 按角色物理过滤指标（S13.1 机制不变）
             for (String analyst : analysts) {
                 String role = analyst.replace("-analyst", "");
                 String roleBrief = metricsBriefForRole(art.metrics(), role);
@@ -2423,6 +2482,10 @@ public final class CheckerHttpServer {
                         + "抓取产物经 snapshot_commit 落盘注册进信源注册表后方可引用（纪律门）",
                 new String[]{"查询规划", "多轮深搜", "充分性评估"},
                 new String[]{"general-report", "deep-search"}, boot);
+        putAgent(AGENT_RUNTIME, "general-analyst", "通用主题分析 Agent", "ANALYST", "1.0.0",
+                "通用域主题自适应分析（框架 Workflow）：对调研资料做现状归纳/因果分析/风险识别/趋势判断，只引用给定资料",
+                new String[]{"主题分析", "资料归纳", "风险识别"},
+                new String[]{"general-report"}, boot);
         putAgent(AGENT_RUNTIME, "finance-analyst", "财务分析 Agent", "ANALYST", "1.0.0",
                 "经营业绩与盈利结构分析：营收、净利润、净息差、成本收入比",
                 new String[]{"经营业绩分析", "盈利结构分析"},
@@ -2553,6 +2616,7 @@ public final class CheckerHttpServer {
             java.util.Map.entry("editor-in-chief", "workflow"),      // 规则路由+状态查询，确定性（此前误标 react）
             java.util.Map.entry("writer-agent", "deepagent"),        // 执行载体 skill-app-agent DeepAgent（此前误标 react）
             java.util.Map.entry("deep-search", "workflow"),          // 固定循环+LLM 节点，Workflow 形态（此前误标 react）
+            java.util.Map.entry("general-analyst", "workflow"),      // S15.1：通用域主题分析 Workflow
             java.util.Map.entry("finance-analyst", "workflow"),      // S13.2：框架原生 Workflow（LLMComponent）已实装
             java.util.Map.entry("risk-analyst", "workflow"),         // 同上
             java.util.Map.entry("capital-analyst", "workflow"),      // 同上
