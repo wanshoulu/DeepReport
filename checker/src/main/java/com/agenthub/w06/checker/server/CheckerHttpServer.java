@@ -2619,30 +2619,13 @@ public final class CheckerHttpServer {
         try {
             ObjectNode rec = MAPPER.createObjectNode();
             rec.set("task", TASKS.get(id).deepCopy());
-            ObjectNode art = rec.putObject("artifact");
+            // S12.1：直接序列化完整工件对象——此前手工挑字段（写成 name 而契约是 key，
+            // 且漏 period/digest/citations/charts），导致重启后重建 metrics=0/sections=0。
             AnnualReportArtifacts a = TASK_ARTIFACTS.get(id);
             if (a != null) {
-                art.put("company", a.company());
-                art.put("report_period", a.reportPeriod());
-                art.put("metrics_count", a.metrics().size());
-                art.put("sections_count", a.sections().size());
-                art.put("citations_count", a.citations().size());
-                // S10.3：全文落盘——正文节（含 [S-n]/[G-n] 与 body）与指标全量，报告库详情页可离线重建
-                ArrayNode secs = art.putArray("sections_full");
-                for (ReportSection s : a.sections()) {
-                    ObjectNode sn = secs.addObject();
-                    sn.put("section_id", s.sectionId());
-                    sn.put("title", s.title());
-                    sn.put("body", s.body());
-                }
-                ArrayNode mts = art.putArray("metrics_full");
-                for (MetricValue mv : a.metrics()) {
-                    ObjectNode mn = mts.addObject();
-                    mn.put("name", mv.key().name());
-                    mn.put("value", mv.value());
-                    mn.put("unit", mv.unit());
-                    mn.put("page", mv.page());
-                }
+                rec.set("artifact", MAPPER.valueToTree(a));
+            } else {
+                rec.putObject("artifact");
             }
             Path dir = taskStateDir();
             Files.createDirectories(dir);
@@ -2699,44 +2682,45 @@ public final class CheckerHttpServer {
         try {
             JsonNode rec = MAPPER.readTree(f.toFile());
             JsonNode artNode = rec.path("artifact");
+            if (!artNode.isObject() || artNode.isEmpty()) return null;
+            // S12.1：新格式（完整工件序列化）直接反序列化
+            if (artNode.has("metrics") || artNode.has("sections")) {
+                try {
+                    return MAPPER.treeToValue(artNode, AnnualReportArtifacts.class);
+                } catch (Exception e) {
+                    System.err.println("loadArtifactFromDisk(" + id + ") direct deserialize: " + e.getMessage());
+                }
+            }
+            // 旧格式兼容（S10.3 的 metrics_full/sections_full 摘要）：字段名映射后重建
             ObjectNode full = MAPPER.createObjectNode();
             full.put("task_id", id);
             full.put("company", artNode.path("company").asText(taskStateCompany(rec)));
             full.put("report_period", artNode.path("report_period").asText(""));
-            // sections_full → sections
             ArrayNode secs = full.putArray("sections");
             JsonNode sf = artNode.path("sections_full");
             if (sf.isArray() && sf.size() > 0) {
-            for (JsonNode s : artNode.path("sections_full")) {
-                ObjectNode sn = secs.addObject();
-                sn.put("section_id", s.path("section_id").asText());
-                sn.put("title", s.path("title").asText());
-                sn.put("body", s.path("body").asText());
-            }
+                for (JsonNode s : sf) {
+                    ObjectNode sn = secs.addObject();
+                    sn.put("section_id", s.path("section_id").asText());
+                    sn.put("title", s.path("title").asText());
+                    sn.put("body", s.path("body").asText());
+                }
             } else {
-
-                // S10.5：S10.3 之前落盘的历史任务无正文快照——诚实占位
-
                 ObjectNode sn = secs.addObject();
-
                 sn.put("section_id", "[legacy]");
-
                 sn.put("title", "历史任务（全文落盘功能上线前生成）");
-
                 sn.put("body", "该任务生成于全文落盘功能上线之前，正文快照未持久化，仅元数据可查。重新生成可获得完整正文。");
-
             }
-
-            // metrics_full → metrics
             ArrayNode mts = full.putArray("metrics");
             for (JsonNode mv : artNode.path("metrics_full")) {
                 ObjectNode mn = mts.addObject();
-                mn.put("name", mv.path("name").asText());
+                mn.put("key", mv.path("name").asText(mv.path("key").asText(""))); // 旧字段名 name → 契约 key
                 mn.put("value", mv.path("value").asText());
                 mn.put("unit", mv.path("unit").asText());
                 mn.put("page", mv.path("page").asInt());
             }
-            // 经 contract 反序列化（忽略未知字段）
+            full.putArray("citations");
+            full.putArray("charts");
             return MAPPER.treeToValue(full, AnnualReportArtifacts.class);
         } catch (Exception e) {
             System.err.println("loadArtifactFromDisk(" + id + "): " + e.getMessage());
