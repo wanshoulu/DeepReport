@@ -525,7 +525,12 @@ public final class CheckerHttpServer {
                 return;
             }
             ObjectNode out = MAPPER.createObjectNode();
-            out.set("task", task.deepCopy());
+            ObjectNode taskCopy = task.deepCopy();
+            // S12.2：详情接口补齐 checks（列表接口有，详情缺——前端报告库详情页要显示核验结论）
+            if (!taskCopy.has("checks") && TASKS.get(id).has("checks")) {
+                taskCopy.set("checks", TASKS.get(id).get("checks"));
+            }
+            out.set("task", taskCopy);
             out.set("artifact", MAPPER.valueToTree(artifact));
             respond(ex, 200, out);
             return;
@@ -1474,9 +1479,17 @@ public final class CheckerHttpServer {
         out.put("report_period", art.reportPeriod());
         out.put("artifact_digest", digest);
         out.set("artifact", MAPPER.valueToTree(TASK_ARTIFACTS.get(finalTaskId)));
-        out.set("checks", checksNode(num, cit));
+        ObjectNode checksForTask = checksNode(num, cit);
+        out.set("checks", checksForTask);
         out.set("stages", stages);
         out.set("plan", plan);
+        // S12.2：核验结论写进任务记录并落盘——此前只进响应体，重启后报告库详情页看不到核验状态
+        ObjectNode taskRec2 = TASKS.get(finalTaskId);
+        if (taskRec2 != null) {
+            taskRec2.set("checks", checksForTask.deepCopy());
+            taskRec2.put("updated_at", java.time.Instant.now().toString());
+            saveTaskState(finalTaskId);
+        }
         respond(ex, 200, out);
     }
 
