@@ -1445,7 +1445,7 @@ public final class CheckerHttpServer {
 
         // 2) 分析：优先调框架原生 ReActAgent 做归因推理（S13 合规整改）；不可用则降级确定性拼接
         ObjectNode s2 = stageNode("analysis", "分析", String.join(", ", analysts),
-                "专家归因推理（框架 ReActAgent）· 不可用时降级逐指标洞察");
+                "专家归因推理（框架 Workflow）· 不可用时降级逐指标洞察");
         List<String> p2 = new ArrayList<>();
         p2.add("editor-in-chief");
         p2.addAll(analysts);
