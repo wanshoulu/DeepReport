@@ -1,71 +1,93 @@
 /*
- * FrameworkAnalystAgent — 分析类 agent 的框架原生实现（S13 整改第一批）。
+ * FrameworkAnalystAgent — 分析类 agent 的框架原生 Workflow 实现（S13.2 形态修正）。
  *
- * 背景（合规差距）：finance/risk/capital-analyst 此前是 checker 里的字符串拼接函数
- * （ins.append(value).append(unit)），冒称 "分析 Agent" 却无任何推理。本类用 openJiuwen
- * 框架原生 ReActAgent 重建——真调 LLM 做归因推理，符合框架规范。
+ * 形态判定（用户纠偏后基于任务特点选定）：分析工位 = 「输入指标 → LLM 归因 → 输出结论」
+ * 的确定性单步流程，无工具、无自主控制流——本质是 Workflow（单 LLM 节点），不是 ReAct。
+ * 此前用 ReActAgent 实现"能用但不贴切"，本版改为框架原生 Workflow。
  *
- * 验证依据：ReactSpike 实测 ReActAgent.configureModelClient("OpenAI",key,base,model,false)
- * + configurePrompt + configureMaxIterations + AgentSession.createAgentSession + invoke
- * 返回 {output=...}，qwen-plus 真推理可用（spike 备份于 /home/ubuntu/w06-spike-ref/）。
+ * 数据流契约（spike 实测破解，源码 vertex.py:421-432/end_comp.py:426 佐证）：
+ *   - add_connection 的边只定执行顺序，不传数据；
+ *   - 数据经 inputs_schema 的 ${comp_id.field} 引用从 io_state 流动；
+ *   - Start 也要 ${顶层键} 领取用户输入；End 先映射再 {{键}} 模板。
  *
- * fail-safe：构造或调用失败 → 返回 null，调用方降级回确定性拼接（不阻断流水线）。
+ * fail-safe：构造或调用失败 → 返回 null，调用方降级确定性拼接（不阻断流水线）。
  */
 package com.agenthub.w06.orchestrator.agent;
 
-import com.openjiuwen.core.singleagent.agents.ReActAgent;
-import com.openjiuwen.core.singleagent.agents.ReActAgentConfig;
-import com.openjiuwen.core.singleagent.schema.AgentCard;
-import com.openjiuwen.core.session.AgentSession;
+import com.openjiuwen.core.workflow.Workflow;
+import com.openjiuwen.core.workflow.WorkflowCard;
+import com.openjiuwen.core.workflow.WorkflowOutput;
+import com.openjiuwen.core.workflow.components.flow.StartComponent;
+import com.openjiuwen.core.workflow.components.flow.EndComponent;
+import com.openjiuwen.core.workflow.components.llm.LLMComponent;
+import com.openjiuwen.core.workflow.components.llm.LLMCompConfig;
+import com.openjiuwen.core.workflow.component.EndConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelRequestConfig;
+import com.openjiuwen.core.foundation.llm.schema.ModelClientConfig;
+import com.openjiuwen.core.session.internal.WorkflowSession;
 
 import java.util.List;
 import java.util.Map;
 
 public final class FrameworkAnalystAgent {
 
-    private final ReActAgent agent;
+    private final LLMCompConfig llmCfg;
     private final String agentId;
     private final String role;
 
-    /** 按角色构造框架原生 ReActAgent。role ∈ {finance, risk, capital}。 */
     public FrameworkAnalystAgent(String agentId, String role, String provider,
-                                 String apiKey, String apiBase, String model, int maxIterations) {
+                                 String apiKey, String apiBase, String model, int maxTokens) {
         this.agentId = agentId;
         this.role = role;
-        ReActAgentConfig cfg = new ReActAgentConfig()
-                .configureModelClient(provider, apiKey, apiBase, model, false)
-                .configurePrompt(systemPrompt(role))
-                .configureMaxIterations(maxIterations);
-        AgentCard card = AgentCard.builder()
-                .id(agentId)
-                .name(displayName(role))
-                .description(description(role))
+        ModelRequestConfig reqCfg = ModelRequestConfig.builder()
+                .modelName(model).temperature(0.3).maxTokens(maxTokens).build();
+        ModelClientConfig cliCfg = ModelClientConfig.builder()
+                .clientId("w06-" + agentId).clientProvider(provider)
+                .apiKey(apiKey).apiBase(apiBase)
+                .connectTimeoutSeconds(10.0).streamIdleSeconds(300.0).verifySsl(false).build();
+        this.llmCfg = LLMCompConfig.builder()
+                .modelConfig(reqCfg).modelClientConfig(cliCfg)
+                .templateContent(List.of(
+                        Map.of("role", "system", "content", systemPrompt(role)),
+                        Map.of("role", "user", "content", "{{input}}")))
+                .responseFormat(Map.of("type", "text"))
+                .outputConfig(Map.of("analysis", Map.of("type", "string", "description", "分析结论")))
                 .build();
-        this.agent = new ReActAgent(card).configure(cfg);
     }
 
     /**
-     * 对一组指标做归因分析推理。
-     * @param company   主体名称
-     * @param metricsBrief 指标摘要（已由调用方拼装成"名称 值 单位 同比"文本）
+     * 对一组（本角色域的）指标做归因分析。每次调用新建 Workflow 实例（无状态、线程安全）。
      * @return 分析结论文本；失败返回 null（调用方降级）
      */
     public String analyze(String company, String metricsBrief) {
         try {
-            AgentSession session = AgentSession.createAgentSession(
-                    "w06-" + agentId + "-" + java.util.UUID.randomUUID().toString().substring(0, 8), null, null);
-            String userMsg = "【铁律·防幻觉】① 只能引用下方明确给出的指标数值；"
-                    + "② 严禁引入任何未提供的数字——包括监管阈值、行业均值、历史数据、同业数据，"
-                    + "哪怕你确信其正确（例如不得写\"高于监管要求 7.5%\"）；"
-                    + "③ 需要参照系时只做定性表述（如\"处于较高水平\"）；④ 每个判断须可追溯到某个指标名。\n\n"
-                    + "主体：" + company + "\n指标数据（值与口径以此为准，不得修改或推算）：\n"
-                    + metricsBrief + "\n\n请按你的职责输出分析结论（只输出分析文本）。";
-            Object out = agent.invoke(userMsg, session);
-            if (out == null) return null;
-            if (out instanceof Map<?, ?> m && m.get("output") != null) return String.valueOf(m.get("output"));
-            return String.valueOf(out);
+            Workflow wf = new Workflow(new WorkflowCard("wf-" + agentId, displayName(role) + "工作流"));
+            // 契约：Start 用 ${顶层键} 领取 invoke 输入
+            wf.setStartComp("node_start", new StartComponent(), Map.of("metrics", "${metrics}"), null);
+            // 契约：LLM 节点用 ${node_start.metrics} 引用上游
+            wf.addWorkflowComp("node_llm", new LLMComponent(llmCfg), Map.of("input", "${node_start.metrics}"), null);
+            // 契约：End 先映射 ${node_llm.analysis} 再 {{answer}} 模板渲染
+            wf.setEndComp("node_end", new EndComponent(new EndConfig("{{answer}}")),
+                    Map.of("answer", "${node_llm.analysis}"), null);
+            wf.addConnection("node_start", "node_llm");
+            wf.addConnection("node_llm", "node_end");
+
+            WorkflowSession session = new WorkflowSession("w06-" + agentId + "-"
+                    + java.util.UUID.randomUUID().toString().substring(0, 8));
+            String userMsg = "主体：" + company + "\n指标数据（值与口径以此为准）：\n" + metricsBrief
+                    + "\n请按你的职责输出分析结论（只输出分析文本）。";
+            WorkflowOutput out = wf.invoke(Map.of("metrics", userMsg), session, null);
+            if (out == null || out.getResult() == null) return null;
+            Object result = out.getResult();
+            String text;
+            if (result instanceof Map<?, ?> m && m.get("response") != null) {
+                text = String.valueOf(m.get("response"));
+            } else {
+                text = String.valueOf(result);
+            }
+            return text.isBlank() ? null : text;
         } catch (Throwable e) {
-            System.err.println("[FrameworkAnalystAgent:" + agentId + "] analyze failed: " + e.getMessage());
+            System.err.println("[FrameworkAnalystAgent:" + agentId + "] workflow failed: " + e.getMessage());
             return null;
         }
     }
@@ -79,34 +101,21 @@ public final class FrameworkAnalystAgent {
         };
     }
 
-    private static String description(String role) {
-        return switch (role) {
-            case "finance" -> "基于给定财务指标做归因分析（营收/利润/息差结构），框架原生 ReActAgent";
-            case "risk" -> "基于资产质量指标做风险研判（不良率/拨备覆盖率/迁徙），框架原生 ReActAgent";
-            case "capital" -> "基于资本指标做充足性与结构分析（核心一级/总资本充足率），框架原生 ReActAgent";
-            default -> "分析 Agent";
-        };
-    }
-
     private static String systemPrompt(String role) {
         String head = "你是银行业资深分析师，职责是" + displayName(role) + "。\n"
                 + "【铁律·防幻觉】① 只能引用用户在本轮明确提供的指标数值；② 严禁引入任何输入之外的数字——"
-                + "包括监管阈值（如资本充足率红线）、行业均值、历史数据、其他银行数据等一切\"常识数字\"，"
-                + "哪怕你确信其正确；③ 需要参照系时，只做定性表述（如\"处于较高水平\"），不得给出具体数值；"
-                + "④ 每个判断必须能追溯到某个给定指标名。违反任一条即为不合格输出。\n"
-                + "【铁律·角色聚焦】用户会给你全部指标，但你只从" + displayName(role) + "的视角解读——"
-                + "聚焦与你职责相关的指标深入分析，与本职无关的指标最多一句带过或不提；"
-                + "输出必须体现你这一角色的独有专业判断，不得与其他角色雷同地罗列全部指标。\n\n";
+                + "包括监管阈值（如资本充足率红线）、行业均值、历史数据、其他银行数据等一切“常识数字”，"
+                + "哪怕你确信其正确；③ 需要参照系时，只做定性表述（如“处于较高水平”），不得给出具体数值；"
+                + "④ 每个判断必须能追溯到某个给定指标名。\n"
+                + "【铁律·角色聚焦】用户会给你本角色域的指标，只从" + displayName(role) + "的视角深入分析，"
+                + "输出必须体现本角色的独有专业判断。\n\n";
         String body = switch (role) {
-            case "finance" -> "【聚焦盈利与效率】只看营收、净利润、净息差、成本收入比等盈利效率类指标。"
-                    + "分析：① 营收与利润的量价归因（息差变动如何影响净利息收入）；② 盈利效率趋势。"
-                    + "不要分析资产质量或资本充足（那是其他分析师的职责）。输出 3-5 句，每句标注支撑指标名。";
-            case "risk" -> "【聚焦资产质量】只看不良贷款率、拨备覆盖率、信用减值损失等风险类指标。"
-                    + "分析：① 不良率水平与资产质量；② 拨备覆盖率的风险缓冲充足性；③ 减值计提的审慎性。"
-                    + "不要分析盈利结构或资本充足（那是其他分析师的职责）。输出 3-5 句，每句标注支撑指标名。";
-            case "capital" -> "【聚焦资本充足】只看核心一级资本充足率、总资本充足率、净资产收益率等资本类指标。"
-                    + "分析：① 资本充足水平与缓冲；② ROE 反映的资本回报效率；③ 资本对业务扩张的支撑能力。"
-                    + "不要分析盈利结构或资产质量（那是其他分析师的职责）。输出 3-5 句，每句标注支撑指标名。";
+            case "finance" -> "【聚焦盈利与效率】分析：① 营收与利润的量价归因（息差变动如何影响净利息收入）；"
+                    + "② 盈利效率趋势（利润增速与营收增速的剪刀差）；③ 成本管控。输出 3-5 句，每句标注支撑指标名。";
+            case "risk" -> "【聚焦资产质量】分析：① 不良率水平与资产质量；② 拨备覆盖率的风险缓冲充足性；"
+                    + "③ 减值计提的审慎性。输出 3-5 句，每句标注支撑指标名。";
+            case "capital" -> "【聚焦资本充足】分析：① 资本充足水平与缓冲；② 资本回报效率；"
+                    + "③ 资本对业务扩张的支撑能力。输出 3-5 句，每句标注支撑指标名。";
             default -> "对给定指标做专业分析。";
         };
         return head + body;

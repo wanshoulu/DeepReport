@@ -1390,7 +1390,7 @@ public final class CheckerHttpServer {
         ArrayNode det2 = s2.withArray("details");
         // analysisInsights/metricsBrief 已在写作前计算（见上），此处仅做工位展示
         for (Map.Entry<String, String> e : analysisInsights.entrySet()) {
-            det2.add("【" + e.getKey() + " · 框架ReActAgent】" + e.getValue());
+            det2.add("【" + e.getKey() + " · 框架Workflow】" + e.getValue());
         }
         if (analysisInsights.isEmpty()) {
             // 全部降级：保留原逐指标确定性洞察（不阻断流水线）
@@ -1534,8 +1534,11 @@ public final class CheckerHttpServer {
     // ------------------------------------------------------------------
 
     /** agent 输出的章节块首行格式：整行仅 [S-n]/[G-n]（容许前置 # 标记与括号内空白，接受后统一规范化）。 */
+    /** S13.3：块首行容错——此前要求整行仅 [S-n]（行尾 $），LLM 输出漂移（标题跟在同一行，
+     *  如 "[S-7] 第二章 …"）时整行匹配失败 → 0/7 节静默降级。改为前缀匹配（lookingAt），
+     *  [S-n] 后的同行内容作为正文首行保留。 */
     private static final java.util.regex.Pattern SECTION_HEAD =
-            java.util.regex.Pattern.compile("^\\s*(?:#+\\s*)?\\[\\s*([SG]-\\d{1,2})\\s*\\]\\s*$");
+            java.util.regex.Pattern.compile("^\\s*(?:#+\\s*)?\\[\\s*([SG]-\\d{1,2})\\s*\\]");
 
     /** 采纳成稿的最小正文字数（低于此值视为异常响应，不采纳）。 */
     private static final int MIN_BODY_CHARS = 50;
@@ -1583,6 +1586,13 @@ public final class CheckerHttpServer {
         Map<String, String> bodies = parseSectionBodies(draft, analysisIds);
         rounds.add("写作轮：任务书分派（会话 " + sessionId + "），agent 产出 "
                 + bodies.size() + "/" + analysisIds.size() + " 节");
+        if (bodies.isEmpty() && draft != null && draft.length() > 500) {
+            // S13.3：响应非空却解析 0 节 = 输出协议漂移，显式告警（不再静默降级）
+            rounds.add("⚠ 解析告警：agent 响应 " + draft.length()
+                    + " 字但未解析出任何 [" + secToken(reportType) + "-n] 章节块（输出协议漂移），已触发续写");
+            System.err.println("parseSectionBodies: 0 sections from " + draft.length()
+                    + "-char draft (protocol drift), sessionId=" + sessionId);
+        }
 
         // 2) 缺节续写：输出截断或漏节时由同一会话续写（框架记忆支撑），最多 2 轮
         for (int round = 1; round <= 2; round++) {
@@ -1834,10 +1844,12 @@ public final class CheckerHttpServer {
         StringBuilder body = new StringBuilder();
         for (String line : text.split("\\R", -1)) {
             var m = SECTION_HEAD.matcher(line);
-            if (m.matches()) {
+            if (m.lookingAt()) {
                 acceptSection(out, currentId, body, wantedIds);
                 currentId = m.group(1);
                 body.setLength(0);
+                String rest = line.substring(m.end()).trim(); // [S-n] 后同行内容（标题/正文）
+                if (!rest.isEmpty()) body.append(rest).append('\n');
             } else if (currentId != null) {
                 body.append(line).append('\n');
             }
@@ -2493,12 +2505,26 @@ public final class CheckerHttpServer {
      *         writer-deepagent（=skillhub 的 skill-app-agent 容器，网络别名 writer-deepagent，
      *         我们借它承载 writer-agent 长文的实际执行：装 annual-report/general-report 技能）；
      *  workflow：其余确定性工位（查数/分析/图表/核验/批准——编排器调度，无自主循环）。 */
-    private static final java.util.Map<String, String> EXEC_FORM = java.util.Map.of(
-            "editor-in-chief", "react",
-            "writer-agent", "react",
-            "deep-search", "react",
-            "w06-orchestrator", "deepagent",
-            "skill-app-agent", "deepagent");
+    // S13.2：形态标注基于代码实证（用户纠偏：模式选择要按任务形态，且标注必须诚实）
+    //   deepagent = 模型自主分解任务+工具编排（root 编排器、writer 执行载体 skill-app-agent）
+    //   workflow  = 控制流代码固定、节点可调 LLM（分析三工位=单 LLM 节点 Workflow；
+    //               deep-search=LLM规划→搜索→抓取→评估的固定循环 Workflow，语义形态，实装待迁移）
+    //   react     = 暂无——editor-in-chief 对话流实为确定性规则路由（0 处 LLM），如实标注
+    private static final java.util.Map<String, String> EXEC_FORM = java.util.Map.ofEntries(
+            java.util.Map.entry("editor-in-chief", "workflow"),      // 规则路由+状态查询，确定性（此前误标 react）
+            java.util.Map.entry("writer-agent", "deepagent"),        // 执行载体 skill-app-agent DeepAgent（此前误标 react）
+            java.util.Map.entry("deep-search", "workflow"),          // 固定循环+LLM 节点，Workflow 形态（此前误标 react）
+            java.util.Map.entry("finance-analyst", "workflow"),      // S13.2：框架原生 Workflow（LLMComponent）已实装
+            java.util.Map.entry("risk-analyst", "workflow"),         // 同上
+            java.util.Map.entry("capital-analyst", "workflow"),      // 同上
+            java.util.Map.entry("material-agent", "workflow"),       // 确定性装载节点（语义形态；实装待迁移）
+            java.util.Map.entry("chart-agent", "workflow"),          // 确定性渲染节点（同上）
+            java.util.Map.entry("disclosure-officer", "workflow"),   // 规则校验节点（同上）
+            java.util.Map.entry("numeric-checker", "workflow"),      // 确定性复算（门禁必须可复现，永不接 LLM）
+            java.util.Map.entry("citation-checker", "workflow"),     // 同上
+            java.util.Map.entry("approver", "workflow"),             // 门禁判定，确定性
+            java.util.Map.entry("w06-orchestrator", "deepagent"),
+            java.util.Map.entry("skill-app-agent", "deepagent"));
 
     /** 注册 agent：name=中文显示名（display_name 语义）；kind 改名 role（S3：语义角色）。
      *  S7.5：exec_form 执行形态（图谱可视化第三维度）——

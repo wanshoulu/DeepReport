@@ -81,12 +81,12 @@ public final class OrchestratorServer {
             String akey = System.getenv("LLM_API_KEY");
             String abase = env("LLM_API_BASE", "");
             String amodel = System.getenv("LLM_MODEL");
-            int maxIter = Integer.parseInt(env("ANALYST_MAX_ITERATIONS", "3"));
+            int maxTokens = Integer.parseInt(env("ANALYST_MAX_TOKENS", "800"));
             for (String role : new String[]{"finance", "risk", "capital"}) {
                 ANALYSTS.put(role, new com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent(
-                        role + "-analyst", role, prov, akey, abase, amodel, maxIter));
+                        role + "-analyst", role, prov, akey, abase, amodel, maxTokens));
             }
-            System.out.println("[orchestrator] framework ReActAgent analysts ready: " + ANALYSTS.keySet());
+            System.out.println("[orchestrator] framework Workflow analysts ready: " + ANALYSTS.keySet());
         } catch (Throwable e) {
             System.err.println("[orchestrator] analyst agents init failed (pipeline will degrade to deterministic): " + e.getMessage());
         }
@@ -139,7 +139,7 @@ public final class OrchestratorServer {
                      .put("reason", "ReActAgent 调用失败，调用方应降级确定性拼接");
                 } else {
                     n.put("status", "OK").put("role", role).put("analysis", analysis)
-                     .put("engine", "openjiuwen-ReActAgent");
+                     .put("engine", "openjiuwen-Workflow");
                 }
                 respond(ex, 200, n.toString());
             } catch (Exception e) {
