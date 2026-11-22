@@ -1152,14 +1152,24 @@ public final class CheckerHttpServer {
         // S5-5：taskId 提前回填——请求带了 task_id（对话流预登记）直接用；未带则按报告库
         // 编号规则先取号，保证 runLongForm 会话 ID 与任务可互查（消除 w06-lf-null-*）。
         // 注意 registerTask 尾部 upsert 会以最终工件重算 digest，此处只取号不落库。
-        if (art.taskId() == null || art.taskId().isBlank()) {
-            String prefix = "TASK-" + reportType.toUpperCase().replace('_', '-') + "-";
-            String preId = taskId != null && !taskId.isBlank() ? taskId
-                    : prefix + nextTaskSeq(prefix);
+        // S12.3：基座工件可能内嵌冻结的 task_id（年报域 positive-artifact.json 里是
+        // TASK-2025-AR-001 演示值）——那不是本次任务的编号。若沿用，会话 ID 会恒为
+        // w06-lf-TASK-2025-AR-001，导致 journal 缓存 key 碰撞（第二次起返回旧正文）
+        // 与跨任务会话不隔离。故：仅当请求显式带 task_id 时沿用，否则一律重新指派。
+        boolean requestGaveId = taskId != null && !taskId.isBlank();
+        boolean baseIdIsFrozen = !requestGaveId && art.taskId() != null && !art.taskId().isBlank();
+        if (!requestGaveId) {
+            // S12.3b：编号前缀与既有体系统一——年报域 TASK-2025-AR-n（与 preload 演示任务、
+            // registerTask 自动编号同构），通用域 TASK-GENERAL-n。不用 reportType 直译
+            // （会产生 TASK-ANNUAL-REPORT-n 这种第三套前缀，破坏编号体系一致性）。
+            String prefix = "annual_report".equals(reportType) ? "TASK-2025-AR-" : "TASK-GENERAL-";
+            String preId = prefix + nextTaskSeq(prefix);
             art = new AnnualReportArtifacts(preId, art.company(), art.reportPeriod(),
                     art.generatedAt(), art.metrics(), art.citations(), art.sections(), art.charts());
-            if (taskId == null || taskId.isBlank()) {
-                taskId = preId; // 后续 registerTask(preId) 沿用此号 upsert
+            taskId = preId; // 后续 registerTask(preId) 沿用此号 upsert
+            if (baseIdIsFrozen) {
+                System.out.println("S12.3: 基座工件内嵌 task_id 已重置为本次任务号 " + preId
+                        + "（避免会话/缓存 key 碰撞）");
             }
         }
 

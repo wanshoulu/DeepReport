@@ -40,16 +40,23 @@ final class AgentChatClient {
     private static final long JOURNAL_TTL_MS =
             Long.parseLong(System.getenv().getOrDefault("CHAT_JOURNAL_TTL_HOURS", "24")) * 3600_000L;
 
-    private static String journalLookup(String prompt) {
+    /** S12.3c：缓存 key = sha256(sessionId + prompt)。此前只用 prompt，
+     *  导致同银行同指标两次长文任务（任务书相同）互相命中缓存。 */
+    private static String journalKey(String prompt, String sessionId) {
+        return sha256Hex((sessionId == null ? "" : sessionId) + "\n" + prompt);
+    }
+
+    private static String journalLookup(String prompt, String sessionId) {
         if (!JOURNAL_ENABLED) return null;
         try {
-            java.nio.file.Path f = JOURNAL_DIR.resolve(sha256Hex(prompt) + ".json");
+            String key = journalKey(prompt, sessionId);
+            java.nio.file.Path f = JOURNAL_DIR.resolve(key + ".json");
             if (!java.nio.file.Files.isRegularFile(f)) return null;
             com.fasterxml.jackson.databind.JsonNode rec = MAPPER.readTree(f.toFile());
             long at = rec.path("at").asLong(0);
             if (System.currentTimeMillis() - at > JOURNAL_TTL_MS) return null; // TTL 过期 miss
             String answer = rec.path("answer").asText("");
-            System.err.println("AgentChatClient: journal CACHE_HIT " + sha256Hex(prompt).substring(0, 12)
+            System.err.println("AgentChatClient: journal CACHE_HIT " + key.substring(0, 12)
                     + " (prompt " + prompt.length() + " chars)");
             return answer.isEmpty() ? null : answer;
         } catch (Exception e) {
@@ -66,10 +73,11 @@ final class AgentChatClient {
             rec.put("prompt_chars", prompt.length());
             rec.put("session_id", sessionId);
             rec.put("answer", answer);
-            java.nio.file.Path tmp = JOURNAL_DIR.resolve(sha256Hex(prompt) + ".tmp");
+            String key = journalKey(prompt, sessionId);
+            java.nio.file.Path tmp = JOURNAL_DIR.resolve(key + ".tmp");
             java.nio.file.Files.writeString(tmp, MAPPER.writeValueAsString(rec),
                     java.nio.charset.StandardCharsets.UTF_8);
-            java.nio.file.Files.move(tmp, JOURNAL_DIR.resolve(sha256Hex(prompt) + ".json"),
+            java.nio.file.Files.move(tmp, JOURNAL_DIR.resolve(key + ".json"),
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING,
                     java.nio.file.StandardCopyOption.ATOMIC_MOVE);
         } catch (Exception e) {
@@ -132,7 +140,7 @@ final class AgentChatClient {
      */
     static String chat(String message, String sessionId) {
         LAST_TRACE = ChatTrace.empty(); // M11：每次会话重置留痕
-        String cached = journalLookup(message); // Swarm journal 对齐：内容寻址缓存优先
+        String cached = journalLookup(message, sessionId); // Swarm journal 对齐：内容寻址缓存优先
         if (cached != null) return cached;
         LAST_TRACE = ChatTrace.empty(); // M11：每次会话重置留痕
         try {
