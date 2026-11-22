@@ -33,6 +33,10 @@ public final class OrchestratorServer {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final com.openjiuwen.harness.deep_agent.DeepAgent AGENT;
+    /** S13：分析类 agent 的框架原生 ReActAgent 实例（finance/risk/capital）——
+     *  替代此前 checker 里的字符串拼接。构造失败则为 null，调用方降级。 */
+    private static final java.util.Map<String, com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent> ANALYSTS
+            = new java.util.HashMap<>();
 
     static {
         OrchestratorProperties props = new OrchestratorProperties();
@@ -71,6 +75,21 @@ public final class OrchestratorServer {
         // S7.3：动态编排——plan_experts（按报告类型从候选池选人定序）+ dispatch_stage（逐工位派工）
         registerPlanExpertsTool();
         registerDispatchStageTool();
+        // S13：初始化框架原生分析 ReActAgent（复用编排器同款 LLM 配置）
+        try {
+            String prov = env("LLM_PROVIDER", "OpenAI");
+            String akey = System.getenv("LLM_API_KEY");
+            String abase = env("LLM_API_BASE", "");
+            String amodel = System.getenv("LLM_MODEL");
+            int maxIter = Integer.parseInt(env("ANALYST_MAX_ITERATIONS", "3"));
+            for (String role : new String[]{"finance", "risk", "capital"}) {
+                ANALYSTS.put(role, new com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent(
+                        role + "-analyst", role, prov, akey, abase, amodel, maxIter));
+            }
+            System.out.println("[orchestrator] framework ReActAgent analysts ready: " + ANALYSTS.keySet());
+        } catch (Throwable e) {
+            System.err.println("[orchestrator] analyst agents init failed (pipeline will degrade to deterministic): " + e.getMessage());
+        }
         AGENT.ensureInitialized();
     }
 
@@ -99,6 +118,34 @@ public final class OrchestratorServer {
                 .put("version", "0.1.0");
             card.putObject("capabilities").put("streaming", false);
             respond(ex, 200, card.toString());
+        } else if ("POST".equals(method) && "/v1/analyze".equals(path)) {
+            // S13：分析类 agent 端点——checker 六工位的「分析」工位调用，返回框架 ReActAgent 的推理结论
+            JsonNode body = MAPPER.readTree(ex.getRequestBody());
+            String role = body.path("role").asText("");
+            String company = body.path("company").asText("");
+            String metricsBrief = body.path("metrics_brief").asText("");
+            com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent an = ANALYSTS.get(role);
+            ObjectNode n = MAPPER.createObjectNode();
+            if (an == null) {
+                n.put("status", "UNAVAILABLE").put("role", role)
+                 .put("reason", "分析 agent 未初始化或角色未知: " + role);
+                respond(ex, 200, n.toString());
+                return;
+            }
+            try {
+                String analysis = an.analyze(company, metricsBrief);
+                if (analysis == null) {
+                    n.put("status", "DEGRADED").put("role", role)
+                     .put("reason", "ReActAgent 调用失败，调用方应降级确定性拼接");
+                } else {
+                    n.put("status", "OK").put("role", role).put("analysis", analysis)
+                     .put("engine", "openjiuwen-ReActAgent");
+                }
+                respond(ex, 200, n.toString());
+            } catch (Exception e) {
+                n.put("status", "FAILED").put("error", String.valueOf(e.getMessage()));
+                respond(ex, 500, n.toString());
+            }
         } else if ("POST".equals(method) && ("/v1/invoke".equals(path) || "/v1/tasks/send".equals(path))) {
             JsonNode body = MAPPER.readTree(ex.getRequestBody());
             String message = body.path("message").asText(
