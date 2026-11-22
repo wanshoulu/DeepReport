@@ -301,6 +301,7 @@ public final class CheckerHttpServer {
         seedSkills();                                 // 技能注册表：2 个真 Skill（S3 合规）
         loadRegistryState();                          // S3.5：合并上次运行的注册表变更（install/bind/unregister/team）
         loadTaskState();                              // S9：恢复上次运行的任务库（报告库重启不丢）
+        backfillTaskState();                          // S12：preload 演示任务与任何仅内存任务补落盘
 
         HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
         server.setExecutor(Executors.newFixedThreadPool(8));
@@ -1030,12 +1031,13 @@ public final class CheckerHttpServer {
         } else {
             // S11.2：subjectSources 是本轮任务圈定的 live 信源（深搜产物），如实标注范围与最近抓取时间
             int liveCount = subjectSources.size();
-            String latest = "—";
+            String latest = ""; // S12：哨兵用空串（"—" U+2014 码点大于数字，compareTo 永远 false）
             for (JsonNode s : subjectSources) {
                 String at = s.path("fetched_at").asText("");
-                if (!at.isEmpty() && at.compareTo(latest) > 0) latest = at;
+                if (at.compareTo(latest) > 0) latest = at;
             }
-            if (!"—".equals(latest)) latest = latest.substring(0, Math.min(10, latest.length()));
+            latest = latest.isEmpty() ? "—" : latest.substring(0, Math.min(10, latest.length()));
+            // 注：synthesizeBase 在深搜前执行，深搜后（下方 S11.2 刷新点）会覆盖此值
             reportPeriod = liveCount > 0
                     ? "基于联网检索信源 " + liveCount + " 份（最近抓取 " + latest + "）"
                     : "以导入资料为准";
@@ -1248,14 +1250,17 @@ public final class CheckerHttpServer {
         }
         art = attachImportedClaims(art, resolver, analysisIds, subjectSources);
         // S11.2：深搜后刷新 report_period（synthesizeBase 时深搜尚未发生，彼时标注会退化为"以导入资料为准"）
-        if ("annual_report" != reportType && !subjectSources.isEmpty()) {
-            String latest = "—";
+        if (!"annual_report".equals(reportType)) {
+            String latest = ""; // S12：哨兵用空串（"—" U+2014 码点大于数字，compareTo 永远 false）
             for (JsonNode s : subjectSources) {
                 String at = s.path("fetched_at").asText("");
-                if (!at.isEmpty() && at.compareTo(latest) > 0) latest = at;
+                if (at.compareTo(latest) > 0) latest = at;
             }
-            if (!"—".equals(latest)) latest = latest.substring(0, Math.min(10, latest.length()));
-            String refreshed = "基于联网检索信源 " + subjectSources.size() + " 份（最近抓取 " + latest + "）";
+            latest = latest.isEmpty() ? "—" : latest.substring(0, Math.min(10, latest.length()));
+            // S12：深搜已执行但圈定 0 份 → 如实说明，不用"以导入资料为准"误导
+            String refreshed = subjectSources.isEmpty()
+                    ? "联网检索已执行，未命中主题相关信源（正文为骨架占位）"
+                    : "基于联网检索信源 " + subjectSources.size() + " 份（最近抓取 " + latest + "）";
             art = new AnnualReportArtifacts(art.taskId(), art.company(), refreshed, art.generatedAt(),
                     art.metrics(), art.citations(), art.sections(), art.charts());
         }
@@ -2582,6 +2587,32 @@ public final class CheckerHttpServer {
      *  与 registry.json 同款方案。 */
     private static Path taskStateDir() {
         return STATIC_DIR_BASE.resolve("state/tasks");
+    }
+
+    /** S12：把内存里有、磁盘上没有的任务补落盘——preload 的 4 条演示任务此前只存内存，
+     *  重启虽会重建但从不持久化（报告库「永远只有预置 4 条」的另一半成因）。
+     *  补落盘后它们与真实任务同构：详情可离线重建，工件全文（sections_full/metrics_full）随盘。 */
+    private static void backfillTaskState() {
+        try {
+            Path dir = taskStateDir();
+            Files.createDirectories(dir);
+            java.util.Set<String> onDisk;
+            try (java.util.stream.Stream<Path> files = Files.list(dir)) {
+                onDisk = files.filter(f -> f.getFileName().toString().endsWith(".json"))
+                        .map(f -> f.getFileName().toString().replace(".json", ""))
+                        .collect(java.util.stream.Collectors.toSet());
+            }
+            int added = 0;
+            for (String id : TASKS.keySet()) {
+                if (!onDisk.contains(id)) {
+                    saveTaskState(id);
+                    added++;
+                }
+            }
+            if (added > 0) System.out.println("backfillTaskState: " + added + " 条内存任务补落盘");
+        } catch (Exception e) {
+            System.err.println("backfillTaskState: " + e.getMessage());
+        }
     }
 
     private static void saveTaskState(String id) {
