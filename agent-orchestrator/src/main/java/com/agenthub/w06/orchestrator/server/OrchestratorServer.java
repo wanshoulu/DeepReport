@@ -37,6 +37,10 @@ public final class OrchestratorServer {
      *  替代此前 checker 里的字符串拼接。构造失败则为 null，调用方降级。 */
     private static final java.util.Map<String, com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent> ANALYSTS
             = new java.util.HashMap<>();
+    /** S13.4：deep-search 的框架原生 Workflow 实现（LoopComponent 管理 3 轮循环）。 */
+    private static volatile com.agenthub.w06.orchestrator.agent.DeepSearchWorkflowAgent DEEP_SEARCH;
+    /** S13.4：单次 LLM 调用（deep-search Workflow 的规划/评估节点经此走框架模型通道）。 */
+    private static volatile com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent LLM_GENERIC;
 
     static {
         OrchestratorProperties props = new OrchestratorProperties();
@@ -86,6 +90,13 @@ public final class OrchestratorServer {
                 ANALYSTS.put(role, new com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent(
                         role + "-analyst", role, prov, akey, abase, amodel, maxTokens));
             }
+            // S13.4：deep-search Workflow + 通用单次 LLM（供 Workflow 内 LLM 节点走 /v1/llm）
+            LLM_GENERIC = new com.agenthub.w06.orchestrator.agent.FrameworkAnalystAgent(
+                    "llm-generic", "finance", prov, akey, abase, amodel, 1200);
+            DEEP_SEARCH = new com.agenthub.w06.orchestrator.agent.DeepSearchWorkflowAgent(
+                    "http://127.0.0.1:" + env("ORCHESTRATOR_PORT", "18094") + "/v1/llm",
+                    env("CHECKER_TOOLS_URL", "http://w06-checker:18095/v1/tools/call"),
+                    Integer.parseInt(env("DEEP_SEARCH_MAX_ROUNDS", "3")));
             System.out.println("[orchestrator] framework Workflow analysts ready: " + ANALYSTS.keySet());
         } catch (Throwable e) {
             System.err.println("[orchestrator] analyst agents init failed (pipeline will degrade to deterministic): " + e.getMessage());
@@ -140,6 +151,48 @@ public final class OrchestratorServer {
                 } else {
                     n.put("status", "OK").put("role", role).put("analysis", analysis)
                      .put("engine", "openjiuwen-Workflow");
+                }
+                respond(ex, 200, n.toString());
+            } catch (Exception e) {
+                n.put("status", "FAILED").put("error", String.valueOf(e.getMessage()));
+                respond(ex, 500, n.toString());
+            }
+        } else if ("POST".equals(method) && "/v1/llm".equals(path)) {
+            // S13.4：单次 LLM 调用端点——deep-search Workflow 的 LLM 节点（规划/评估）经此
+            // 走框架模型通道（复用 FrameworkAnalystAgent 的 ReActAgent 单轮推理，无工具）。
+            JsonNode body = MAPPER.readTree(ex.getRequestBody());
+            String prompt = body.path("prompt").asText("");
+            ObjectNode n = MAPPER.createObjectNode();
+            if (prompt.isBlank() || LLM_GENERIC == null) {
+                n.put("status", "UNAVAILABLE").put("reason", "prompt empty or llm not initialized");
+                respond(ex, 200, n.toString());
+                return;
+            }
+            try {
+                String text = LLM_GENERIC.chatRaw(prompt);
+                if (text == null) { n.put("status", "FAILED").put("reason", "llm returned null"); }
+                else { n.put("status", "OK").put("text", text).put("engine", "openjiuwen-agent"); }
+                respond(ex, 200, n.toString());
+            } catch (Exception e) {
+                n.put("status", "FAILED").put("error", String.valueOf(e.getMessage()));
+                respond(ex, 500, n.toString());
+            }
+        } else if ("POST".equals(method) && "/v1/deep-search".equals(path)) {
+            // S13.4：deep-search 框架 Workflow 端点——checker 资料工位调用
+            JsonNode body = MAPPER.readTree(ex.getRequestBody());
+            String subject = body.path("subject").asText("");
+            ObjectNode n = MAPPER.createObjectNode();
+            if (subject.isBlank() || DEEP_SEARCH == null) {
+                n.put("status", "UNAVAILABLE").put("reason", "subject empty or workflow not initialized");
+                respond(ex, 200, n.toString());
+                return;
+            }
+            try {
+                com.fasterxml.jackson.databind.node.ObjectNode result = DEEP_SEARCH.run(subject);
+                if (result == null) {
+                    n.put("status", "DEGRADED").put("reason", "workflow failed, caller should degrade");
+                } else {
+                    n.put("status", "OK").set("result", result);
                 }
                 respond(ex, 200, n.toString());
             } catch (Exception e) {

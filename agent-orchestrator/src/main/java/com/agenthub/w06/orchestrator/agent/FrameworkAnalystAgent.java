@@ -32,6 +32,8 @@ import java.util.Map;
 public final class FrameworkAnalystAgent {
 
     private final LLMCompConfig llmCfg;
+    /** S13.4：中性单 LLM 配置（无角色 system prompt，user={{input}} 直通）——供 chatRaw 走 Workflow。 */
+    private final LLMCompConfig rawCfg;
     private final String agentId;
     private final String role;
 
@@ -53,6 +55,37 @@ public final class FrameworkAnalystAgent {
                 .responseFormat(Map.of("type", "text"))
                 .outputConfig(Map.of("analysis", Map.of("type", "string", "description", "分析结论")))
                 .build();
+        this.rawCfg = LLMCompConfig.builder()
+                .modelConfig(reqCfg).modelClientConfig(cliCfg)
+                .templateContent(List.of(Map.of("role", "user", "content", "{{input}}")))
+                .responseFormat(Map.of("type", "text"))
+                .outputConfig(Map.of("analysis", Map.of("type", "string", "description", "输出")))
+                .build();
+    }
+
+    /** S13.4：原始 prompt 直通（中性 system，不套角色指令）——供 Workflow 的 LLM 节点
+     *  （deep-search 查询规划/充分性评估）使用，prompt 自带完整指令。单节点 Workflow，失败返回 null。 */
+    public String chatRaw(String prompt) {
+        try {
+            Workflow wf = new Workflow(new WorkflowCard("wf-raw-" + agentId, "单次 LLM 调用"));
+            wf.setStartComp("node_start", new StartComponent(), Map.of("input", "${input}"), null);
+            wf.addWorkflowComp("node_llm", new LLMComponent(rawCfg), Map.of("input", "${node_start.input}"), null);
+            wf.setEndComp("node_end", new EndComponent(new EndConfig("{{answer}}")),
+                    Map.of("answer", "${node_llm.analysis}"), null);
+            wf.addConnection("node_start", "node_llm");
+            wf.addConnection("node_llm", "node_end");
+            WorkflowSession session = new WorkflowSession("w06-raw-"
+                    + java.util.UUID.randomUUID().toString().substring(0, 8));
+            WorkflowOutput out = wf.invoke(Map.of("input", prompt), session, null);
+            if (out == null || out.getResult() == null) return null;
+            Object result = out.getResult();
+            String text = (result instanceof Map<?, ?> m && m.get("response") != null)
+                    ? String.valueOf(m.get("response")) : String.valueOf(result);
+            return text.isBlank() ? null : text;
+        } catch (Throwable e) {
+            System.err.println("[FrameworkAnalystAgent:" + agentId + "] chatRaw failed: " + e.getMessage());
+            return null;
+        }
     }
 
     /**

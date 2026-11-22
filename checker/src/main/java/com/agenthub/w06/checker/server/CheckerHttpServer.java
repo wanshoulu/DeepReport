@@ -1210,7 +1210,11 @@ public final class CheckerHttpServer {
         if (deepSearchEnabled && !"annual_report".equals(reportType) && !subjToks.isEmpty()
                 && !ToolGateway.REGISTRY.isEmpty()) {
             try {
-                dsData = deepSearch(subjectHint, snapshotDir, resolver, sources);
+                // S13.4：优先走编排器的框架原生 deep-search Workflow（LoopComponent 管理循环）
+                dsData = deepSearchViaFramework(subjectHint);
+                if (dsData == null) {
+                    dsData = deepSearch(subjectHint, snapshotDir, resolver, sources); // 降级：旧 Java 循环
+                }
             } catch (Exception dsEx) {
                 dsData = MAPPER.createObjectNode();
                 dsData.put("agent", "deep-search");
@@ -1537,8 +1541,10 @@ public final class CheckerHttpServer {
     /** S13.3：块首行容错——此前要求整行仅 [S-n]（行尾 $），LLM 输出漂移（标题跟在同一行，
      *  如 "[S-7] 第二章 …"）时整行匹配失败 → 0/7 节静默降级。改为前缀匹配（lookingAt），
      *  [S-n] 后的同行内容作为正文首行保留。 */
+    /** S13.5：块标记 [S-n]/[G-n] 可在行内任意位置（LLM 输出协议漂移三态：整行独占/标题同行/
+     *  嵌在正文行中）。用 find() 匹配，不再锚定行首。 */
     private static final java.util.regex.Pattern SECTION_HEAD =
-            java.util.regex.Pattern.compile("^\\s*(?:#+\\s*)?\\[\\s*([SG]-\\d{1,2})\\s*\\]");
+            java.util.regex.Pattern.compile("(?:^|(?<=\\s))(?:#+\\s*)?\\[\\s*([SG]-\\d{1,2})\\s*\\]");
 
     /** 采纳成稿的最小正文字数（低于此值视为异常响应，不采纳）。 */
     private static final int MIN_BODY_CHARS = 50;
@@ -1844,11 +1850,14 @@ public final class CheckerHttpServer {
         StringBuilder body = new StringBuilder();
         for (String line : text.split("\\R", -1)) {
             var m = SECTION_HEAD.matcher(line);
-            if (m.lookingAt()) {
+            if (m.find()) {
+                // 标记前的同行文字属于上一节（如"逐节成稿。[G-1]"的前半句）
+                String before = line.substring(0, m.start()).trim();
+                if (currentId != null && !before.isEmpty()) body.append(before).append('\n');
                 acceptSection(out, currentId, body, wantedIds);
                 currentId = m.group(1);
                 body.setLength(0);
-                String rest = line.substring(m.end()).trim(); // [S-n] 后同行内容（标题/正文）
+                String rest = line.substring(m.end()).trim(); // 标记后同行内容（标题/正文）
                 if (!rest.isEmpty()) body.append(rest).append('\n');
             } else if (currentId != null) {
                 body.append(line).append('\n');
@@ -1933,6 +1942,36 @@ public final class CheckerHttpServer {
      * 框架纪律：抓取产物必须 snapshot_commit 落盘 + sha256 注册进信源注册表，
      * 方可被引用核验（C1/C2）与数值核验（N3）接受——「抓得到」与「可引用」之间有纪律门。
      */
+    /** S13.4：调编排器的框架原生 deep-search Workflow（POST /v1/deep-search）。
+     *  返回 null = 端点不可用/失败，调用方降级旧 Java 循环（fail-open 语义不变）。 */
+    private static ObjectNode deepSearchViaFramework(String subject) {
+        String url = System.getenv().getOrDefault("DEEP_SEARCH_WF_URL",
+                "http://w06-orchestrator:18094/v1/deep-search");
+        if ("disabled".equalsIgnoreCase(url)) return null; // 显式关闭框架路径
+        try {
+            ObjectNode body = MAPPER.createObjectNode();
+            body.put("subject", subject);
+            java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(10)).build();
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .timeout(java.time.Duration.ofSeconds(480))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)))
+                    .build();
+            java.net.http.HttpResponse<String> resp = http.send(req,
+                    java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) return null;
+            JsonNode n = MAPPER.readTree(resp.body());
+            if (!"OK".equals(n.path("status").asText())) return null;
+            JsonNode result = n.path("result");
+            return result.isObject() ? (ObjectNode) result : null;
+        } catch (Exception e) {
+            System.err.println("deepSearchViaFramework: " + e.getMessage());
+            return null;
+        }
+    }
+
     private static ObjectNode deepSearch(String subject, Path snapshotDir,
                                          SnapshotHttpResolver resolver, List<SourceEntry> sources) {
         ObjectNode out = MAPPER.createObjectNode();
