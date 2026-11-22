@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "package_type": "agent_template",
+  "name": "general-analyst",
+  "description": "通用域主题自适应分析：对任意主题的调研资料做现状归纳、因果分析、风险识别与趋势判断，每个判断标注资料依据，不引入资料外数字。",
+  "persona": {
+    "dir": "./persona"
+  },
+  "display_name": {
+    "en": "General Analyst",
+    "zh": "通用主题分析 Agent"
+  },
+  "display_description": {
+    "en": "Subject-adaptive analysis for general-domain reports: synthesizes findings, causal logic, risks and trends strictly from provided research materials.",
+    "zh": "通用域主题自适应分析：对调研资料做现状归纳、因果分析、风险识别与趋势判断，只引用给定资料、不编造数字。"
+  },
+  "category": "IndustryConsultant",
+  "avatar": "",
+  "source": "local",
+  "default_init_input": {
+    "zh": "分析 AI Agent 编排框架的最新进展与风险",
+    "en": "Analyze the latest progress and risks of AI agent orchestration frameworks"
+  },
+  "tags": [
+    {
+      "en": "Research Analysis",
+      "zh": "研究分析"
+    },
+    {
+      "en": "General Domain",
+      "zh": "通用域"
+    },
+    {
+      "en": "Evidence-grounded",
+      "zh": "资料实证"
+    }
+  ],
+  "quick_inputs": [
+    {
+      "en": "Analyze the latest progress of AI agent orchestration frameworks",
+      "zh": "分析 AI Agent 编排框架的最新进展"
+    },
+    {
+      "en": "Identify risks and gaps from the research materials",
+      "zh": "从调研资料中识别风险与信息缺口"
+    },
+    {
+      "en": "Summarize causal drivers behind the findings",
+      "zh": "归纳核心发现背后的因果驱动"
+    }
+  ]
+}

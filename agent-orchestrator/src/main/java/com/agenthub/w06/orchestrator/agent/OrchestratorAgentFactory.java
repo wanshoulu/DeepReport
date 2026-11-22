@@ -41,16 +41,30 @@ public final class OrchestratorAgentFactory {
         // 不再是"只声明未接入"的孤岛。MCP_URL 可配；disabled 显式关闭。
         String mcpUrl = System.getenv().getOrDefault("DEEPREPORT_MCP_URL",
                 "http://deepreport-mcp:8090/mcp");
-        java.util.List<com.openjiuwen.core.foundation.tool.mcp.McpServerConfig> mcps =
-                "disabled".equalsIgnoreCase(mcpUrl) ? List.of() : List.of(
-                        com.openjiuwen.core.foundation.tool.mcp.McpServerConfig.builder()
-                                .serverId("deepreport-capability-mcp")
-                                .serverName("DeepReport 能力 MCP 服务")
-                                .serverPath(mcpUrl)
-                                .clientType("streamable-http")
-                                .connectTimeoutSeconds(10.0)
-                                .callTimeoutSeconds(60.0)
-                                .build());
+        // S15.2：联网工具 MCP（web_search/web_fetch/pdf_extract/snapshot_commit）一并注册
+        String webtoolUrl = System.getenv().getOrDefault("DEEPREPORT_WEBTOOL_MCP_URL",
+                "http://deepreport-webtool-mcp:8091/mcp");
+        java.util.List<com.openjiuwen.core.foundation.tool.mcp.McpServerConfig> mcps = new java.util.ArrayList<>();
+        if (!"disabled".equalsIgnoreCase(mcpUrl)) {
+            mcps.add(com.openjiuwen.core.foundation.tool.mcp.McpServerConfig.builder()
+                    .serverId("deepreport-capability-mcp")
+                    .serverName("DeepReport 能力 MCP 服务")
+                    .serverPath(mcpUrl)
+                    .clientType("streamable-http")
+                    .connectTimeoutSeconds(10.0)
+                    .callTimeoutSeconds(60.0)
+                    .build());
+        }
+        if (!"disabled".equalsIgnoreCase(webtoolUrl)) {
+            mcps.add(com.openjiuwen.core.foundation.tool.mcp.McpServerConfig.builder()
+                    .serverId("deepreport-webtool-mcp")
+                    .serverName("DeepReport 联网工具 MCP 服务")
+                    .serverPath(webtoolUrl)
+                    .clientType("streamable-http")
+                    .connectTimeoutSeconds(10.0)
+                    .callTimeoutSeconds(120.0)
+                    .build());
+        }
 
         DeepAgentConfig config = DeepAgentConfig.builder()
                 .mcps(mcps)
