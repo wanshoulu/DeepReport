@@ -1284,11 +1284,25 @@ public final class CheckerHttpServer {
         // 解析 [S-n] 成稿、调度核验与反思回路；任务分解与成稿由 openjiuwen deep agent
         // （writer-agent）依据 annual-report 技能方法论自主完成；框架按 sessionId 维护
         // 会话记忆，续写与反思修订轮在同一会话内进行。
+        // S13：分析推理提前到写作前——结论既进 s2 工位展示，也喂给 writer 任务书。
+        // 角色聚焦靠确定性手段保证：每个分析师只接收本域指标（物理过滤），从根上杜绝雷同复述。
+        boolean analysisEnabled = !"false".equalsIgnoreCase(System.getenv().getOrDefault("FRAMEWORK_ANALYSIS", "true"));
+        Map<String, String> analysisInsights = new LinkedHashMap<>();
+        if (analysisEnabled) {
+            for (String analyst : analysts) {
+                String role = analyst.replace("-analyst", "");
+                String roleBrief = metricsBriefForRole(art.metrics(), role);
+                if (roleBrief.isBlank()) continue; // 本域无指标则跳过该角色
+                String insight = analyzeWithFrameworkAgent(role, art.company(), roleBrief);
+                if (insight != null) analysisInsights.put(analyst, insight);
+            }
+        }
+
         LongFormOutcome lf = null;
         String llmFallbackNote = null;
         if ("long_form".equals(mode)) {
             try {
-                lf = runLongForm(art, snap, sectionRole, sectionAgent, resolver, sources, reportType);
+                lf = runLongForm(art, snap, sectionRole, sectionAgent, resolver, sources, reportType, analysisInsights);
                 art = lf.artifacts();
             } catch (Exception llmEx) {
                 // LLM 通道不可达：按门禁语义回退简报骨架（fail-safe 而非 fail-silent——回退原因进 stages）
@@ -1366,22 +1380,30 @@ public final class CheckerHttpServer {
         }
         stages.add(s1);
 
-        // 2) 分析：逐指标洞察（值·单位·同比口径），口径文案由 DeltaUnit 承载
-        ObjectNode s2 = stageNode("analysis", "分析", String.join(", ", analysts), "逐指标洞察（值 · 单位 · 同比口径）");
+        // 2) 分析：优先调框架原生 ReActAgent 做归因推理（S13 合规整改）；不可用则降级确定性拼接
+        ObjectNode s2 = stageNode("analysis", "分析", String.join(", ", analysts),
+                "专家归因推理（框架 ReActAgent）· 不可用时降级逐指标洞察");
         List<String> p2 = new ArrayList<>();
         p2.add("editor-in-chief");
         p2.addAll(analysts);
         markParticipants(s2, p2, reportType);
         ArrayNode det2 = s2.withArray("details");
-        for (MetricValue m : art.metrics()) {
-            StringBuilder ins = new StringBuilder();
-            ins.append(m.key().getDisplayName()).append(" ").append(m.value()).append(" ").append(m.unit());
-            if (m.yoyDelta() != null && !m.yoyDelta().isEmpty()) {
-                boolean sign = m.yoyDelta().startsWith("-") || m.yoyDelta().startsWith("+");
-                ins.append("，同比 ").append(sign ? "" : "+").append(m.yoyDelta())
-                        .append(m.deltaUnit() == null ? "" : m.deltaUnit().getLabel());
+        // analysisInsights/metricsBrief 已在写作前计算（见上），此处仅做工位展示
+        for (Map.Entry<String, String> e : analysisInsights.entrySet()) {
+            det2.add("【" + e.getKey() + " · 框架ReActAgent】" + e.getValue());
+        }
+        if (analysisInsights.isEmpty()) {
+            // 全部降级：保留原逐指标确定性洞察（不阻断流水线）
+            for (MetricValue m : art.metrics()) {
+                StringBuilder ins = new StringBuilder();
+                ins.append(m.key().getDisplayName()).append(" ").append(m.value()).append(" ").append(m.unit());
+                if (m.yoyDelta() != null && !m.yoyDelta().isEmpty()) {
+                    boolean sign = m.yoyDelta().startsWith("-") || m.yoyDelta().startsWith("+");
+                    ins.append("，同比 ").append(sign ? "" : "+").append(m.yoyDelta())
+                            .append(m.deltaUnit() == null ? "" : m.deltaUnit().getLabel());
+                }
+                det2.add(ins.toString());
             }
-            det2.add(ins.toString());
         }
         stages.add(s2);
 
@@ -1532,7 +1554,8 @@ public final class CheckerHttpServer {
      */
     private static LongFormOutcome runLongForm(AnnualReportArtifacts art, BankSnap snap,
             Map<String, String> sectionRole, Map<String, String> sectionAgent,
-            SnapshotHttpResolver resolver, List<SourceEntry> sources, String reportType) {
+            SnapshotHttpResolver resolver, List<SourceEntry> sources, String reportType,
+            Map<String, String> analysisInsights) {
         List<String> rounds = new ArrayList<>();
         List<String> analysisIds = new ArrayList<>();
         for (ReportSection sec : art.sections()) {
@@ -1552,7 +1575,7 @@ public final class CheckerHttpServer {
         // 1) 任务书分派：agent 自主分解章节写作任务并成稿（框架 task planning + 会话记忆）
         String draft = AgentChatClient.chat(
                 buildTaskBook(art, snap, resolver.banks.get(ToolGateway.LIVE_BANK),
-                        sectionRole, sectionAgent, analysisIds, reportType), sessionId);
+                        sectionRole, sectionAgent, analysisIds, reportType, analysisInsights), sessionId);
         if (draft == null) {
             rounds.add("agent 不可达，本次回退模板正文（可稍后重试）");
             return new LongFormOutcome(art, rounds);
@@ -1616,9 +1639,64 @@ public final class CheckerHttpServer {
      * 加载技能与 references/long-form-writing.md）；任务书只注入骨架派生的节清单、
      * 指标表、引用清单、快照页原文，以及 Java 解析所需的输出协议。
      */
+    /** S13：按角色筛选指标并拼成摘要——财务=盈利效率域，风险=资产质量域，资本=资本域。
+     *  物理过滤（非提示词约束）确保各分析师只看到本职指标，输出天然差异化。 */
+    private static String metricsBriefForRole(List<MetricValue> metrics, String role) {
+        java.util.Set<String> wanted = switch (role) {
+            case "finance" -> java.util.Set.of("OPERATING_REVENUE", "NET_PROFIT_ATTRIBUTABLE",
+                    "NET_INTEREST_MARGIN", "COST_INCOME_RATIO");
+            case "risk" -> java.util.Set.of("NPL_BALANCE", "NPL_RATIO", "PROVISION_COVERAGE");
+            case "capital" -> java.util.Set.of("CET1_RATIO", "NET_PROFIT_ATTRIBUTABLE");
+            default -> java.util.Set.of(); // 未知角色不喂指标（调用方跳过）
+        };
+        if (wanted.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (MetricValue m : metrics) {
+            if (!wanted.contains(m.key().name())) continue;
+            sb.append(m.key().getDisplayName()).append(" ").append(m.value()).append(m.unit());
+            if (m.yoyDelta() != null && !m.yoyDelta().isEmpty()) {
+                boolean sign = m.yoyDelta().startsWith("-") || m.yoyDelta().startsWith("+");
+                sb.append("，同比 ").append(sign ? "" : "+").append(m.yoyDelta())
+                        .append(m.deltaUnit() == null ? "" : m.deltaUnit().getLabel());
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
+    }
+
+    /** S13：调编排器的框架原生 ReActAgent 分析端点（/v1/analyze）。
+     *  返回分析结论文本；端点不可用/角色未知/调用失败 → 返回 null，调用方降级确定性拼接。 */
+    private static String analyzeWithFrameworkAgent(String role, String company, String metricsBrief) {
+        String url = System.getenv().getOrDefault("ANALYZE_URL", "http://w06-orchestrator:18094/v1/analyze");
+        try {
+            ObjectNode body = MAPPER.createObjectNode();
+            body.put("role", role);
+            body.put("company", company);
+            body.put("metrics_brief", metricsBrief);
+            java.net.http.HttpClient http = java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(java.time.Duration.ofSeconds(10)).build();
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(url))
+                    .header("Content-Type", "application/json")
+                    .timeout(java.time.Duration.ofSeconds(90))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)))
+                    .build();
+            java.net.http.HttpResponse<String> resp = http.send(req,
+                    java.net.http.HttpResponse.BodyHandlers.ofString());
+            if (resp.statusCode() != 200) return null;
+            JsonNode n = MAPPER.readTree(resp.body());
+            if (!"OK".equals(n.path("status").asText())) return null;
+            String analysis = n.path("analysis").asText("");
+            return analysis.isBlank() ? null : analysis;
+        } catch (Exception e) {
+            System.err.println("analyzeWithFrameworkAgent(" + role + "): " + e.getMessage());
+            return null;
+        }
+    }
+
     private static String buildTaskBook(AnnualReportArtifacts art, BankSnap snap, BankSnap liveSnap,
             Map<String, String> sectionRole, Map<String, String> sectionAgent, List<String> analysisIds,
-            String reportType) {
+            String reportType, Map<String, String> analysisInsights) {
         boolean general = !"annual_report".equals(reportType);
         String skillId = general ? "general-report" : "annual-report";
         StringBuilder sb = new StringBuilder();
@@ -1657,6 +1735,16 @@ public final class CheckerHttpServer {
             sb.append("\n");
         }
         sb.append("\n");
+
+        // S13：各分析师视角结论（框架 ReActAgent 产出）——供 writer 参考，不得引入其中未含的数字
+        if (analysisInsights != null && !analysisInsights.isEmpty()) {
+            sb.append("各分析师视角结论（由框架原生 ReActAgent 推理产出，供写作参考；")
+              .append("写作时只能使用下方结论与指标表中已有的数字，不得引入其他数值）：\n");
+            for (Map.Entry<String, String> e : analysisInsights.entrySet()) {
+                sb.append("- ").append(e.getKey()).append("：").append(e.getValue()).append("\n");
+            }
+            sb.append("\n");
+        }
 
         // 引用清单（全部分析节的 claims）
         Set<String> wantedClaims = new LinkedHashSet<>();
