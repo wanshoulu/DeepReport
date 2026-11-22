@@ -36,7 +36,24 @@ public final class OrchestratorAgentFactory {
                 new NumericChecker().check(draft, resolver),
                 new CitationChecker().check(draft, resolver)));
 
+        // S14：MCP 合规接入——deepreport-capability-mcp（官方 FastMCP streamable-http）
+        // 经框架 DeepAgentConfig.mcps(McpServerConfig) 注册为 root DeepAgent 的原生工具，
+        // 不再是"只声明未接入"的孤岛。MCP_URL 可配；disabled 显式关闭。
+        String mcpUrl = System.getenv().getOrDefault("DEEPREPORT_MCP_URL",
+                "http://deepreport-mcp:8090/mcp");
+        java.util.List<com.openjiuwen.core.foundation.tool.mcp.McpServerConfig> mcps =
+                "disabled".equalsIgnoreCase(mcpUrl) ? List.of() : List.of(
+                        com.openjiuwen.core.foundation.tool.mcp.McpServerConfig.builder()
+                                .serverId("deepreport-capability-mcp")
+                                .serverName("DeepReport 能力 MCP 服务")
+                                .serverPath(mcpUrl)
+                                .clientType("streamable-http")
+                                .connectTimeoutSeconds(10.0)
+                                .callTimeoutSeconds(60.0)
+                                .build());
+
         DeepAgentConfig config = DeepAgentConfig.builder()
+                .mcps(mcps)
                 .systemPrompt(systemPrompt())
                 .maxIterations(props.getMaxIterations())
                 .enableTaskLoop(true)
